@@ -19,7 +19,7 @@ public class Editor extends View{
 
     public Editor(){
         tile = new Texture("tile_selector.png");
-        map = new int[][] {{0, 0, 0, 0, 0}, {0, 0, 0, 0, 0}, {0, 0, 0, 0, 0}, {0, 0, 0, 0, 0}, {0, 0, 0, 0, 0}};
+        map = new int[][] {{0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0}, {0, 0, 0, 0, 0}, {0, 0, 0, 0, 0}, {0, 0, 0, 0}};
         tileSizeX = 158;
         tileSizeY = 158;
         shiftY = 0 * tileSizeY;
@@ -65,11 +65,12 @@ public class Editor extends View{
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         Gdx.gl.glClearColor(1, 1, 1, 1);
 
-        for (int i=0; i < map.length; i++)
+        for (int i=map.length; i > 0; i--)
         {
-            int[] subMap = map[i];
-            for (int j=0; j < subMap.length; j++){
-                int element = subMap[j];
+//            Gdx.app.log("Debug", String.valueOf(i));
+            int[] subMap = map[i-1];
+            for (int j=subMap.length; j > 0; j--){
+                int element = subMap[j-1];
 
                 float[] point = cartesianToIsometric(i*tileSizeX,j*tileSizeY);
                 batch.draw(tile, point[0] + shiftX, point[1] + shiftY);
