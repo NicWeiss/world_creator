@@ -17,7 +17,7 @@ import com.nicweiss.editor.Views.Logo;
 public class Main extends ApplicationAdapter {
 	SpriteBatch batch;
 
-	ExtendViewport viewport;
+	public static ExtendViewport viewport;
 	public static View view;
 	public static Store store;
 	public static OrthographicCamera camera;
@@ -32,8 +32,8 @@ public class Main extends ApplicationAdapter {
 
 		Gdx.app.setLogLevel(LOG_INFO);
 
-		width = 1920;
-		height = 1080;
+		width = Gdx.graphics.getWidth();
+		height = Gdx.graphics.getHeight();
 
 		Store.display.put("width", width);
 		Store.display.put("height", height);

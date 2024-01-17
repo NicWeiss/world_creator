@@ -10,7 +10,7 @@ public class DesktopLauncher {
 		config.setForegroundFPS(60);
 		config.setWindowedMode(1366, 768);
 		config.setMaximized(true);
-		config.setWindowSizeLimits(1366, 768, 1920, 1080);
+//		config.setWindowSizeLimits(1366, 768, 1920, 1080);
 		config.useVsync(true);
 		config.setTitle("World Creator");
 		config.setWindowIcon("icon.png");
