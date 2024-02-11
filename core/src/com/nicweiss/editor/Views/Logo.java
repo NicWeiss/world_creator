@@ -7,6 +7,8 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.View;
 import com.nicweiss.editor.Main;
 
+import java.util.function.Function;
+
 
 public class Logo extends View{
     Texture img;

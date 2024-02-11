@@ -22,8 +22,8 @@ public class Main extends ApplicationAdapter {
 	public static Store store;
 	public static OrthographicCamera camera;
 
-	float width = 0;
-	float height = 0;
+	public static float width = 0;
+	public static float height = 0;
 
 	
 	@Override
@@ -31,34 +31,63 @@ public class Main extends ApplicationAdapter {
 		store = new Store();
 
 		Gdx.app.setLogLevel(LOG_INFO);
+		setCamera(1920, 1080);
 
-		width = Gdx.graphics.getWidth();
-		height = Gdx.graphics.getHeight();
+		changeView(new Logo());
+		batch = new SpriteBatch();
+	}
 
-		Store.display.put("width", width);
-		Store.display.put("height", height);
+	public void setCamera(float cameraWidth, float cameraHeight){
+		updateSize(cameraWidth, cameraHeight);
 
 		camera = new OrthographicCamera();
 		viewport = new ExtendViewport(width, height, camera);
 		viewport.apply();
+		viewport.update((int)width, (int)height);
 		camera.position.set(width/2, height/2, 0);
-		changeView(new Logo());
-		batch = new SpriteBatch();
 	}
-	
-	@Override
-	public void dispose () {
-		batch.dispose();
+
+	public void updateCamera(float cameraWidth, float cameraHeight) {
+		updateSize(cameraWidth, cameraHeight);
+
+		camera.viewportWidth = width;
+		camera.viewportHeight = height;
+		camera.update();
 	}
 
 	@Override
-	public void resize(int width, int height) {
-		super.resize(width, height);
-		viewport.update(width, height);
+	public void resize(int r_width, int r_height) {
+		store.scale = store.scaleTotal;
+		store.isNeedToChangeScale = true;
+
+		super.resize(r_width, r_height);
+		viewport.update(r_width, r_height);
+		updateSize((float) r_width, (float) r_height);
+	}
+
+	public void updateSize(float sizeX, float sizeY){
+		width = sizeX;
+		height = sizeY;
+
+		Store.display.put("width", width);
+		Store.display.put("height", height);
 	}
 
 	@Override
 	public void render() {
+		if (store.isNeedToChangeScale){
+			store.isNeedToChangeScale = false;
+			float ar =  height / width;
+			int scalex = store.scale;
+			int scaley = (int) (scalex * ar);
+
+			if (width + scalex < 0) {scalex = 50 - (int) width;}
+			if (height + scaley < 0) {scaley = (int)(50*ar) - (int) height;}
+
+			updateCamera(width +scalex, height + scaley);
+			batch = new SpriteBatch();
+		}
+
 		camera.update();
 		batch.setProjectionMatrix(camera.combined);
 		batch.begin();
@@ -76,4 +105,10 @@ public class Main extends ApplicationAdapter {
 		view = newView;
 		Gdx.input.setInputProcessor(view);
 	}
+
+	@Override
+	public void dispose () {
+		batch.dispose();
+	}
+
 }
