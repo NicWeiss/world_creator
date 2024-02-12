@@ -9,9 +9,8 @@ public class Store {
     public static boolean isNeedToChangeScale = false;
     public static int scale = 0;
     public static int scaleTotal = 0;
-
-    public Store(){
-    }
+    public static float uiWidthOriginal = 0;
+    public static float uiHeightOriginal = 0;
 
     public static void cameraUpScale(){
         isNeedToChangeScale = true;

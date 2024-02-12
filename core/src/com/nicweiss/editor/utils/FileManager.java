@@ -32,7 +32,7 @@ public class FileManager {
                 for (int i = 0; i < height; i++) {
                     for (int j = 0; j < width; j++) {
                         stream.write(";".getBytes(Charset.forName("UTF-8")));
-                        stream.write(Integer.toHexString(map[i][j]).getBytes(Charset.forName("UTF-8")));
+                        stream.write(String.valueOf(map[i][j]).getBytes(Charset.forName("UTF-8")));
                     }
                 }
                 stream.flush();

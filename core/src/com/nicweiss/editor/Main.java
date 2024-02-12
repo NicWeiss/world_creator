@@ -15,15 +15,15 @@ import com.nicweiss.editor.Views.Logo;
 
 
 public class Main extends ApplicationAdapter {
-	SpriteBatch batch;
+	SpriteBatch batch, uiBatch;
 
-	public static ExtendViewport viewport;
+	public static ExtendViewport viewport, uiViewport;
 	public static View view;
 	public static Store store;
-	public static OrthographicCamera camera;
+	public static OrthographicCamera camera, uiCamera;
 
-	public static float width = 0;
-	public static float height = 0;
+	public static float width = 0, uiWidthOriginal = 0;
+	public static float height = 0, uiHeightOriginal = 0;
 
 	
 	@Override
@@ -35,6 +35,7 @@ public class Main extends ApplicationAdapter {
 
 		changeView(new Logo());
 		batch = new SpriteBatch();
+		uiBatch = new SpriteBatch();
 	}
 
 	public void setCamera(float cameraWidth, float cameraHeight){
@@ -45,6 +46,12 @@ public class Main extends ApplicationAdapter {
 		viewport.apply();
 		viewport.update((int)width, (int)height);
 		camera.position.set(width/2, height/2, 0);
+
+		uiCamera = new OrthographicCamera();
+		uiViewport = new ExtendViewport(width, 100, uiCamera);
+		uiViewport.apply();
+		uiViewport.update((int)width, (int)height);
+		uiCamera.position.set(width/2, height/2, 0);
 	}
 
 	public void updateCamera(float cameraWidth, float cameraHeight) {
@@ -53,15 +60,28 @@ public class Main extends ApplicationAdapter {
 		camera.viewportWidth = width;
 		camera.viewportHeight = height;
 		camera.update();
+//		camera.position.set(width/2, height/2, 0);
+
+		uiCamera.viewportWidth = uiWidthOriginal;
+		uiCamera.viewportHeight = uiHeightOriginal;
+		uiCamera.update();
+		uiCamera.position.set(uiWidthOriginal/2, uiHeightOriginal/2, 0);
 	}
 
 	@Override
 	public void resize(int r_width, int r_height) {
+		uiWidthOriginal= r_width;
+		uiHeightOriginal = r_height;
+
+		Store.uiWidthOriginal = uiWidthOriginal;
+		Store.uiHeightOriginal = uiHeightOriginal;
+
 		store.scale = store.scaleTotal;
 		store.isNeedToChangeScale = true;
 
 		super.resize(r_width, r_height);
 		viewport.update(r_width, r_height);
+		uiViewport.update(r_width, r_height);
 		updateSize((float) r_width, (float) r_height);
 	}
 
@@ -85,7 +105,6 @@ public class Main extends ApplicationAdapter {
 			if (height + scaley < 0) {scaley = (int)(50*ar) - (int) height;}
 
 			updateCamera(width +scalex, height + scaley);
-			batch = new SpriteBatch();
 		}
 
 		camera.update();
@@ -93,6 +112,13 @@ public class Main extends ApplicationAdapter {
 		batch.begin();
 		view.render(batch);
 		batch.end();
+
+
+		uiCamera.update();
+		uiBatch.setProjectionMatrix(uiCamera.combined);
+		uiBatch.begin();
+		view.renderUI(uiBatch);
+		uiBatch.end();
 	}
 
 	public static void changeView(View newView) {

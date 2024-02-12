@@ -9,30 +9,12 @@ import com.nicweiss.editor.Main;
 
 public abstract class View implements InputProcessor {
     public float fingerX, fingerY;
+    public boolean isDragged = false;
     public static Store store;
     public int[] pressedKeys = new int[100];
     private int keyIter = 0;
 
-    @Override
-    public boolean keyUp(int keycode) {
-        int releaseId = -1;
-
-        for (int i = 0; i<pressedKeys.length; i++){
-            if (pressedKeys[i] == keycode){
-                releaseId = i;
-                break;
-            }
-        }
-
-        if( releaseId != -1) {
-            pressedKeys[releaseId] = 0;
-        }
-
-        return false;
-    }
-
-    @Override
-    public boolean keyDown(int keycode) {
+    private boolean storeKey(int keycode){
         int freeId = -1;
 
         for (int i = 0; i<pressedKeys.length; i++){
@@ -53,6 +35,36 @@ public abstract class View implements InputProcessor {
         }
 
         keyIter = 0;
+
+        return  false;
+    }
+
+    private boolean releaseKey(int keycode){
+        int releaseId = -1;
+
+        for (int i = 0; i<pressedKeys.length; i++){
+            if (pressedKeys[i] == keycode){
+                releaseId = i;
+                break;
+            }
+        }
+
+        if( releaseId != -1) {
+            pressedKeys[releaseId] = 0;
+        }
+
+        return false;
+    }
+
+    @Override
+    public boolean keyUp(int keycode) {
+        releaseKey(keycode);
+        return false;
+    }
+
+    @Override
+    public boolean keyDown(int keycode) {
+        storeKey(keycode);
         return false;
     }
 
@@ -73,11 +85,14 @@ public abstract class View implements InputProcessor {
 
     @Override
     public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+        isDragged = false;
         return false;
     }
 
     @Override
     public boolean touchDragged(int screenX, int screenY, int pointer) {
+        isDragged = true;
+        touchDown(screenX,screenY,pointer,0);
         return false;
     }
 
@@ -105,6 +120,9 @@ public abstract class View implements InputProcessor {
                 }
             }
         }
+    }
+
+    public void renderUI(SpriteBatch batch) {
     }
 
     public void destruct() {
