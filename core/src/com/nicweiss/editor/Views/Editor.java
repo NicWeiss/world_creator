@@ -270,7 +270,10 @@ public class Editor extends View{
         float[] cursorPoint = cartesianToIsometric(-1,-1);
 
 //        Смена времени суток
-//        store.dayCoefficient = store.dayCoefficient + (float)0.0005;
+        store.dayCoefficient = store.dayCoefficient - (float)0.001;
+        if (store.dayCoefficient < -0.2) {
+            store.dayCoefficient = (float)-0.2;
+        }
 
 //        Отрисовка карты
 
@@ -281,10 +284,8 @@ public class Editor extends View{
             int[] subMap = map[mapI];
             for (int j=subMap.length; j > 0; j--){
                 mapJ = j - 1;
-                int element = subMap[mapJ];
 
                 float[] point = cartesianToIsometric(i*tileSizeX,j*tileSizeY);
-                int tileId = map[mapI][mapJ];
 
 //                рисуем целевой элемент для установки
                 if (i == selectedTileX && j == selectedTileY){

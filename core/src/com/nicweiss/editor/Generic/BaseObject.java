@@ -50,18 +50,29 @@ public class BaseObject {
         if (isRenderLighAndNigth){
 
             distByX = (float)Math.abs(x + (width / 2) - store.playerPositionX);
-            distByY = (float)(Math.abs(y + (height / 2) - store.playerPositionY))*2;
+            distByY = (float)(Math.abs(y + (height * 0.1) - store.playerPositionY))*2;
             dist = (float)Math.sqrt(distByX*distByX + distByY*distByY);
 
             //            затенение
             start = 0;
-            end = 240;
+            end = 120;
             lp = (dist - start) / (end - start) * 100;
-            dark = (float)1.6-(lp/100 * 100)/100;
+            dark = (float)1.6-(lp/100 * 80)/100;
 
             if (dark< 0.2){dark = (float)0.2;}
 
-            batch.setColor(dark+dayCoefficient, dark+dayCoefficient, dark+dayCoefficient, opacity);
+            float rp,gp, bp;
+            rp = (float)1-(lp/((dark*100)+35) * 50)/500;
+            gp = (float)1-(lp/((dark*100)+15) * 50)/500;
+            bp = (float)1-(lp/((dark*100)+5) * 50)/500;
+
+            if (rp< 0.2){rp = (float)0.2;}
+            if (gp< 0.2){gp = (float)0.2;}
+            if (bp< 0.2){bp = (float)0.2;}
+
+//            dayCoefficient= (float)0.3;
+
+            batch.setColor(rp+dayCoefficient, gp+dayCoefficient, bp+dayCoefficient, opacity);
         }
 
         if (bgImg != null && isTouched) {
@@ -85,21 +96,6 @@ public class BaseObject {
                 0, 0,
                 img.getWidth(), img.getHeight(),
                 false, false);
-
-        if (isRenderLighAndNigth && lp < 125) {
-//            dark = dark - (float)1.6;
-            batch.setColor((float)0.94+dayCoefficient, (float)0.75+dayCoefficient, (float)0.65+dayCoefficient, (float)1.3-dark);
-            batch.draw(img,
-                    x, y,
-                    0, 0,
-                    (float)width * x_scale, (float)height * y_scale,
-                    1, 1,
-                    rotation,
-                    0, 0,
-                    img.getWidth(), img.getHeight(),
-                    false, false);
-        }
-
     }
 
     public void setTexture(Texture texture) {

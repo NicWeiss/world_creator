@@ -13,7 +13,7 @@ public class Store {
     public static float uiHeightOriginal = 0;
 
     public static float playerPositionX, playerPositionY;
-    public static float dayCoefficient;
+    public static float dayCoefficient = 0;
 
     public static void cameraUpScale(){
         isNeedToChangeScale = true;
