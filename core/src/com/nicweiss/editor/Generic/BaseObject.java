@@ -3,9 +3,13 @@ package com.nicweiss.editor.Generic;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Batch;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.nicweiss.editor.Main;
 
 
 public class BaseObject {
+    public static Store store;
+
     protected float x;
     protected float y;
     protected float x_scale = 1;
@@ -13,6 +17,7 @@ public class BaseObject {
     protected int width = 0;
     protected int height = 0;
     protected Texture img, bgImg;
+    private TextureRegion imgRegion;
     protected float rotation = 0;
     protected float opacity = 1;
     protected boolean deleted = false;
@@ -20,6 +25,9 @@ public class BaseObject {
 
     public boolean isTouched = false;
     public boolean isShowBackgroundWhileHover = false;
+    public boolean isRenderLighAndNigth = false;
+    public boolean isPlayerInside = false;
+    public boolean isOdd = false;
 
 
     @Override
@@ -31,8 +39,30 @@ public class BaseObject {
     public void draw(Batch batch) {
         if (img == null) return;
         if (deleted) return;
+        float dark = 0;
+        float distByX, distByY, dist;
+        float start, end, lp = 0;
+        float dayCoefficient = (float)0;
 
-        batch.setColor(1, 1, 1, opacity);
+        dayCoefficient = store.dayCoefficient;
+//        batch.setColor(1, 1, 1, opacity);
+
+        if (isRenderLighAndNigth){
+
+            distByX = (float)Math.abs(x + (width / 2) - store.playerPositionX);
+            distByY = (float)(Math.abs(y + (height / 2) - store.playerPositionY))*2;
+            dist = (float)Math.sqrt(distByX*distByX + distByY*distByY);
+
+            //            затенение
+            start = 0;
+            end = 240;
+            lp = (dist - start) / (end - start) * 100;
+            dark = (float)1.6-(lp/100 * 100)/100;
+
+            if (dark< 0.2){dark = (float)0.2;}
+
+            batch.setColor(dark+dayCoefficient, dark+dayCoefficient, dark+dayCoefficient, opacity);
+        }
 
         if (bgImg != null && isTouched) {
             batch.draw(bgImg,
@@ -55,6 +85,21 @@ public class BaseObject {
                 0, 0,
                 img.getWidth(), img.getHeight(),
                 false, false);
+
+        if (isRenderLighAndNigth && lp < 125) {
+//            dark = dark - (float)1.6;
+            batch.setColor((float)0.94+dayCoefficient, (float)0.75+dayCoefficient, (float)0.65+dayCoefficient, (float)1.3-dark);
+            batch.draw(img,
+                    x, y,
+                    0, 0,
+                    (float)width * x_scale, (float)height * y_scale,
+                    1, 1,
+                    rotation,
+                    0, 0,
+                    img.getWidth(), img.getHeight(),
+                    false, false);
+        }
+
     }
 
     public void setTexture(Texture texture) {

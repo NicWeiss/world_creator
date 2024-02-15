@@ -15,12 +15,15 @@ import java.util.Random;
 
 
 public class Editor extends View{
-    Texture dot, tile, tilePickerBG, tilePickerSelector, openTexture, saveTexture, itemBgMenuTexture;
+    Texture dot, tile, tilePickerBG, tilePickerSelector, openTexture, saveTexture,
+            dark, itemBgMenuTexture;
     Texture[] textures;
 
     FileManager fileManager;
 
     BaseObject[] picker, ui;
+    BaseObject[][] objectedMap;
+
     int[][]  map;
     int tileSizeX, tileSizeY;
     int tileDownScale = 3;
@@ -40,6 +43,7 @@ public class Editor extends View{
         fileManager = new FileManager();
         tile = new Texture("tile_selector.png");
         dot = new Texture("dot.png");
+//        dark = new Texture("dark.png");
         openTexture = new Texture("open.png");
         saveTexture = new Texture("save.png");
         itemBgMenuTexture = new Texture("menu_item_bg.png");
@@ -73,10 +77,8 @@ public class Editor extends View{
     private void defineMap() {
         Random rand = new Random();
         Perlin perlin = new Perlin(rand.nextInt(9000));
-//        float noise = perlin.getNoise((float)200,(float)200,8,0.5f);
         int[][] perlinMap = new int[mapHeight][mapWidth];
 
-//        Perlin2D perlin = new Perlin2D(seed);
         for(int x = 0; x < mapHeight; x++) {
             for(int y = 0; y < mapWidth; y++) {
                 float value = perlin.getNoise(x/10f,y/10f,2,0.6f);
@@ -84,8 +86,8 @@ public class Editor extends View{
             }
         }
 
-//        Random rand = new Random();
         map = new int[mapHeight][mapWidth];
+        objectedMap = new BaseObject[mapHeight][mapWidth];
         int rn = 0, ts = 0;
 
         for(int i = 0; i<mapHeight; i++) {
@@ -104,6 +106,12 @@ public class Editor extends View{
                     ts=rand.nextInt(3) + 5;
                 }
                 map[i][j] = ts;
+
+                BaseObject tmp = new BaseObject();
+                tmp.setTexture(textures[ts]);
+                tmp.isRenderLighAndNigth = true;
+//                if ( (x & 1) == 0 ) { even... } else { odd... }
+                objectedMap[i][j] = tmp;
             }
         }
     }
@@ -156,23 +164,23 @@ public class Editor extends View{
 
         if(isMenuReadyToTouch && !isDragged){
 //            Обработка собыкий в объектах пикера тайлов
-            for (int i = 0; i<picker.length;  i++) {
-                picker[i].checkTouch(mouseX, mouseY);
-                if (picker[i].isTouched){
-                    selectedTailId = Integer.valueOf(picker[i].getObjectId());
+            for (BaseObject object : picker) {
+                object.checkTouch(mouseX, mouseY);
+                if (object.isTouched) {
+                    selectedTailId = Integer.parseInt(object.getObjectId());
                 }
             }
 
 //            Обработка событй в объектах интерфейса
-            for (int i = 0; i<ui.length;  i++) {
-                ui[i].checkTouch(mouseX, mouseY);
-                if (ui[i].isTouched){
-                    if (ui[i].getObjectId() == "open"){
+            for (BaseObject baseObject : ui) {
+                baseObject.checkTouch(mouseX, mouseY);
+                if (baseObject.isTouched) {
+                    if (baseObject.getObjectId().equals("open")) {
                         map = fileManager.openMap();
                         mapHeight = fileManager.mapHeight;
-                        mapWidth = fileManager.mapHeight;
+                        mapWidth = fileManager.mapWidth;
                     }
-                    if (ui[i].getObjectId() == "save"){
+                    if (baseObject.getObjectId().equals("save")) {
                         fileManager.saveMap(map, mapWidth, mapHeight);
                     }
                 }
@@ -185,6 +193,7 @@ public class Editor extends View{
                 arrPointY < mapWidth
             ) {
                 map[arrPointX][arrPointY] = selectedTailId;
+                objectedMap[arrPointX][arrPointY].setTexture(textures[selectedTailId]);
             }
         }
 
@@ -200,14 +209,11 @@ public class Editor extends View{
         float mouseInViewportX = v.x - shiftX - (10 / tileDownScale) ;
         float mouseInViewportY = v.y - shiftY + (60 / tileDownScale);
         float[] dotPoint = isometricToCartesian(mouseInViewportX, mouseInViewportY);
+        store.playerPositionX = v.x ;
+        store.playerPositionY = v.y;
         selectedTileX = (int) ((dotPoint[0]) / tileSizeX) - 1;
         selectedTileY = (int) ((dotPoint[1]) / tileSizeY);
-//        Gdx.app.log("Debug", String.valueOf(screenX) + " : " + String.valueOf(screenY));
 
-//        Vector3 uiv = Main.uiViewport.getCamera().unproject(new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0));
-//        float mouseInUIX = uiv.x - shiftX ;
-//        float mouseInUIY = uiv.y - shiftY;
-//        Gdx.app.log("Debug", String.valueOf(mouseInUIX) + " : " + String.valueOf(mouseInUIY));
         return false;
     }
 
@@ -263,27 +269,44 @@ public class Editor extends View{
 
         float[] cursorPoint = cartesianToIsometric(-1,-1);
 
+//        Смена времени суток
+//        store.dayCoefficient = store.dayCoefficient + (float)0.0005;
+
 //        Отрисовка карты
+
+        int mapI, mapJ;
         for (int i=map.length; i > 0; i--)
         {
-            int[] subMap = map[i-1];
+            mapI = i - 1;
+            int[] subMap = map[mapI];
             for (int j=subMap.length; j > 0; j--){
-                int element = subMap[j-1];
+                mapJ = j - 1;
+                int element = subMap[mapJ];
 
                 float[] point = cartesianToIsometric(i*tileSizeX,j*tileSizeY);
-                int tileId = map[i-1][j-1];
+                int tileId = map[mapI][mapJ];
 
+//                рисуем целевой элемент для установки
                 if (i == selectedTileX && j == selectedTileY){
                     cursorPoint = cartesianToIsometric((selectedTileX)*tileSizeX,(selectedTileY)*tileSizeY);
                     batch.draw(textures[selectedTailId], cursorPoint[0] + shiftX, cursorPoint[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale);
-                    batch.draw(textures[0], cursorPoint[0] + shiftX, cursorPoint[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale);
-                } else {
-                    batch.draw(textures[tileId], point[0] + shiftX, point[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale );
+//                    batch.draw(textures[0], cursorPoint[0] + shiftX, cursorPoint[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale);
                 }
+//                else {
+//                    batch.draw(textures[tileId], point[0] + shiftX, point[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale );
+//                Рисуем карту
+                    objectedMap[mapI][mapJ].setX(point[0] + shiftX);
+                    objectedMap[mapI][mapJ].setY(point[1] + shiftY);
+                    objectedMap[mapI][mapJ].setWidth(tile.getWidth() / tileDownScale);
+                    objectedMap[mapI][mapJ].setHeight(tile.getHeight() / tileDownScale);
+                    objectedMap[mapI][mapJ].draw(batch);
+                    objectedMap[mapI][mapJ].isPlayerInside = false;
+//                }
 
+//                Рисуем курсор
                 if (i == selectedTileX && j == selectedTileY){
                     cursorPoint = cartesianToIsometric((selectedTileX)*tileSizeX,(selectedTileY)*tileSizeY);
-//                    batch.draw(textures[selectedTailId], cursorPoint[0] + shiftX, cursorPoint[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale);
+                    objectedMap[mapI][mapJ].isPlayerInside = true;
                 }
             }
         }
@@ -310,13 +333,13 @@ public class Editor extends View{
             picker[i].draw(uiBatch);
         }
 
-        for (int i = 0; i<ui.length;  i++) {
-            ui[i].setY(store.uiHeightOriginal - menuItemSize - 10);
-            ui[i].checkTouch(mouseX, mouseY);
-            if (ui[i].isTouched){
+        for (BaseObject baseObject : ui) {
+            baseObject.setY(store.uiHeightOriginal - menuItemSize - 10);
+            baseObject.checkTouch(mouseX, mouseY);
+            if (baseObject.isTouched) {
                 isMenuReadyToTouch = true;
             }
-            ui[i].draw(uiBatch);
+            baseObject.draw(uiBatch);
         }
     }
 }

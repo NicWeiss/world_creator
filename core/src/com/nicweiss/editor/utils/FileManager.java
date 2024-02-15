@@ -18,21 +18,18 @@ public class FileManager {
         fd.setVisible(true);
         String filename = fd.getDirectory() + fd.getFile();
 
-
-        if (filename == null)
-            System.out.println("You cancelled the choice");
-        else {
+        if (filename != null){
             System.out.println("You chose " + filename);
             try (FileOutputStream stream = new FileOutputStream(filename)) {
-                stream.write(String.valueOf(width).getBytes(Charset.forName("UTF-8")));
-                stream.write(";".getBytes(Charset.forName("UTF-8")));
-                stream.write(String.valueOf(height).getBytes(Charset.forName("UTF-8")));
+                stream.write(String.valueOf(width).getBytes(StandardCharsets.UTF_8));
+                stream.write(";".getBytes(StandardCharsets.UTF_8));
+                stream.write(String.valueOf(height).getBytes(StandardCharsets.UTF_8));
 //                stream.write((byte) height);
 
                 for (int i = 0; i < height; i++) {
                     for (int j = 0; j < width; j++) {
-                        stream.write(";".getBytes(Charset.forName("UTF-8")));
-                        stream.write(String.valueOf(map[i][j]).getBytes(Charset.forName("UTF-8")));
+                        stream.write(";".getBytes(StandardCharsets.UTF_8));
+                        stream.write(String.valueOf(map[i][j]).getBytes(StandardCharsets.UTF_8));
                     }
                 }
                 stream.flush();
@@ -55,23 +52,21 @@ public class FileManager {
         String filename = fd.getDirectory() + fd.getFile();
 
 
-        if (filename == null)
-            System.out.println("You cancelled the choice");
-        else {
+        if (filename != null){
             System.out.println("You chose " + filename);
             try (FileInputStream fs = new FileInputStream(filename)) {
                 byte[] bytesArray = fs.readAllBytes();
                 String data = new String(bytesArray, StandardCharsets.UTF_8);
                 String[] splitedData = data.split(";");
-                mapWidth = Integer.valueOf(splitedData[0]);
-                mapHeight = Integer.valueOf(splitedData[1]);
+                mapWidth = Integer.parseInt(splitedData[0]);
+                mapHeight = Integer.parseInt(splitedData[1]);
 
                 map = new int[mapHeight][mapWidth];
                 int k = 2;
 
                 for (int i = 0; i < mapHeight; i++) {
                     for (int j = 0; j < mapWidth; j++) {
-                        map[i][j] = Integer.valueOf(splitedData[k]);
+                        map[i][j] = Integer.parseInt(splitedData[k]);
                         k++;
                     }
                 }
