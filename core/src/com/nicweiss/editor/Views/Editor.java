@@ -36,6 +36,7 @@ public class Editor extends View{
     int menuTileWidth = 70, menuTileHeight = 80;
     int selectedTailId = 1;
     int menuItemSize = 40, menuItemSpace = 50;
+    float cm = (float)0.001;
 
     boolean isMenuReadyToTouch = false;
 
@@ -61,7 +62,8 @@ public class Editor extends View{
                 new Texture("gp_7.png"),
                 new Texture("gp_8.png"),
                 new Texture("gp_9.png"),
-                new Texture("gp_10.png")
+                new Texture("gp_10.png"),
+                new Texture("gp_11.png")
 
         };
 
@@ -118,10 +120,10 @@ public class Editor extends View{
 
     private void defineTileUI(){int widthUIPanel = 770;
         int renderUIFrom = (int) store.uiWidthOriginal /2 - widthUIPanel / 2;
-        picker = new BaseObject[11];
+        picker = new BaseObject[12];
         ui = new BaseObject[2];
 
-        for (int i = 0; i<=10;  i++) {
+        for (int i = 0; i<=11;  i++) {
             BaseObject tmp = new BaseObject();
             tmp.setTexture(textures[i]);
             tmp.setX(renderUIFrom + (i * menuTileSpace) + 3);
@@ -194,6 +196,15 @@ public class Editor extends View{
             ) {
                 map[arrPointX][arrPointY] = selectedTailId;
                 objectedMap[arrPointX][arrPointY].setTexture(textures[selectedTailId]);
+
+                if (selectedTailId == 11) {
+                    float[] point = cartesianToIsometric(arrPointX*tileSizeX,arrPointY*tileSizeY);
+                    store.addLightPoint(
+                            point[0] + (float)(tile.getWidth()*2.15),
+                            point[1] + (float)(tileSizeY*1.25)
+                    );
+                    recalcLightOnMap();
+                }
             }
         }
 
@@ -211,6 +222,10 @@ public class Editor extends View{
         float[] dotPoint = isometricToCartesian(mouseInViewportX, mouseInViewportY);
         store.playerPositionX = v.x ;
         store.playerPositionY = v.y;
+
+        store.lightPoints[0][0] = 1;
+        store.lightPoints[0][1] = v.x;
+        store.lightPoints[0][2] = v.y;
         selectedTileX = (int) ((dotPoint[0]) / tileSizeX) - 1;
         selectedTileY = (int) ((dotPoint[1]) / tileSizeY);
 
@@ -223,18 +238,22 @@ public class Editor extends View{
         super.keyDown(keyCode);
         if (keyCode == 19) {
             shiftY = shiftY - tileSizeY;
+            store.lightShiftY = store.lightShiftY - tileSizeY;
         }
 
         if (keyCode == 20) {
             shiftY = shiftY + tileSizeY;
+            store.lightShiftY = store.lightShiftY + tileSizeY;
         }
 
         if (keyCode == 21) {
             shiftX = shiftX + (tileSizeX*2);
+            store.lightShiftX = store.lightShiftX + (tileSizeX*2);
         }
 
         if (keyCode == 22) {
             shiftX = shiftX - (tileSizeX*2);
+            store.lightShiftX = store.lightShiftX - (tileSizeX*2);
         }
 
         if (keyCode == 157) {
@@ -263,6 +282,7 @@ public class Editor extends View{
 
     @Override
     public void render(SpriteBatch batch) {
+//        recalcLightOnMap();
         super.render(batch);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         Gdx.gl.glClearColor(1, 1, 1, 1);
@@ -270,9 +290,14 @@ public class Editor extends View{
         float[] cursorPoint = cartesianToIsometric(-1,-1);
 
 //        Смена времени суток
-        store.dayCoefficient = store.dayCoefficient - (float)0.001;
-        if (store.dayCoefficient < -0.2) {
-            store.dayCoefficient = (float)-0.2;
+        store.dayCoefficient = store.dayCoefficient - cm;
+        if (store.dayCoefficient < -0.10) {
+            store.dayCoefficient = (float)-0.10;
+            cm = cm * -1;
+        }
+        if (store.dayCoefficient > 1) {
+            store.dayCoefficient = 1;
+            cm = cm * -1;
         }
 
 //        Отрисовка карты
@@ -292,8 +317,7 @@ public class Editor extends View{
                     cursorPoint = cartesianToIsometric((selectedTileX)*tileSizeX,(selectedTileY)*tileSizeY);
                     batch.draw(textures[selectedTailId], cursorPoint[0] + shiftX, cursorPoint[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale);
 //                    batch.draw(textures[0], cursorPoint[0] + shiftX, cursorPoint[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale);
-                }
-//                else {
+                } else {
 //                    batch.draw(textures[tileId], point[0] + shiftX, point[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale );
 //                Рисуем карту
                     objectedMap[mapI][mapJ].setX(point[0] + shiftX);
@@ -302,7 +326,7 @@ public class Editor extends View{
                     objectedMap[mapI][mapJ].setHeight(tile.getHeight() / tileDownScale);
                     objectedMap[mapI][mapJ].draw(batch);
                     objectedMap[mapI][mapJ].isPlayerInside = false;
-//                }
+                }
 
 //                Рисуем курсор
                 if (i == selectedTileX && j == selectedTileY){
@@ -341,6 +365,14 @@ public class Editor extends View{
                 isMenuReadyToTouch = true;
             }
             baseObject.draw(uiBatch);
+        }
+    }
+
+    public void recalcLightOnMap(){
+        for(int i = 0; i<mapHeight; i++) {
+            for(int j = 0; j<mapWidth; j++) {
+                objectedMap[i][j].calcLight("global");
+            }
         }
     }
 }

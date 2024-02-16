@@ -13,7 +13,12 @@ public class Store {
     public static float uiHeightOriginal = 0;
 
     public static float playerPositionX, playerPositionY;
-    public static float dayCoefficient = 0;
+    public static float dayCoefficient = 1;
+    public static float lightShiftX, lightShiftY;
+
+    public static int ligtPointsCount = 1000;
+    public static float[][] lightPoints = new float[ligtPointsCount][3];
+
 
     public static void cameraUpScale(){
         isNeedToChangeScale = true;
@@ -25,6 +30,17 @@ public class Store {
         isNeedToChangeScale = true;
         scale = 100;
         scaleTotal = scaleTotal + 100;
+    }
+
+    public static void addLightPoint(float x, float y){
+        for (int i = 1; i<lightPoints.length; i++){
+            if (lightPoints[i][0] == 0){
+                lightPoints[i][0] = 1;
+                lightPoints[i][1] = x;
+                lightPoints[i][2] = y;
+                break;
+            }
+        }
     }
 
 }
