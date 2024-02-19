@@ -43,6 +43,9 @@ public class FileManager {
     }
 
     public int[][] openMap() {
+        mapWidth = 0;
+        mapHeight = 0;
+
         int[][] map = new int[0][0];
 
         FileDialog fd = new FileDialog((java.awt.Frame)null);
@@ -51,8 +54,7 @@ public class FileManager {
         fd.setVisible(true);
         String filename = fd.getDirectory() + fd.getFile();
 
-
-        if (filename != null){
+        if (fd.getFile() != null){
             System.out.println("You chose " + filename);
             try (FileInputStream fs = new FileInputStream(filename)) {
                 byte[] bytesArray = fs.readAllBytes();

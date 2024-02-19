@@ -1,14 +1,10 @@
 package com.nicweiss.editor.Generic;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputProcessor;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 
-import com.nicweiss.editor.Main;
-
 
 public abstract class View implements InputProcessor {
-    public float fingerX, fingerY;
     public boolean isDragged = false;
     public static Store store;
     public int[] pressedKeys = new int[100];
@@ -85,13 +81,13 @@ public abstract class View implements InputProcessor {
 
     @Override
     public boolean touchUp(int screenX, int screenY, int pointer, int button) {
-        isDragged = false;
+        store.isDragged = isDragged = false;
         return false;
     }
 
     @Override
     public boolean touchDragged(int screenX, int screenY, int pointer) {
-        isDragged = true;
+        store.isDragged = isDragged = true;
         touchDown(screenX,screenY,pointer,0);
         return false;
     }
@@ -127,10 +123,4 @@ public abstract class View implements InputProcessor {
 
     public void destruct() {
     }
-
-//    @Override
-//    protected void finalize() throws Throwable {
-//        super.finalize();
-//        Gdx.app.log("Debug", "View finalize");
-//    }
 }

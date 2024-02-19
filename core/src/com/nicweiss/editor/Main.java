@@ -60,7 +60,7 @@ public class Main extends ApplicationAdapter {
 		camera.viewportWidth = width;
 		camera.viewportHeight = height;
 		camera.update();
-//		camera.position.set(width/2, height/2, 0);
+		camera.position.set(width/2, height/2, 0);
 
 		uiCamera.viewportWidth = uiWidthOriginal;
 		uiCamera.viewportHeight = uiHeightOriginal;
@@ -98,13 +98,17 @@ public class Main extends ApplicationAdapter {
 		if (store.isNeedToChangeScale){
 			store.isNeedToChangeScale = false;
 			float ar =  height / width;
+			int minScale = 90;
 			int scalex = store.scale;
 			int scaley = (int) (scalex * ar);
 
-			if (width + scalex < 0) {scalex = 50 - (int) width;}
-			if (height + scaley < 0) {scaley = (int)(50*ar) - (int) height;}
+			if (width + scalex < 0) {scalex = (int)(minScale - width);}
+			if (height + scaley < 0) {scaley = (int)(minScale * ar) - (int) height;}
 
-			updateCamera(width +scalex, height + scaley);
+			store.scaledWidth = (int)width + scalex;
+			store.scaledHeight = (int)height + scaley;
+
+			updateCamera(store.scaledWidth, store.scaledHeight);
 		}
 
 		camera.update();

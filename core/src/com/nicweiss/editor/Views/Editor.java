@@ -8,48 +8,36 @@ import com.badlogic.gdx.math.Vector3;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.View;
 import com.nicweiss.editor.Main;
-import com.nicweiss.editor.utils.FileManager;
+import com.nicweiss.editor.components.UserInterface;
+import com.nicweiss.editor.utils.ArrayUtils;
+import com.nicweiss.editor.utils.CameraSettings;
+import com.nicweiss.editor.utils.Transform;
+import com.nicweiss.editor.utils.Light;
 import com.nicweiss.editor.utils.Perlin;
 
 import java.util.Random;
 
 
 public class Editor extends View{
-    Texture dot, tile, tilePickerBG, tilePickerSelector, openTexture, saveTexture,
-            dark, itemBgMenuTexture;
+    Texture dot, tile;
     Texture[] textures;
 
-    FileManager fileManager;
+    Light light;
+    UserInterface userInterface;
+    Transform transform;
 
-    BaseObject[] picker, ui;
-    BaseObject[][] objectedMap;
-
-    int[][]  map;
     int tileSizeX, tileSizeY;
-    int tileDownScale = 3;
     int selectedTileX, selectedTileY;
     int mouseX, mouseY;
-    int mapHeight = 200, mapWidth = 200;
-    int shiftX, shiftY;
-    int widthUIPanel = 770, heightUIPanel = 90;
-    int menuTileSpace = 77;
-    int menuTileWidth = 70, menuTileHeight = 80;
-    int selectedTailId = 1;
-    int menuItemSize = 40, menuItemSpace = 50;
+    float mapRenderShiftX, mapRenderShiftY;
     float cm = (float)0.001;
-
-    boolean isMenuReadyToTouch = false;
+    int[] lightObjectIds;
 
     public Editor(){
-        fileManager = new FileManager();
+        lightObjectIds = new int[] {11, 7};
+
         tile = new Texture("tile_selector.png");
         dot = new Texture("dot.png");
-//        dark = new Texture("dark.png");
-        openTexture = new Texture("open.png");
-        saveTexture = new Texture("save.png");
-        itemBgMenuTexture = new Texture("menu_item_bg.png");
-        tilePickerBG = new Texture("tile_pick_bg.png");
-        tilePickerSelector = new Texture("tile_pick_selector.png");
 
         textures = new Texture[] {
                 new Texture("gp_0.png"),
@@ -67,94 +55,55 @@ public class Editor extends View{
 
         };
 
-        defineMap();
-        defineTileUI();
+        store.tileSizeWidth = tileSizeX = 158 / store.tileDownScale;
+        store.tileSizeHeight = tileSizeY = 158 / store.tileDownScale;
+        store.shiftY = 0;
+        store.shiftX = 12 * tileSizeX;
 
-        tileSizeX = 158 / tileDownScale;
-        tileSizeY = 158 / tileDownScale;
-        shiftY = 0;
-        shiftX = 12 * tileSizeX;
+        light = new Light(store.mapWidth, store.mapHeight);
+        userInterface = new UserInterface(textures, light, lightObjectIds);
     }
 
-    private void defineMap() {
+    void defineUI(){
+        userInterface.build(textures);
+    }
+
+    void defineMap() {
         Random rand = new Random();
         Perlin perlin = new Perlin(rand.nextInt(9000));
-        int[][] perlinMap = new int[mapHeight][mapWidth];
+        int[][] perlinMap = new int[store.mapHeight][store.mapWidth];
 
-        for(int x = 0; x < mapHeight; x++) {
-            for(int y = 0; y < mapWidth; y++) {
+        for(int x = 0; x < store.mapHeight; x++) {
+            for(int y = 0; y < store.mapWidth; y++) {
                 float value = perlin.getNoise(x/10f,y/10f,2,0.6f);
                 perlinMap[x][y] = (int)(value * 255) & 255;
             }
         }
 
-        map = new int[mapHeight][mapWidth];
-        objectedMap = new BaseObject[mapHeight][mapWidth];
-        int rn = 0, ts = 0;
+        store.objectedMap = new BaseObject[store.mapHeight][store.mapWidth];
+        int rn, ts;
 
-        for(int i = 0; i<mapHeight; i++) {
-            for(int j = 0; j<mapWidth; j++) {
+        for(int i = 0; i<store.mapHeight; i++) {
+            for(int j = 0; j<store.mapWidth; j++) {
                 rn = perlinMap[i][j];
                 ts = 8;
                 if (rn > 20){ts=1;}
-//                if (rn > 50){ts=10;}
                 if (rn > 140){ts=3;}
                 if (rn > 244){ts=2;}
 
                 if (rn == 246){ts=4;}
-//                if (rn == 247){ts=5;}
-//                if (rn == 248 ){ts=6;}
                 if (rn == 249){
                     ts=rand.nextInt(3) + 5;
                 }
-                map[i][j] = ts;
 
                 BaseObject tmp = new BaseObject();
                 tmp.setTexture(textures[ts]);
+                tmp.setTextureId(ts);
                 tmp.isRenderLighAndNigth = true;
-//                if ( (x & 1) == 0 ) { even... } else { odd... }
-                objectedMap[i][j] = tmp;
+                tmp.isEnableRenderLimits = true;
+                store.objectedMap[i][j] = tmp;
             }
         }
-    }
-
-    private void defineTileUI(){int widthUIPanel = 770;
-        int renderUIFrom = (int) store.uiWidthOriginal /2 - widthUIPanel / 2;
-        picker = new BaseObject[12];
-        ui = new BaseObject[2];
-
-        for (int i = 0; i<=11;  i++) {
-            BaseObject tmp = new BaseObject();
-            tmp.setTexture(textures[i]);
-            tmp.setX(renderUIFrom + (i * menuTileSpace) + 3);
-            tmp.setY(5);
-            tmp.setWidth(menuTileWidth);
-            tmp.setHeight(menuTileHeight);
-            tmp.setObjectId(String.valueOf(i));
-            picker[i] = tmp;
-        }
-
-//        Open button
-        BaseObject tmp = new BaseObject();
-        tmp.setTexture(openTexture);
-        tmp.setX(10);
-        tmp.setY(store.uiHeightOriginal - menuItemSize - 10);
-        tmp.setWidth(menuItemSize);
-        tmp.setHeight(menuItemSize);
-        tmp.setObjectId("open");
-        tmp.setBackgroundTexture(itemBgMenuTexture);
-        ui[0] = tmp;
-
-//        Save button
-        tmp = new BaseObject();
-        tmp.setTexture(saveTexture);
-        tmp.setX(menuItemSpace + 10);
-        tmp.setY(store.uiHeightOriginal - menuItemSize - 10);
-        tmp.setWidth(menuItemSize);
-        tmp.setHeight(menuItemSize);
-        tmp.setObjectId("save");
-        tmp.setBackgroundTexture(itemBgMenuTexture);
-        ui[1] = tmp;
     }
 
     @Override
@@ -164,47 +113,37 @@ public class Editor extends View{
         int arrPointX = selectedTileX-1;
         int arrPointY = selectedTileY-1;
 
-        if(isMenuReadyToTouch && !isDragged){
-//            Обработка собыкий в объектах пикера тайлов
-            for (BaseObject object : picker) {
-                object.checkTouch(mouseX, mouseY);
-                if (object.isTouched) {
-                    selectedTailId = Integer.parseInt(object.getObjectId());
-                }
+        if(!isDragged){
+            if (userInterface.checkTouch()){
+                return false;
+            }
+        }
+
+        if (
+            arrPointX >= 0 &&
+            arrPointX < store.mapHeight &&
+            arrPointY >= 0 &&
+            arrPointY < store.mapWidth
+        ) {
+//                Очистка света
+            int previousTextureId = store.objectedMap[arrPointX][arrPointY].getTextureId();
+            int newTextureId = store.selectedTailId;
+
+            if (!ArrayUtils.checkIntInArray(newTextureId, lightObjectIds) && ArrayUtils.checkIntInArray(previousTextureId, lightObjectIds)) {
+                light.removePoint(arrPointX, arrPointY);
+                light.recalcOnMapFromPoint(arrPointX, arrPointY);
             }
 
-//            Обработка событй в объектах интерфейса
-            for (BaseObject baseObject : ui) {
-                baseObject.checkTouch(mouseX, mouseY);
-                if (baseObject.isTouched) {
-                    if (baseObject.getObjectId().equals("open")) {
-                        map = fileManager.openMap();
-                        mapHeight = fileManager.mapHeight;
-                        mapWidth = fileManager.mapWidth;
-                    }
-                    if (baseObject.getObjectId().equals("save")) {
-                        fileManager.saveMap(map, mapWidth, mapHeight);
-                    }
-                }
-            }
-        } else {
-            if (
-                arrPointX >= 0 &&
-                arrPointX < mapHeight &&
-                arrPointY >= 0 &&
-                arrPointY < mapWidth
-            ) {
-                map[arrPointX][arrPointY] = selectedTailId;
-                objectedMap[arrPointX][arrPointY].setTexture(textures[selectedTailId]);
+//                Обновление элемента карты
+            store.objectedMap[arrPointX][arrPointY].setTexture(textures[newTextureId]);
+            store.objectedMap[arrPointX][arrPointY].setTextureId(newTextureId);
+            store.objectedMap[arrPointX][arrPointY].setWidth(textures[newTextureId].getWidth() / store.tileDownScale);
+            store.objectedMap[arrPointX][arrPointY].setHeight(textures[newTextureId].getHeight() / store.tileDownScale);
 
-                if (selectedTailId == 11) {
-                    float[] point = cartesianToIsometric(arrPointX*tileSizeX,arrPointY*tileSizeY);
-                    store.addLightPoint(
-                            point[0] + (float)(tile.getWidth()*2.15),
-                            point[1] + (float)(tileSizeY*1.25)
-                    );
-                    recalcLightOnMap();
-                }
+//                Уствновка света
+            if (ArrayUtils.checkIntInArray(newTextureId, lightObjectIds)) {
+                light.addPoint(arrPointX, arrPointY);
+                light.recalcOnMapFromPoint(arrPointX, arrPointY);
             }
         }
 
@@ -213,166 +152,181 @@ public class Editor extends View{
 
     @Override
     public boolean mouseMoved(int screenX, int screenY) {
-        mouseX = screenX;
-        mouseY = (int) store.uiHeightOriginal - screenY;
+        store.mouseX = mouseX = screenX;
+        store.mouseY = mouseY = (int) store.uiHeightOriginal - screenY;
 
         Vector3 v = Main.viewport.getCamera().unproject(new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0));
-        float mouseInViewportX = v.x - shiftX - (10 / tileDownScale) ;
-        float mouseInViewportY = v.y - shiftY + (60 / tileDownScale);
-        float[] dotPoint = isometricToCartesian(mouseInViewportX, mouseInViewportY);
+        float mouseInViewportX = v.x - store.shiftX - (float)(10 / store.tileDownScale) ;
+        float mouseInViewportY = v.y - store.shiftY + (float)(60 / store.tileDownScale);
+        float[] dotPoint = transform.isometricToCartesian(mouseInViewportX, mouseInViewportY);
         store.playerPositionX = v.x ;
         store.playerPositionY = v.y;
 
-        store.lightPoints[0][0] = 1;
-        store.lightPoints[0][1] = v.x;
-        store.lightPoints[0][2] = v.y;
+        light.setUserPoint(v.x, v.y);
         selectedTileX = (int) ((dotPoint[0]) / tileSizeX) - 1;
         selectedTileY = (int) ((dotPoint[1]) / tileSizeY);
 
         return false;
+
+
     }
 
     @Override
     public boolean keyDown(int keyCode){
-        Gdx.app.log("Debug", String.valueOf(keyCode));
+//        Gdx.app.log("Debug", String.valueOf(keyCode));
         super.keyDown(keyCode);
-        if (keyCode == 19) {
-            shiftY = shiftY - tileSizeY;
-            store.lightShiftY = store.lightShiftY - tileSizeY;
-        }
-
-        if (keyCode == 20) {
-            shiftY = shiftY + tileSizeY;
-            store.lightShiftY = store.lightShiftY + tileSizeY;
-        }
-
-        if (keyCode == 21) {
-            shiftX = shiftX + (tileSizeX*2);
-            store.lightShiftX = store.lightShiftX + (tileSizeX*2);
-        }
-
-        if (keyCode == 22) {
-            shiftX = shiftX - (tileSizeX*2);
-            store.lightShiftX = store.lightShiftX - (tileSizeX*2);
-        }
+        boolean isNeedDownScale = false;
+        boolean isNeedUpScale = false;
+        float mapRenderScale = 1;
 
         if (keyCode == 157) {
-            store.cameraUpScale();
+            isNeedUpScale = CameraSettings.upScale();
+            mapRenderScale = (float)0;
         }
 
         if (keyCode == 156) {
-            store.cameraDownScale();
+            isNeedDownScale = CameraSettings.downScale();
+            mapRenderScale = (float)0;
+        }
+
+        if (keyCode == 19 || isNeedUpScale) {
+            int scale = isNeedUpScale? tileSizeY/2 : tileSizeY;
+            store.shiftY = store.shiftY - scale;
+            mapRenderShiftY = mapRenderShiftY - mapRenderScale;
+            mapRenderShiftX = mapRenderShiftX - mapRenderScale;
+            store.lightShiftY = store.lightShiftY - scale;
+        }
+
+        if (keyCode == 20 || isNeedDownScale ) {
+            int scale = isNeedDownScale? tileSizeY/2 : tileSizeY;
+            store.shiftY = store.shiftY + scale;
+            mapRenderShiftY = mapRenderShiftY + mapRenderScale;
+            mapRenderShiftX = mapRenderShiftX + mapRenderScale;
+            store.lightShiftY = store.lightShiftY + scale;
+        }
+
+        if (keyCode == 22 || isNeedUpScale) {
+            int scale = isNeedUpScale ? (int)(tileSizeX*0.95) : (tileSizeX*2);
+            store.shiftX = store.shiftX - scale;
+            mapRenderShiftX = mapRenderShiftX + mapRenderScale;
+            mapRenderShiftY = mapRenderShiftY - mapRenderScale;
+            store.lightShiftX = store.lightShiftX - scale;
+        }
+
+        if (keyCode == 21 || isNeedDownScale) {
+            int scale = isNeedDownScale? (int)(tileSizeX*0.95) : (tileSizeX*2);
+            store.shiftX = store.shiftX + scale;
+            mapRenderShiftX = mapRenderShiftX - mapRenderScale;
+            mapRenderShiftY = mapRenderShiftY + mapRenderScale;
+            store.lightShiftX = store.lightShiftX + scale;
         }
 
         return false;
     }
 
-    public float[] cartesianToIsometric(int x, int y){
-        float isometricX = x - y ;
-        float isometricY = (float) ((x + y) / 2);
-
-        return new float[] {isometricX, isometricY};
-    }
-
-    public float[] isometricToCartesian(float x, float y){
-        float decartX=(2*y+x)/2;
-        float decartY=(2*y-x)/2;
-        return new float[] {decartX, decartY} ;
-    }
-
     @Override
     public void render(SpriteBatch batch) {
-//        recalcLightOnMap();
         super.render(batch);
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-        Gdx.gl.glClearColor(1, 1, 1, 1);
 
-        float[] cursorPoint = cartesianToIsometric(-1,-1);
+        if (store.isNeedToChangeScale) {
+            return;
+        }
+
+        float[] cursorPoint = transform.cartesianToIsometric(-1,-1);
+        int mapI, mapJ;
+        float[] point;
+
+//        Задаём задний фон
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+        Gdx.gl.glClearColor(store.dayCoefficient, store.dayCoefficient, store.dayCoefficient, 1);
+
 
 //        Смена времени суток
         store.dayCoefficient = store.dayCoefficient - cm;
-        if (store.dayCoefficient < -0.10) {
-            store.dayCoefficient = (float)-0.10;
-            cm = cm * -1;
+        if (store.dayCoefficient < 0.30) {
+            store.dayCoefficient = (float)0.30;
+//            cm = cm * -1;
         }
         if (store.dayCoefficient > 1) {
             store.dayCoefficient = 1;
             cm = cm * -1;
         }
 
-//        Отрисовка карты
+//        Рассчёт области карты для рендера
+        int renderFromX, renderToX, renderFromY, renderToY, maxFrom, minTo;
 
-        int mapI, mapJ;
-        for (int i=map.length; i > 0; i--)
+        maxFrom = Math.max(
+                (int)(store.display.get("width") / tileSizeX),
+                (int)(store.display.get("height") / tileSizeY)
+        ) * 2;
+
+        minTo = Math.max(
+                (int)(store.display.get("width") / tileSizeX),
+                (int)(store.display.get("height") / tileSizeY)
+        );
+
+        renderToX = (int)(mapRenderShiftX < 0 ? Math.abs(mapRenderShiftX) : 0) - minTo;
+        renderFromX = renderToX + maxFrom + minTo + 20;
+
+        renderToY = (int)(mapRenderShiftY < 0 ? Math.abs(mapRenderShiftY) : 0) - minTo;
+        renderFromY = renderToY + maxFrom + minTo + 20;
+
+        renderFromX = Math.min(renderFromX, store.mapWidth);
+        renderFromX = Math.max(renderFromX, 0);
+        renderToX = Math.max(renderToX, 0);
+        renderToX = Math.min(renderToX, store.mapWidth);
+        renderFromY = Math.min(renderFromY, store.mapHeight);
+        renderFromY = Math.max(renderFromY, 0);
+        renderToY = Math.max(renderToY, 0);
+        renderToY = Math.min(renderToY, store.mapHeight);
+
+//        Отрисовка карты
+        for (int i=renderFromY; i > renderToY; i--)
         {
             mapI = i - 1;
-            int[] subMap = map[mapI];
-            for (int j=subMap.length; j > 0; j--){
+            for (int j=renderFromX; j > renderToX; j--){
                 mapJ = j - 1;
-
-                float[] point = cartesianToIsometric(i*tileSizeX,j*tileSizeY);
+                point = transform.cartesianToIsometric(i*tileSizeX,j*tileSizeY);
 
 //                рисуем целевой элемент для установки
                 if (i == selectedTileX && j == selectedTileY){
-                    cursorPoint = cartesianToIsometric((selectedTileX)*tileSizeX,(selectedTileY)*tileSizeY);
-                    batch.draw(textures[selectedTailId], cursorPoint[0] + shiftX, cursorPoint[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale);
+                    cursorPoint = transform.cartesianToIsometric((selectedTileX)*tileSizeX,(selectedTileY)*tileSizeY);
+                    batch.draw(
+                            textures[store.selectedTailId],
+                            cursorPoint[0] + store.shiftX,
+                            cursorPoint[1] + store.shiftY,
+                            (float)tile.getWidth() / store.tileDownScale,
+                            (float)tile.getHeight() / store.tileDownScale
+                    );
 //                    batch.draw(textures[0], cursorPoint[0] + shiftX, cursorPoint[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale);
                 } else {
 //                    batch.draw(textures[tileId], point[0] + shiftX, point[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale );
 //                Рисуем карту
-                    objectedMap[mapI][mapJ].setX(point[0] + shiftX);
-                    objectedMap[mapI][mapJ].setY(point[1] + shiftY);
-                    objectedMap[mapI][mapJ].setWidth(tile.getWidth() / tileDownScale);
-                    objectedMap[mapI][mapJ].setHeight(tile.getHeight() / tileDownScale);
-                    objectedMap[mapI][mapJ].draw(batch);
-                    objectedMap[mapI][mapJ].isPlayerInside = false;
+                    int textureId = store.objectedMap[mapI][mapJ].getTextureId();
+                    store.objectedMap[mapI][mapJ].setX(point[0] + store.shiftX);
+                    store.objectedMap[mapI][mapJ].setY(point[1] + store.shiftY);
+                    store.objectedMap[mapI][mapJ].setWidth(textures[textureId].getWidth() / store.tileDownScale);
+                    store.objectedMap[mapI][mapJ].setHeight(textures[textureId].getHeight() / store.tileDownScale);
+                    store.objectedMap[mapI][mapJ].draw(batch);
+                    store.objectedMap[mapI][mapJ].isPlayerInside = false;
                 }
 
 //                Рисуем курсор
                 if (i == selectedTileX && j == selectedTileY){
-                    cursorPoint = cartesianToIsometric((selectedTileX)*tileSizeX,(selectedTileY)*tileSizeY);
-                    objectedMap[mapI][mapJ].isPlayerInside = true;
+                    cursorPoint = transform.cartesianToIsometric((selectedTileX)*tileSizeX,(selectedTileY)*tileSizeY);
+                    store.objectedMap[mapI][mapJ].isPlayerInside = true;
                 }
             }
         }
 
 //        Отрисовка курсора
         if (cursorPoint[0] != -1 && cursorPoint[1] != -1) {
-            batch.draw(dot, cursorPoint[0] + shiftX + tileSizeX, cursorPoint[1] + shiftY + tileSizeY - (80 / tileDownScale));
+            batch.draw(dot, cursorPoint[0] + store.shiftX + tileSizeX, cursorPoint[1] + store.shiftY + tileSizeY - (float)(80 / store.tileDownScale));
         }
     }
 
     @Override
     public void renderUI(SpriteBatch uiBatch) {
-        int renderUIFrom = (int) store.uiWidthOriginal /2 - widthUIPanel / 2;
-
-        uiBatch.draw(tilePickerBG, renderUIFrom, 0, widthUIPanel, heightUIPanel);
-        isMenuReadyToTouch = false;
-        for (int i = 0; i<picker.length;  i++) {
-            picker[i].setX(renderUIFrom + (i * menuTileSpace) + 3);
-            picker[i].checkTouch(mouseX, mouseY);
-            if (picker[i].isTouched){
-                uiBatch.draw(tilePickerSelector, renderUIFrom + (menuTileSpace * i) + 3, 0, menuTileWidth, 15);
-                isMenuReadyToTouch = true;
-            }
-            picker[i].draw(uiBatch);
-        }
-
-        for (BaseObject baseObject : ui) {
-            baseObject.setY(store.uiHeightOriginal - menuItemSize - 10);
-            baseObject.checkTouch(mouseX, mouseY);
-            if (baseObject.isTouched) {
-                isMenuReadyToTouch = true;
-            }
-            baseObject.draw(uiBatch);
-        }
-    }
-
-    public void recalcLightOnMap(){
-        for(int i = 0; i<mapHeight; i++) {
-            for(int j = 0; j<mapWidth; j++) {
-                objectedMap[i][j].calcLight("global");
-            }
-        }
+        userInterface.render(uiBatch);
     }
 }

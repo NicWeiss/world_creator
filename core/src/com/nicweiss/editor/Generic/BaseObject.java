@@ -24,6 +24,7 @@ public class BaseObject {
     protected float opacity = 1;
     protected boolean deleted = false;
     protected String objectId;
+    protected int textureId;
 
     protected float defaultLight = (float)0.2;
     protected float staticLightRed=defaultLight, staticLightGreen=defaultLight, staticLightBlue=defaultLight;
@@ -33,28 +34,38 @@ public class BaseObject {
     public boolean isShowBackgroundWhileHover = false;
     public boolean isRenderLighAndNigth = false;
     public boolean isPlayerInside = false;
+    public boolean isEnableRenderLimits = false;
 
 
-    @Override
-    protected void finalize() throws Throwable {
-        super.finalize();
-        img.dispose();
-    }
+//    @Override
+//    protected void finalize() throws Throwable {
+//        super.finalize();
+//        img.dispose();
+//    }
 
     public void draw(Batch batch) {
-//        if (x-width*10>store.display.get("width")){
-//            return;
-//        }
-//        if (y-height*10>store.display.get("height")){
-//            return;
-//        }
+        if (isEnableRenderLimits) {
+            if (x + img.getWidth() < 0 || x > store.display.get("width")) {
+                return;
+            }
+            if (y + img.getHeight() < 0 || y > store.display.get("height")) {
+                return;
+            }
+        }
 
         if (img == null) return;
         if (deleted) return;
 //
         if (isRenderLighAndNigth){
             if (store.dayCoefficient< 0.4){
-                calcLight("player");
+                if (store.isSelectedLightObject) {
+                    calcLight("player");
+                } else {
+                    dynamicLightRed = (float)0.2;
+                    dynamicLightGreen = (float)0.2;
+                    dynamicLightBlue = (float)0.2;
+                }
+
                 batch.setColor(
                         Math.max(staticLightRed,dynamicLightRed) + store.dayCoefficient,
                         Math.max(staticLightGreen,dynamicLightGreen) + store.dayCoefficient,
@@ -119,13 +130,17 @@ public class BaseObject {
             localShiftY = 0;
 
             if (i > 0) {
+                if (store.lightPoints[i][0] == 0){
+                    continue;
+                }
+
                 localShiftX = store.lightShiftX;
                 localShiftY = store.lightShiftY;
             }
 
             distByX = (float) Math.abs(x - localShiftX + (width / 2) - store.lightPoints[i][1]);
-            distByY = (float) (Math.abs(y - localShiftY - (height * 0.1) - store.lightPoints[i][2])) * 2;
-            if (distByX>400 || distByY>400){
+            distByY = (float) (Math.abs(y - localShiftY - (height * 0.1) - store.lightPoints[i][2])) * (float)1.45;
+            if (Math.abs(distByX)>400 || Math.abs(distByY)>400){
                 continue;
             }
             dist = (float) Math.sqrt(distByX * distByX + distByY * distByY);
@@ -203,7 +218,7 @@ public class BaseObject {
     }
 
     public void onTouch() {
-        Gdx.app.log("Touch: ", "YEP!");
+//        Gdx.app.log("Touch: ", "YEP!");
     }
 
     public void touch() {
@@ -259,8 +274,16 @@ public class BaseObject {
         return objectId;
     }
 
+    public int getTextureId() {
+        return textureId;
+    }
+
     public void setObjectId(String objectId) {
         this.objectId = objectId;
+    }
+
+    public void setTextureId(int textureId) {
+        this.textureId = textureId;
     }
 
     public float getWidth() {
