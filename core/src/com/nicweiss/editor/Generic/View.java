@@ -35,7 +35,7 @@ public abstract class View implements InputProcessor {
         return  false;
     }
 
-    private boolean releaseKey(int keycode){
+    protected boolean releaseKey(int keycode){
         int releaseId = -1;
 
         for (int i = 0; i<pressedKeys.length; i++){

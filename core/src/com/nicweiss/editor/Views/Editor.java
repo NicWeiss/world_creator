@@ -32,9 +32,10 @@ public class Editor extends View{
     float mapRenderShiftX, mapRenderShiftY;
     float cm = (float)0.001;
     int[] lightObjectIds;
+    boolean isImmediatelyReleaseKey = false;
 
     public Editor(){
-        lightObjectIds = new int[] {11, 7};
+        lightObjectIds = new int[] {11};
 
         tile = new Texture("tile_selector.png");
         dot = new Texture("dot.png");
@@ -154,7 +155,12 @@ public class Editor extends View{
     public boolean mouseMoved(int screenX, int screenY) {
         store.mouseX = mouseX = screenX;
         store.mouseY = mouseY = (int) store.uiHeightOriginal - screenY;
+        calcPositionCursor();
 
+        return false;
+    }
+
+    public void calcPositionCursor(){
         Vector3 v = Main.viewport.getCamera().unproject(new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0));
         float mouseInViewportX = v.x - store.shiftX - (float)(10 / store.tileDownScale) ;
         float mouseInViewportY = v.y - store.shiftY + (float)(60 / store.tileDownScale);
@@ -165,11 +171,21 @@ public class Editor extends View{
         light.setUserPoint(v.x, v.y);
         selectedTileX = (int) ((dotPoint[0]) / tileSizeX) - 1;
         selectedTileY = (int) ((dotPoint[1]) / tileSizeY);
-
-        return false;
-
-
     }
+
+    @Override
+    public boolean scrolled(float amountX, float amountY) {
+        Gdx.app.log("Debug", String.valueOf(amountY));
+        isImmediatelyReleaseKey = true;
+        if (amountY > 0) {
+            keyDown(156);
+        } else {
+            keyDown(157);
+        }
+        store.isDragged = false;
+        return false;
+    }
+
 
     @Override
     public boolean keyDown(int keyCode){
@@ -179,14 +195,16 @@ public class Editor extends View{
         boolean isNeedUpScale = false;
         float mapRenderScale = 1;
 
-        if (keyCode == 157) {
+        if (keyCode == 157 && !store.isNeedToChangeScale) {
             isNeedUpScale = CameraSettings.upScale();
             mapRenderScale = (float)0;
+            calcPositionCursor();
         }
 
-        if (keyCode == 156) {
+        if (keyCode == 156 && !store.isNeedToChangeScale) {
             isNeedDownScale = CameraSettings.downScale();
             mapRenderScale = (float)0;
+            calcPositionCursor();
         }
 
         if (keyCode == 19 || isNeedUpScale) {
@@ -195,6 +213,7 @@ public class Editor extends View{
             mapRenderShiftY = mapRenderShiftY - mapRenderScale;
             mapRenderShiftX = mapRenderShiftX - mapRenderScale;
             store.lightShiftY = store.lightShiftY - scale;
+            calcPositionCursor();
         }
 
         if (keyCode == 20 || isNeedDownScale ) {
@@ -203,6 +222,7 @@ public class Editor extends View{
             mapRenderShiftY = mapRenderShiftY + mapRenderScale;
             mapRenderShiftX = mapRenderShiftX + mapRenderScale;
             store.lightShiftY = store.lightShiftY + scale;
+            calcPositionCursor();
         }
 
         if (keyCode == 22 || isNeedUpScale) {
@@ -211,6 +231,7 @@ public class Editor extends View{
             mapRenderShiftX = mapRenderShiftX + mapRenderScale;
             mapRenderShiftY = mapRenderShiftY - mapRenderScale;
             store.lightShiftX = store.lightShiftX - scale;
+            calcPositionCursor();
         }
 
         if (keyCode == 21 || isNeedDownScale) {
@@ -219,8 +240,13 @@ public class Editor extends View{
             mapRenderShiftX = mapRenderShiftX - mapRenderScale;
             mapRenderShiftY = mapRenderShiftY + mapRenderScale;
             store.lightShiftX = store.lightShiftX + scale;
+            calcPositionCursor();
         }
 
+        if (isImmediatelyReleaseKey){
+            isImmediatelyReleaseKey = false;
+            releaseKey(keyCode);
+        }
         return false;
     }
 
@@ -229,6 +255,7 @@ public class Editor extends View{
         super.render(batch);
 
         if (store.isNeedToChangeScale) {
+            calcPositionCursor();
             return;
         }
 

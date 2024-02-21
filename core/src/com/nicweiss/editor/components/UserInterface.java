@@ -125,63 +125,71 @@ public class UserInterface {
             baseObject.checkTouch(store.mouseX, store.mouseY);
             if (baseObject.isTouched) {
                 if (baseObject.getObjectId().equals("open")) {
-                    int textureId = 0;
-                    int[][] map =  fileManager.openMap();
-                    float[] point;
-                    if (map.length == 0) {
-                        return true;
-                    }
-
-                    store.mapHeight = fileManager.mapHeight;
-                    store.mapWidth = fileManager.mapWidth;
-
-                    store.objectedMap = new BaseObject[store.mapHeight][store.mapWidth];
-
-                    lightClass.clearAll();
-                    for (int i = 0; i < store.mapWidth; i++){
-                        for (int j = 0; j < store.mapHeight; j++){
-                            point = transform.cartesianToIsometric(
-                                    (int)((i+1)*store.tileSizeWidth),
-                                    (int)((j+1)*store.tileSizeHeight)
-                            );
-
-                            textureId = map[i][j];
-                            BaseObject tmp = new BaseObject();
-                            tmp.setTexture(tileTextures[textureId]);
-                            tmp.setTextureId(textureId);
-                            tmp.setX(point[0] + store.shiftX);
-                            tmp.setY(point[1] + store.shiftY);
-                            tmp.setWidth(tileTextures[textureId].getWidth() / store.tileDownScale);
-                            tmp.setHeight(tileTextures[textureId].getHeight() / store.tileDownScale);
-                            tmp.isRenderLighAndNigth = true;
-                            tmp.isEnableRenderLimits = true;
-                            tmp.isPlayerInside = false;
-                            store.objectedMap[i][j] = tmp;
-
-
-                            if (ArrayUtils.checkIntInArray(textureId, lightObjectIds)){
-                                lightClass.addPoint(i, j);
-                            }
-                        }
-                    }
-                    lightClass.recalcOnMap();
+                    openMap();
                     return true;
                 }
                 if (baseObject.getObjectId().equals("save")) {
-                    int[][] map = new int[store.mapWidth][store.mapHeight];
-
-                    for (int i = 0; i < store.mapWidth; i++) {
-                        for (int j = 0; j < store.mapHeight; j++) {
-                            map[i][j] = store.objectedMap[i][j].getTextureId();
-                        }
-                    }
-
-                  fileManager.saveMap(map, store.mapWidth, store.mapHeight);
+                    saveMap();
                     return true;
                 }
             }
         }
 
         return false;
+    }
+
+    private void openMap(){
+        int textureId = 0;
+        int[][] map =  fileManager.openMap();
+        float[] point;
+        if (map.length == 0) {
+            return;
+        }
+
+        store.mapHeight = fileManager.mapHeight;
+        store.mapWidth = fileManager.mapWidth;
+
+        store.objectedMap = new BaseObject[store.mapHeight][store.mapWidth];
+
+        lightClass.clearAll();
+        for (int i = 0; i < store.mapWidth; i++){
+            for (int j = 0; j < store.mapHeight; j++){
+                point = transform.cartesianToIsometric(
+                        (int)((i+1)*store.tileSizeWidth),
+                        (int)((j+1)*store.tileSizeHeight)
+                );
+
+                textureId = map[i][j];
+                BaseObject tmp = new BaseObject();
+                tmp.setTexture(tileTextures[textureId]);
+                tmp.setTextureId(textureId);
+                tmp.setX(point[0] + store.shiftX);
+                tmp.setY(point[1] + store.shiftY);
+                tmp.setWidth(tileTextures[textureId].getWidth() / store.tileDownScale);
+                tmp.setHeight(tileTextures[textureId].getHeight() / store.tileDownScale);
+                tmp.isRenderLighAndNigth = true;
+                tmp.isEnableRenderLimits = true;
+                tmp.isPlayerInside = false;
+                store.objectedMap[i][j] = tmp;
+
+
+                if (ArrayUtils.checkIntInArray(textureId, lightObjectIds)){
+                    lightClass.addPoint(i, j);
+                }
+            }
+        }
+        lightClass.recalcOnMap();
+    }
+
+    private void saveMap(){
+        int[][] map = new int[store.mapWidth][store.mapHeight];
+
+        for (int i = 0; i < store.mapWidth; i++) {
+            for (int j = 0; j < store.mapHeight; j++) {
+                map[i][j] = store.objectedMap[i][j].getTextureId();
+            }
+        }
+
+        fileManager.saveMap(map, store.mapWidth, store.mapHeight);
     }
 }
