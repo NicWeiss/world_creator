@@ -29,10 +29,12 @@ public class Editor extends View{
     int tileSizeX, tileSizeY;
     int selectedTileX, selectedTileY;
     int mouseX, mouseY;
-    float mapRenderShiftX, mapRenderShiftY;
     float cm = (float)0.001;
     int[] lightObjectIds;
     boolean isImmediatelyReleaseKey = false;
+
+
+    private int shiftedXbyMouse=0,shiftedYbyMouse=0;
 
     public Editor(){
         lightObjectIds = new int[] {11};
@@ -109,7 +111,8 @@ public class Editor extends View{
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-//        Gdx.app.log("Debug", String.valueOf(selectedTileX) + " : " + String.valueOf(selectedTileY));
+        lastTouchedButton = button == -1 ? lastTouchedButton : button;
+
         mouseMoved(screenX,screenY);
         int arrPointX = selectedTileX-1;
         int arrPointY = selectedTileY-1;
@@ -120,7 +123,26 @@ public class Editor extends View{
             }
         }
 
+        if (lastTouchedButton == 2 && isDragged){
+            int scaleX = 0, scaleY = 0;
+            float cf=0;
+
+            int scaleCoefficientX = (Math.abs(screenX - lastDraggedX));
+            int scaleCoefficientY = (Math.abs(screenY - lastDraggedY));
+
+            if (screenX>lastDraggedX) {scaleX = 0 - scaleCoefficientX;}
+            if (screenX<lastDraggedX) {scaleX = scaleCoefficientX;}
+            if (screenY>lastDraggedY) {scaleY = scaleCoefficientY;}
+            if (screenY<lastDraggedY) {scaleY = 0 - scaleCoefficientY;}
+
+            cf = store.scaleTotal / 1000*(float)0.55;
+
+            store.shiftX = store.shiftX - (int)(scaleX+(scaleX*cf));
+            store.shiftY = store.shiftY - (int)(scaleY+(scaleY*cf));
+        }
+
         if (
+            lastTouchedButton == 0 &&
             arrPointX >= 0 &&
             arrPointX < store.mapHeight &&
             arrPointY >= 0 &&
@@ -193,53 +215,38 @@ public class Editor extends View{
         super.keyDown(keyCode);
         boolean isNeedDownScale = false;
         boolean isNeedUpScale = false;
-        float mapRenderScale = 1;
 
         if (keyCode == 157 && !store.isNeedToChangeScale) {
             isNeedUpScale = CameraSettings.upScale();
-            mapRenderScale = (float)0;
             calcPositionCursor();
         }
 
         if (keyCode == 156 && !store.isNeedToChangeScale) {
             isNeedDownScale = CameraSettings.downScale();
-            mapRenderScale = (float)0;
             calcPositionCursor();
         }
 
         if (keyCode == 19 || isNeedUpScale) {
             int scale = isNeedUpScale? tileSizeY/2 : tileSizeY;
             store.shiftY = store.shiftY - scale;
-            mapRenderShiftY = mapRenderShiftY - mapRenderScale;
-            mapRenderShiftX = mapRenderShiftX - mapRenderScale;
-            store.lightShiftY = store.lightShiftY - scale;
             calcPositionCursor();
         }
 
         if (keyCode == 20 || isNeedDownScale ) {
             int scale = isNeedDownScale? tileSizeY/2 : tileSizeY;
             store.shiftY = store.shiftY + scale;
-            mapRenderShiftY = mapRenderShiftY + mapRenderScale;
-            mapRenderShiftX = mapRenderShiftX + mapRenderScale;
-            store.lightShiftY = store.lightShiftY + scale;
             calcPositionCursor();
         }
 
         if (keyCode == 22 || isNeedUpScale) {
-            int scale = isNeedUpScale ? (int)(tileSizeX*0.95) : (tileSizeX*2);
+            int scale = isNeedUpScale ? tileSizeX : (tileSizeX*2);
             store.shiftX = store.shiftX - scale;
-            mapRenderShiftX = mapRenderShiftX + mapRenderScale;
-            mapRenderShiftY = mapRenderShiftY - mapRenderScale;
-            store.lightShiftX = store.lightShiftX - scale;
             calcPositionCursor();
         }
 
         if (keyCode == 21 || isNeedDownScale) {
-            int scale = isNeedDownScale? (int)(tileSizeX*0.95) : (tileSizeX*2);
+            int scale = isNeedDownScale? tileSizeX : (tileSizeX*2);
             store.shiftX = store.shiftX + scale;
-            mapRenderShiftX = mapRenderShiftX - mapRenderScale;
-            mapRenderShiftY = mapRenderShiftY + mapRenderScale;
-            store.lightShiftX = store.lightShiftX + scale;
             calcPositionCursor();
         }
 
@@ -247,6 +254,7 @@ public class Editor extends View{
             isImmediatelyReleaseKey = false;
             releaseKey(keyCode);
         }
+
         return false;
     }
 
@@ -279,41 +287,40 @@ public class Editor extends View{
             cm = cm * -1;
         }
 
-//        Рассчёт области карты для рендера
-        int renderFromX, renderToX, renderFromY, renderToY, maxFrom, minTo;
+        int countTotalItems = 0, countItems = 0;
+        int d = (int) (
+                (store.display.get("width") / tileSizeX) + (store.display.get("height") / tileSizeY)
+                        + (Math.abs(store.shiftX) / (tileSizeX*2))
+                        +(Math.abs(store.shiftY) / (tileSizeY)));
 
-        maxFrom = Math.max(
-                (int)(store.display.get("width") / tileSizeX),
-                (int)(store.display.get("height") / tileSizeY)
-        ) * 2;
-
-        minTo = Math.max(
-                (int)(store.display.get("width") / tileSizeX),
-                (int)(store.display.get("height") / tileSizeY)
-        );
-
-        renderToX = (int)(mapRenderShiftX < 0 ? Math.abs(mapRenderShiftX) : 0) - minTo;
-        renderFromX = renderToX + maxFrom + minTo + 20;
-
-        renderToY = (int)(mapRenderShiftY < 0 ? Math.abs(mapRenderShiftY) : 0) - minTo;
-        renderFromY = renderToY + maxFrom + minTo + 20;
-
-        renderFromX = Math.min(renderFromX, store.mapWidth);
-        renderFromX = Math.max(renderFromX, 0);
-        renderToX = Math.max(renderToX, 0);
-        renderToX = Math.min(renderToX, store.mapWidth);
-        renderFromY = Math.min(renderFromY, store.mapHeight);
-        renderFromY = Math.max(renderFromY, 0);
-        renderToY = Math.max(renderToY, 0);
-        renderToY = Math.min(renderToY, store.mapHeight);
+        int e1 = (-(store.shiftX / (tileSizeX*2)) - (store.shiftY / (tileSizeY)) - 20);
 
 //        Отрисовка карты
-        for (int i=renderFromY; i > renderToY; i--)
+        for (int i=Math.min(d, store.mapHeight); i > Math.max(e1,0); i--)
         {
             mapI = i - 1;
-            for (int j=renderFromX; j > renderToX; j--){
+
+            for (int j=Math.min(d, store.mapWidth); j > 0; j--){
                 mapJ = j - 1;
-                point = transform.cartesianToIsometric(i*tileSizeX,j*tileSizeY);
+                countTotalItems++;
+
+                point = transform.cartesianToIsometric(i * tileSizeX, j * tileSizeY);
+
+                if (point[0] + store.shiftX - (tileSizeX*2)>store.display.get("width")){
+                    break;
+                }
+                if (point[1] + store.shiftY + (tileSizeX*2)< 0){
+                    break;
+                }
+
+                if (point[0] + store.shiftX + (tileSizeX*2)< 0){
+                    continue;
+                }
+                if (point[1] + store.shiftY - (tileSizeY*2)>store.display.get("height")){
+                    continue;
+                }
+
+                countItems++;
 
 //                рисуем целевой элемент для установки
                 if (i == selectedTileX && j == selectedTileY){
@@ -346,6 +353,8 @@ public class Editor extends View{
             }
         }
 
+
+//        Gdx.app.log("Debug", String.valueOf(countItems) + " / " + String.valueOf(countTotalItems));
 //        Отрисовка курсора
         if (cursorPoint[0] != -1 && cursorPoint[1] != -1) {
             batch.draw(dot, cursorPoint[0] + store.shiftX + tileSizeX, cursorPoint[1] + store.shiftY + tileSizeY - (float)(80 / store.tileDownScale));

@@ -134,8 +134,8 @@ public class BaseObject {
                     continue;
                 }
 
-                localShiftX = store.lightShiftX;
-                localShiftY = store.lightShiftY;
+                localShiftX = store.shiftX;
+                localShiftY = store.shiftY;
             }
 
             distByX = (float) Math.abs(x - localShiftX + (width / 2) - store.lightPoints[i][1]);

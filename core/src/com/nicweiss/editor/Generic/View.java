@@ -9,6 +9,8 @@ public abstract class View implements InputProcessor {
     public static Store store;
     public int[] pressedKeys = new int[100];
     private int keyIter = 0;
+    public int lastTouchedButton=0;
+    public int lastDraggedX = 0, lastDraggedY = 0;
 
     private boolean storeKey(int keycode){
         int freeId = -1;
@@ -87,8 +89,16 @@ public abstract class View implements InputProcessor {
 
     @Override
     public boolean touchDragged(int screenX, int screenY, int pointer) {
+        if (!store.isDragged) {
+            lastDraggedX = screenX;
+            lastDraggedY = screenY;
+        }
+
         store.isDragged = isDragged = true;
-        touchDown(screenX,screenY,pointer,0);
+        touchDown(screenX,screenY,pointer,-1);
+        lastDraggedX = screenX;
+        lastDraggedY = screenY;
+
         return false;
     }
 

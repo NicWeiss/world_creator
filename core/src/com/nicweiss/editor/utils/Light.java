@@ -13,7 +13,7 @@ public class Light {
         width = mapWidth;
         height = mapHeight;
 
-        lightShiftCoefficientX = store.tileSizeWidth * 13;
+        lightShiftCoefficientX = store.tileSizeWidth;
         lightShiftCoefficientY = store.tileSizeHeight;
 
         store.lightPoints = new float[store.lightPointsCount][5];

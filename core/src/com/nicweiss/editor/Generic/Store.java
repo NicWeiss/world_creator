@@ -14,7 +14,6 @@ public class Store {
 
     public static float playerPositionX, playerPositionY;
     public static float dayCoefficient = (float)1;
-    public static float lightShiftX, lightShiftY;
 
     public static int lightPointsCount = 10000;
     public static float[][] lightPoints;
@@ -27,7 +26,7 @@ public class Store {
     public static boolean isEditorLoadComplete = false;
     public static boolean isDragged = false;
     public static BaseObject[][] objectedMap;
-    public static int mapHeight = 300, mapWidth = 300;
+    public static int mapHeight = 3000, mapWidth = 3000;
 
     public static float tileSizeWidth, tileSizeHeight;
 
