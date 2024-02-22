@@ -118,7 +118,7 @@ public abstract class View implements InputProcessor {
         keyIter ++;
 
         if (keyIter > 20) {
-            keyIter = 17;
+            keyIter = 19;
             for (int i = 0; i < pressedKeys.length; i++) {
                 int keyCode = pressedKeys[i];
                 if (keyCode != 0) {

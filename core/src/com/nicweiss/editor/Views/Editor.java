@@ -293,14 +293,18 @@ public class Editor extends View{
                         + (Math.abs(store.shiftX) / (tileSizeX*2))
                         +(Math.abs(store.shiftY) / (tileSizeY)));
 
-        int e1 = (-(store.shiftX / (tileSizeX*2)) - (store.shiftY / (tileSizeY)) - 20);
+        float fc = Math.min(Math.max(store.scaleTotal / 10*(float)5, 20), 150);
 
+        int e1 = (-(store.shiftX / (tileSizeX*2)) - (store.shiftY / (tileSizeY)) - 10);
+        int e2 = ((store.shiftX / (tileSizeX*2)) - (store.shiftY / (tileSizeY)))-(int)fc;
+
+//        Gdx.app.log("Debug", String.valueOf(d) + " / "+ String.valueOf(e1) + " / " + String.valueOf(e2));
 //        Отрисовка карты
         for (int i=Math.min(d, store.mapHeight); i > Math.max(e1,0); i--)
         {
             mapI = i - 1;
 
-            for (int j=Math.min(d, store.mapWidth); j > 0; j--){
+            for (int j=Math.min(e2+(int)(fc*2), store.mapWidth); j > Math.max(e2,0); j--){
                 mapJ = j - 1;
                 countTotalItems++;
 
@@ -354,7 +358,7 @@ public class Editor extends View{
         }
 
 
-//        Gdx.app.log("Debug", String.valueOf(countItems) + " / " + String.valueOf(countTotalItems));
+        Gdx.app.log("Debug", String.valueOf(countItems) + " / " + String.valueOf(countTotalItems));
 //        Отрисовка курсора
         if (cursorPoint[0] != -1 && cursorPoint[1] != -1) {
             batch.draw(dot, cursorPoint[0] + store.shiftX + tileSizeX, cursorPoint[1] + store.shiftY + tileSizeY - (float)(80 / store.tileDownScale));
