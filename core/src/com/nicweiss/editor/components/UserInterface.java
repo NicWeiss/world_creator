@@ -32,7 +32,7 @@ public class UserInterface {
     int menuItemSize = 40, menuItemSpace = 50;
 
     int boundToMouseId;
-    boolean isMenuTileBoundToMouse = false, isShowMenuTile = true;
+    boolean isMenuTileBoundToMouse = false, isShowMenuTile = false;
 
     public UserInterface(Texture[] tileTextures, Light lightClass, int[] lightObjectIds) {
         this.lightObjectIds = lightObjectIds;
@@ -59,7 +59,7 @@ public class UserInterface {
         ui = new BaseObject[2];
 
         tileBoxButton = bo_helper.constructObject(
-                tileBox, 0,0, heightUIPanel, heightUIPanel, "", 0
+                tileBox, 0,0, 70, 70, "", 0
         );
 
         for (int i = 0; i<10;  i++) {
@@ -105,7 +105,7 @@ public class UserInterface {
     public void render(SpriteBatch uiBatch) {
         int renderUIFrom = (int) store.uiWidthOriginal / 2 - widthUIPanel / 2;
 
-        bo_helper.draw(uiBatch, tileBoxButton, renderUIFrom - heightUIPanel - 10, 0);
+        bo_helper.draw(uiBatch, tileBoxButton, renderUIFrom - 75, 0);
         uiBatch.draw(tilePickerBG, renderUIFrom, 0, widthUIPanel, heightUIPanel);
 
         for (int i = 0; i < picker.length; i++) {
@@ -226,7 +226,7 @@ public class UserInterface {
                 }
             }
 
-            if (tileBoxButton.isTouched) {
+            if (tileBoxButton.isTouched && !isDragged) {
                 isShowMenuTile = !isShowMenuTile;
                 return true;
             }
