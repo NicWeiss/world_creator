@@ -21,7 +21,7 @@ public class UserInterface {
 
     public static Store store;
     BaseObject[] picker, ui, allTiles;
-    BaseObject tileSelectWindow, tileMenuCloseButton, tileMenuCloseButtonBG, tileBoxButton;
+    BaseObject tileSelectWindow, tileMenuCloseButton, tileMenuCloseButtonBG, tileBoxButton, boundToMouse;
     Texture[] tileTextures;
     Light lightClass;
     int[] lightObjectIds;
@@ -157,7 +157,11 @@ public class UserInterface {
 
 //            Выбранный элемент
             if (isMenuTileBoundToMouse) {
-                bo_helper.draw(uiBatch,allTiles[boundToMouseId], store.mouseX+5, store.mouseY+5);
+                bo_helper.draw(
+                        uiBatch, boundToMouse,
+                        (int) (store.mouseX - boundToMouse.getWidth()/2),
+                        (int) (store.mouseY - boundToMouse.getHeight()/2)
+                );
             }
 
 //            Кнопка закрытия окна
@@ -197,7 +201,7 @@ public class UserInterface {
             isDraggedElementDropped = true;
         }
 
-        if (!isTouchUp) {
+        if (!isTouchUp && !isDragged) {
 //        Обработка собыкий в объектах пикера тайлов
             for (int i = 0; i < picker.length; i++) {
                 if (picker[i].isTouched) {
@@ -248,6 +252,11 @@ public class UserInterface {
                     if (isDragged && !isMenuTileBoundToMouse) {
                         isMenuTileBoundToMouse = true;
                         boundToMouseId = tile.getTextureId();
+                        try {
+                            boundToMouse = (BaseObject) tile.clone();
+                        } catch (CloneNotSupportedException e) {
+                            e.printStackTrace();
+                        }
                     }
                 }
             }
