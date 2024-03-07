@@ -29,12 +29,13 @@ public class Editor extends View{
     int tileSizeX, tileSizeY;
     int selectedTileX, selectedTileY;
     int mouseX, mouseY;
-    float cm = (float)0.001;
+    float cm = 0.001f;
     int[] lightObjectIds;
     boolean isImmediatelyReleaseKey = false;
+    boolean isUiTouched = false;
 
 
-    private int shiftedXbyMouse=0,shiftedYbyMouse=0;
+//    private int shiftedXbyMouse=0,shiftedYbyMouse=0;
 
     public Editor(){
         lightObjectIds = new int[] {11};
@@ -63,7 +64,7 @@ public class Editor extends View{
         store.shiftY = 0;
         store.shiftX = 12 * tileSizeX;
 
-        light = new Light(store.mapWidth, store.mapHeight);
+        light = new Light();
         userInterface = new UserInterface(textures, light, lightObjectIds);
     }
 
@@ -117,10 +118,12 @@ public class Editor extends View{
         int arrPointX = selectedTileX-1;
         int arrPointY = selectedTileY-1;
 
+
         if(!isDragged){
-            if (userInterface.checkTouch()){
-                return false;
-            }
+            isUiTouched = userInterface.checkTouch(false, false);
+        }
+        if (isUiTouched){
+            return false;
         }
 
         if (lastTouchedButton == 2 && isDragged){
@@ -174,6 +177,12 @@ public class Editor extends View{
     }
 
     @Override
+    public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+        isUiTouched = userInterface.checkTouch(isDragged, true);
+        return super.touchUp(screenX, screenY, pointer, button);
+    }
+
+    @Override
     public boolean mouseMoved(int screenX, int screenY) {
         store.mouseX = mouseX = screenX;
         store.mouseY = mouseY = (int) store.uiHeightOriginal - screenY;
@@ -197,7 +206,7 @@ public class Editor extends View{
 
     @Override
     public boolean scrolled(float amountX, float amountY) {
-        Gdx.app.log("Debug", String.valueOf(amountY));
+//        Gdx.app.log("Debug", String.valueOf(amountY));
         isImmediatelyReleaseKey = true;
         if (amountY > 0) {
             keyDown(156);
@@ -208,6 +217,12 @@ public class Editor extends View{
         return false;
     }
 
+    @Override
+    public boolean touchDragged(int screenX, int screenY, int pointer) {
+        isUiTouched = userInterface.checkTouch(true, false);
+
+        return super.touchDragged(screenX, screenY, pointer);
+    }
 
     @Override
     public boolean keyDown(int keyCode){
@@ -358,7 +373,7 @@ public class Editor extends View{
         }
 
 
-        Gdx.app.log("Debug", String.valueOf(countItems) + " / " + String.valueOf(countTotalItems));
+//        Gdx.app.log("Debug", String.valueOf(countItems) + " / " + String.valueOf(countTotalItems));
 //        Отрисовка курсора
         if (cursorPoint[0] != -1 && cursorPoint[1] != -1) {
             batch.draw(dot, cursorPoint[0] + store.shiftX + tileSizeX, cursorPoint[1] + store.shiftY + tileSizeY - (float)(80 / store.tileDownScale));

@@ -9,7 +9,7 @@ import com.nicweiss.editor.Main;
 import java.util.Arrays;
 
 
-public class BaseObject {
+public class BaseObject implements Cloneable {
     public static Store store;
 
     protected float x;
@@ -103,6 +103,8 @@ public class BaseObject {
                 0, 0,
                 img.getWidth(), img.getHeight(),
                 false, false);
+
+//        checkTouch(store.mouseX, store.mouseY);
     }
 
     public void calcLight(String environment){
@@ -218,7 +220,7 @@ public class BaseObject {
     }
 
     public void onTouch() {
-//        Gdx.app.log("Touch: ", "YEP!");
+//        Gdx.app.log("Touch: ", String.valueOf(textureId));
     }
 
     public void touch() {
@@ -302,4 +304,7 @@ public class BaseObject {
         height = newHeight;
     }
 
+    public Object clone() throws CloneNotSupportedException {
+        return super.clone();
+    }
 }

@@ -13,7 +13,7 @@ public class Store {
     public static float uiHeightOriginal = 0;
 
     public static float playerPositionX, playerPositionY;
-    public static float dayCoefficient = (float)1;
+    public static float dayCoefficient = 1f;
 
     public static int lightPointsCount = 10000;
     public static float[][] lightPoints;

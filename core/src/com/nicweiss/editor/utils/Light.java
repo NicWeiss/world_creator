@@ -6,13 +6,9 @@ public class Light {
     public static Store store;
     Transform transform;
 
-    int width, height;
     private float lightShiftCoefficientX = 1, lightShiftCoefficientY = 1;
 
-    public Light(int mapWidth, int mapHeight) {
-        width = mapWidth;
-        height = mapHeight;
-
+    public Light() {
         lightShiftCoefficientX = store.tileSizeWidth;
         lightShiftCoefficientY = store.tileSizeHeight;
 
@@ -72,16 +68,16 @@ public class Light {
         yFrom = y - recalcDistance;
         yTo = y + recalcDistance;
 
-        if (xTo > width ) {
-            xTo = width;
+        if (xTo > store.mapWidth ) {
+            xTo = store.mapWidth;
         }
 
         if (xFrom < 0 ) {
             xFrom = 0;
         }
 
-        if (yTo > height ) {
-            yTo = height;
+        if (yTo > store.mapHeight ) {
+            yTo = store.mapHeight;
         }
 
         if (yFrom < 0 ) {
