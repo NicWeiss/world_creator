@@ -5,6 +5,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.objects.MapObject;
 import com.nicweiss.editor.utils.ArrayUtils;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.FileManager;
@@ -282,7 +283,7 @@ public class UserInterface {
         store.mapHeight = fileManager.mapHeight;
         store.mapWidth = fileManager.mapWidth;
 
-        store.objectedMap = new BaseObject[store.mapHeight][store.mapWidth];
+        store.objectedMap = new MapObject[store.mapHeight][store.mapWidth];
 
         lightClass.clearAll();
         for (int i = 0; i < store.mapWidth; i++){
@@ -293,7 +294,7 @@ public class UserInterface {
                 );
 
                 textureId = map[i][j];
-                BaseObject tmp = new BaseObject();
+                MapObject tmp = new MapObject();
                 tmp.setTexture(tileTextures[textureId]);
                 tmp.setTextureId(textureId);
                 tmp.setX(point[0] + store.shiftX);

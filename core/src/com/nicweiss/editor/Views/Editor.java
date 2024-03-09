@@ -9,6 +9,7 @@ import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.View;
 import com.nicweiss.editor.Main;
 import com.nicweiss.editor.components.UserInterface;
+import com.nicweiss.editor.objects.MapObject;
 import com.nicweiss.editor.utils.ArrayUtils;
 import com.nicweiss.editor.utils.CameraSettings;
 import com.nicweiss.editor.utils.Transform;
@@ -84,7 +85,7 @@ public class Editor extends View{
             }
         }
 
-        store.objectedMap = new BaseObject[store.mapHeight][store.mapWidth];
+        store.objectedMap = new MapObject[store.mapHeight][store.mapWidth];
         int rn, ts;
 
         for(int i = 0; i<store.mapHeight; i++) {
@@ -100,11 +101,11 @@ public class Editor extends View{
                     ts=rand.nextInt(3) + 5;
                 }
 
-                BaseObject tmp = new BaseObject();
+                MapObject tmp = new MapObject();
                 tmp.setTexture(textures[ts]);
                 tmp.setTextureId(ts);
-                tmp.isRenderLighAndNigth = true;
-                tmp.isEnableRenderLimits = true;
+                tmp.xPositionOnMap = i+1;
+                tmp.yPositionOnMap = j+1;
                 store.objectedMap[i][j] = tmp;
             }
         }
@@ -323,6 +324,7 @@ public class Editor extends View{
                 mapJ = j - 1;
                 countTotalItems++;
 
+//                Ограничение отрисовки на основе отрисовывемого элемента
                 point = transform.cartesianToIsometric(i * tileSizeX, j * tileSizeY);
 
                 if (point[0] + store.shiftX - (tileSizeX*2)>store.display.get("width")){
@@ -356,10 +358,6 @@ public class Editor extends View{
 //                    batch.draw(textures[tileId], point[0] + shiftX, point[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale );
 //                Рисуем карту
                     int textureId = store.objectedMap[mapI][mapJ].getTextureId();
-                    store.objectedMap[mapI][mapJ].setX(point[0] + store.shiftX);
-                    store.objectedMap[mapI][mapJ].setY(point[1] + store.shiftY);
-                    store.objectedMap[mapI][mapJ].setWidth(textures[textureId].getWidth() / store.tileDownScale);
-                    store.objectedMap[mapI][mapJ].setHeight(textures[textureId].getHeight() / store.tileDownScale);
                     store.objectedMap[mapI][mapJ].draw(batch);
                     store.objectedMap[mapI][mapJ].isPlayerInside = false;
                 }

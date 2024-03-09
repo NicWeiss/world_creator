@@ -1,5 +1,7 @@
 package com.nicweiss.editor.Generic;
 
+import com.nicweiss.editor.objects.MapObject;
+
 import java.util.HashMap;
 
 
@@ -25,7 +27,7 @@ public class Store {
 
     public static boolean isEditorLoadComplete = false;
     public static boolean isDragged = false;
-    public static BaseObject[][] objectedMap;
+    public static MapObject[][] objectedMap;
     public static int mapHeight = 5000, mapWidth = 5000;
 
     public static float tileSizeWidth, tileSizeHeight;
