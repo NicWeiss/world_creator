@@ -27,8 +27,10 @@ public class Store {
 
     public static boolean isEditorLoadComplete = false;
     public static boolean isDragged = false;
+    public static boolean isDay = true;
+
     public static MapObject[][] objectedMap;
-    public static int mapHeight = 5000, mapWidth = 5000;
+    public static int mapHeight = 1000, mapWidth = 1000;
 
     public static float tileSizeWidth, tileSizeHeight;
 

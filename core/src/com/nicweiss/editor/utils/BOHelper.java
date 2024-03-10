@@ -44,4 +44,16 @@ public class BOHelper {
         bo.draw(batch);
         bo.checkTouch(store.mouseX, store.mouseY);
     }
+
+    public  void drawButton(SpriteBatch batch, BaseObject bo,BaseObject bg, int x, int y){
+        if (bo.isTouched){
+            bg.setX(bo.getX() - 5);
+            bg.setY(bo.getY() - 5);
+            bg.setWidth((int)bo.getWidth() + 10);
+            bg.setHeight((int)bo.getHeight() + 10);
+            bg.draw(batch);
+        }
+
+        draw(batch, bo, x,y);
+    }
 }

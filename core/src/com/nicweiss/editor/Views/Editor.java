@@ -30,7 +30,7 @@ public class Editor extends View{
     int tileSizeX, tileSizeY;
     int selectedTileX, selectedTileY;
     int mouseX, mouseY;
-    float cm = 0.001f;
+    float cm = 0.01f;
     int[] lightObjectIds;
     boolean isImmediatelyReleaseKey = false;
     boolean isUiTouched = false;
@@ -228,6 +228,11 @@ public class Editor extends View{
     @Override
     public boolean keyDown(int keyCode){
 //        Gdx.app.log("Debug", String.valueOf(keyCode));
+
+        if(userInterface.checkKey(keyCode)){
+            return true;
+        }
+
         super.keyDown(keyCode);
         boolean isNeedDownScale = false;
         boolean isNeedUpScale = false;
@@ -293,14 +298,19 @@ public class Editor extends View{
 
 
 //        Смена времени суток
-        store.dayCoefficient = store.dayCoefficient - cm;
-        if (store.dayCoefficient < 0.30) {
-            store.dayCoefficient = (float)0.30;
-//            cm = cm * -1;
+        if (!store.isDay) {
+            store.dayCoefficient = store.dayCoefficient - cm;
+
+            if (store.dayCoefficient < 0.20){
+                store.dayCoefficient = (float)0.20;
+            }
         }
-        if (store.dayCoefficient > 1) {
-            store.dayCoefficient = 1;
-            cm = cm * -1;
+        if (store.isDay) {
+            store.dayCoefficient = store.dayCoefficient + cm;
+
+            if (store.dayCoefficient > 1) {
+                store.dayCoefficient = 1;
+            }
         }
 
         int countTotalItems = 0, countItems = 0;
