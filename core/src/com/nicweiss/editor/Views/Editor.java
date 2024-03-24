@@ -5,7 +5,6 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.Vector3;
-import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.View;
 import com.nicweiss.editor.Main;
 import com.nicweiss.editor.components.UserInterface;
@@ -20,7 +19,7 @@ import java.util.Random;
 
 
 public class Editor extends View{
-    Texture dot, tile;
+    Texture hintUp, hintDown;
     Texture[] textures;
 
     Light light;
@@ -36,13 +35,11 @@ public class Editor extends View{
     boolean isUiTouched = false;
 
 
-//    private int shiftedXbyMouse=0,shiftedYbyMouse=0;
-
     public Editor(){
         lightObjectIds = new int[] {11};
 
-        tile = new Texture("tile_selector.png");
-        dot = new Texture("dot.png");
+        hintUp = new Texture("tile_hint_up.png");
+        hintDown = new Texture("tile_hint_down.png");
 
         textures = new Texture[] {
                 new Texture("gp_0.png"),
@@ -69,7 +66,7 @@ public class Editor extends View{
         userInterface = new UserInterface(textures, light, lightObjectIds);
     }
 
-    void defineUI(){
+    void defineUI() throws Exception {
         userInterface.build(textures);
     }
 
@@ -80,7 +77,7 @@ public class Editor extends View{
 
         for(int x = 0; x < store.mapHeight; x++) {
             for(int y = 0; y < store.mapWidth; y++) {
-                float value = perlin.getNoise(x/10f,y/10f,2,0.6f);
+                float value = perlin.getNoise(x/15f,y/15f,2,0.6f);
                 perlinMap[x][y] = (int)(value * 255) & 255;
             }
         }
@@ -92,11 +89,11 @@ public class Editor extends View{
             for(int j = 0; j<store.mapWidth; j++) {
                 rn = perlinMap[i][j];
                 ts = 8;
-                if (rn > 20){ts=1;}
+                if (rn > 30){ts=1;}
                 if (rn > 140){ts=3;}
-                if (rn > 244){ts=2;}
+                if (rn > 253){ts=2;}
 
-                if (rn == 246){ts=4;}
+//                if (rn > 254){ts=4;}
                 if (rn == 249){
                     ts=rand.nextInt(3) + 5;
                 }
@@ -107,8 +104,14 @@ public class Editor extends View{
                 tmp.xPositionOnMap = i+1;
                 tmp.yPositionOnMap = j+1;
                 store.objectedMap[i][j] = tmp;
+
+//                if (ArrayUtils.checkIntInArray(ts, lightObjectIds)){
+//                    light.addPoint(i, j);
+//                }
             }
         }
+
+//        light.recalcOnMap();
     }
 
     @Override
@@ -121,7 +124,7 @@ public class Editor extends View{
 
 
         if(!isDragged){
-            isUiTouched = userInterface.checkTouch(false, false);
+            isUiTouched = userInterface.checkTouch(false, false, button);
         }
         if (isUiTouched){
             return false;
@@ -150,7 +153,8 @@ public class Editor extends View{
             arrPointX >= 0 &&
             arrPointX < store.mapHeight &&
             arrPointY >= 0 &&
-            arrPointY < store.mapWidth
+            arrPointY < store.mapWidth &&
+            store.selectedTailId > 0
         ) {
 //                Очистка света
             int previousTextureId = store.objectedMap[arrPointX][arrPointY].getTextureId();
@@ -179,7 +183,7 @@ public class Editor extends View{
 
     @Override
     public boolean touchUp(int screenX, int screenY, int pointer, int button) {
-        isUiTouched = userInterface.checkTouch(isDragged, true);
+        isUiTouched = userInterface.checkTouch(isDragged, true, button);
         return super.touchUp(screenX, screenY, pointer, button);
     }
 
@@ -187,7 +191,12 @@ public class Editor extends View{
     public boolean mouseMoved(int screenX, int screenY) {
         store.mouseX = mouseX = screenX;
         store.mouseY = mouseY = (int) store.uiHeightOriginal - screenY;
-        calcPositionCursor();
+
+        if (!userInterface.mapContextMenuWindow.isShow) {
+            calcPositionCursor();
+        }
+
+        userInterface.onMouseMoved();
 
         return false;
     }
@@ -220,7 +229,7 @@ public class Editor extends View{
 
     @Override
     public boolean touchDragged(int screenX, int screenY, int pointer) {
-        isUiTouched = userInterface.checkTouch(true, false);
+        isUiTouched = userInterface.checkTouch(true, false, lastTouchedButton);
 
         return super.touchDragged(screenX, screenY, pointer);
     }
@@ -313,7 +322,7 @@ public class Editor extends View{
             }
         }
 
-        int countTotalItems = 0, countItems = 0;
+//        Расчёт области карты для отрисовки
         int d = (int) (
                 (store.display.get("width") / tileSizeX) + (store.display.get("height") / tileSizeY)
                         + (Math.abs(store.shiftX) / (tileSizeX*2))
@@ -324,7 +333,6 @@ public class Editor extends View{
         int e1 = (-(store.shiftX / (tileSizeX*2)) - (store.shiftY / (tileSizeY)) - 10);
         int e2 = ((store.shiftX / (tileSizeX*2)) - (store.shiftY / (tileSizeY)))-(int)fc;
 
-//        Gdx.app.log("Debug", String.valueOf(d) + " / "+ String.valueOf(e1) + " / " + String.valueOf(e2));
 //        Отрисовка карты
         for (int i=Math.min(d, store.mapHeight); i > Math.max(e1,0); i--)
         {
@@ -332,7 +340,6 @@ public class Editor extends View{
 
             for (int j=Math.min(e2+(int)(fc*2), store.mapWidth); j > Math.max(e2,0); j--){
                 mapJ = j - 1;
-                countTotalItems++;
 
 //                Ограничение отрисовки на основе отрисовывемого элемента
                 point = transform.cartesianToIsometric(i * tileSizeX, j * tileSizeY);
@@ -351,40 +358,38 @@ public class Editor extends View{
                     continue;
                 }
 
-                countItems++;
-
 //                рисуем целевой элемент для установки
-                if (i == selectedTileX && j == selectedTileY){
+                if (i == selectedTileX && j == selectedTileY && store.selectedTailId > 0){
+
+                    batch.setColor(0.75f,0.62f,0.12f,1);
                     cursorPoint = transform.cartesianToIsometric((selectedTileX)*tileSizeX,(selectedTileY)*tileSizeY);
-                    batch.draw(
-                            textures[store.selectedTailId],
-                            cursorPoint[0] + store.shiftX,
-                            cursorPoint[1] + store.shiftY,
-                            (float)tile.getWidth() / store.tileDownScale,
-                            (float)tile.getHeight() / store.tileDownScale
-                    );
-//                    batch.draw(textures[0], cursorPoint[0] + shiftX, cursorPoint[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale);
+
+                    int sx, sy;
+                    float sw, sh;
+                    Texture t = textures[store.selectedTailId];
+
+                    sx = (int) (cursorPoint[0] + store.shiftX);
+                    sy = (int) (cursorPoint[1] + store.shiftY);
+                    sw = (float) t.getWidth() / store.tileDownScale;
+                    sh = (float) t.getHeight() / store.tileDownScale;
+
+//                    Рисуем рамку и выбранный элемент внутри
+                    batch.draw(hintUp,sx + 2, sy + 4, sw, sh);
+                    batch.draw(textures[store.selectedTailId], sx, sy, sw, sh);
+                    batch.draw(hintDown,sx + 3, sy + 3, sw, sh);
                 } else {
-//                    batch.draw(textures[tileId], point[0] + shiftX, point[1] + shiftY, tile.getWidth() / tileDownScale, tile.getHeight() / tileDownScale );
+//                    Делаем подсветку для элемента под курсором
+                    if (i == selectedTileX && j == selectedTileY){
+                        batch.setColor(0.56f,0.57f,0.75f,1);
+                        store.objectedMap[mapI][mapJ].isRenderLighAndNigth = false;
+                    }
+
 //                Рисуем карту
-                    int textureId = store.objectedMap[mapI][mapJ].getTextureId();
                     store.objectedMap[mapI][mapJ].draw(batch);
                     store.objectedMap[mapI][mapJ].isPlayerInside = false;
-                }
-
-//                Рисуем курсор
-                if (i == selectedTileX && j == selectedTileY){
-                    cursorPoint = transform.cartesianToIsometric((selectedTileX)*tileSizeX,(selectedTileY)*tileSizeY);
-                    store.objectedMap[mapI][mapJ].isPlayerInside = true;
+                    store.objectedMap[mapI][mapJ].isRenderLighAndNigth = true;
                 }
             }
-        }
-
-
-//        Gdx.app.log("Debug", String.valueOf(countItems) + " / " + String.valueOf(countTotalItems));
-//        Отрисовка курсора
-        if (cursorPoint[0] != -1 && cursorPoint[1] != -1) {
-            batch.draw(dot, cursorPoint[0] + store.shiftX + tileSizeX, cursorPoint[1] + store.shiftY + tileSizeY - (float)(80 / store.tileDownScale));
         }
     }
 

@@ -25,7 +25,8 @@ public class TileSelectorWindow {
     int menuItemSize = 40;
 
     int boundToMouseId;
-    boolean isMenuTileBoundToMouse = false, isShowMenuTile = false;
+    boolean isMenuTileBoundToMouse = false;
+    public boolean isShowMenuTile = false;
 
 
     public TileSelectorWindow(int[] lightObjectIds){

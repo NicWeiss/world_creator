@@ -1,23 +1,22 @@
 package com.nicweiss.editor.components;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.components.windows.MapContextMenuWindow;
 import com.nicweiss.editor.components.windows.TileSelectorWindow;
 import com.nicweiss.editor.objects.MapObject;
 import com.nicweiss.editor.utils.ArrayUtils;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.FileManager;
 import com.nicweiss.editor.utils.Light;
-import com.nicweiss.editor.utils.Transform;
 
 public class UserInterface {
     FileManager fileManager;
-    Transform transform;
     BOHelper bo_helper;
     TileSelectorWindow tileSelectorWindow;
+    public MapContextMenuWindow mapContextMenuWindow;
 
     Texture openTexture, saveTexture, white;
 
@@ -42,10 +41,12 @@ public class UserInterface {
         white = new Texture("white.png");
 
         tileSelectorWindow = new TileSelectorWindow(lightObjectIds);
+        mapContextMenuWindow = new MapContextMenuWindow();
     }
 
-    public void build(Texture[] textures){
+    public void build(Texture[] textures) throws Exception {
         tileSelectorWindow.buildWindow(textures);
+        mapContextMenuWindow.buildWindow();
 
         ui = new BaseObject[2];
 
@@ -68,6 +69,7 @@ public class UserInterface {
 
     public void render(SpriteBatch uiBatch) {
         tileSelectorWindow.render(uiBatch);
+        mapContextMenuWindow.render(uiBatch);
 
         for (BaseObject baseObject : ui) {
             if (baseObject.isTouched){
@@ -81,7 +83,11 @@ public class UserInterface {
         }
     }
 
-    public boolean checkTouch(boolean isDragged, boolean isTouchUp){
+    public boolean checkTouch(boolean isDragged, boolean isTouchUp, int button){
+        if (!tileSelectorWindow.isShowMenuTile && mapContextMenuWindow.checkTouch(isDragged, isTouchUp, button)){
+            return true;
+        }
+
         if (tileSelectorWindow.checkTouch(isDragged, isTouchUp)){
             return true;
         }
@@ -106,11 +112,19 @@ public class UserInterface {
     }
 
     public boolean checkKey(int keyCode){
+        if (mapContextMenuWindow.checkKey(keyCode)){
+            return true;
+        }
+
         if (tileSelectorWindow.checkKey(keyCode)){
             return true;
         }
 
         return false;
+    }
+
+    public void onMouseMoved(){
+        mapContextMenuWindow.onMouseMoved();
     }
 
     private void openMap(){

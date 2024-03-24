@@ -22,7 +22,7 @@ public class Store {
 
     public static int scaledWidth, scaledHeight;
     public static int mouseX, mouseY;
-    public static int selectedTailId = 1;
+    public static int selectedTailId = 0;
     public static boolean isSelectedLightObject = false;
 
     public static boolean isEditorLoadComplete = false;
