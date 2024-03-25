@@ -36,4 +36,7 @@ public class Store {
 
     public static int shiftX, shiftY;
     public static int tileDownScale = 3;
+
+    public static float selectedTileX = 0, selectedTileY = 0;
+    public static int selectedTailObjectHigh = 0;
 }

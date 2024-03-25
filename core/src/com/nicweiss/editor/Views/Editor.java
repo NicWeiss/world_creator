@@ -9,6 +9,7 @@ import com.nicweiss.editor.Generic.View;
 import com.nicweiss.editor.Main;
 import com.nicweiss.editor.components.UserInterface;
 import com.nicweiss.editor.objects.MapObject;
+import com.nicweiss.editor.objects.TextureObject;
 import com.nicweiss.editor.utils.ArrayUtils;
 import com.nicweiss.editor.utils.CameraSettings;
 import com.nicweiss.editor.utils.Transform;
@@ -20,7 +21,7 @@ import java.util.Random;
 
 public class Editor extends View{
     Texture hintUp, hintDown;
-    Texture[] textures;
+    TextureObject[] textures;
 
     Light light;
     UserInterface userInterface;
@@ -41,19 +42,19 @@ public class Editor extends View{
         hintUp = new Texture("tile_hint_up.png");
         hintDown = new Texture("tile_hint_down.png");
 
-        textures = new Texture[] {
-                new Texture("gp_0.png"),
-                new Texture("gp_1.png"),
-                new Texture("gp_2.png"),
-                new Texture("gp_3.png"),
-                new Texture("gp_4.png"),
-                new Texture("gp_5.png"),
-                new Texture("gp_6.png"),
-                new Texture("gp_7.png"),
-                new Texture("gp_8.png"),
-                new Texture("gp_9.png"),
-                new Texture("gp_10.png"),
-                new Texture("gp_11.png")
+        textures = new TextureObject[] {
+                new TextureObject("gp_0.png", 0),
+                new TextureObject("gp_1.png", 0),
+                new TextureObject("gp_2.png", 50),
+                new TextureObject("gp_3.png", 50),
+                new TextureObject("gp_4.png", 20),
+                new TextureObject("gp_5.png", 2),
+                new TextureObject("gp_6.png", 4),
+                new TextureObject("gp_7.png", 10),
+                new TextureObject("gp_8.png", 1),
+                new TextureObject("gp_9.png", 50),
+                new TextureObject("gp_10.png", 0),
+                new TextureObject("gp_11.png", 5)
 
         };
 
@@ -67,7 +68,7 @@ public class Editor extends View{
     }
 
     void defineUI() throws Exception {
-        userInterface.build(textures);
+        userInterface.build();
     }
 
     void defineMap() {
@@ -99,7 +100,8 @@ public class Editor extends View{
                 }
 
                 MapObject tmp = new MapObject();
-                tmp.setTexture(textures[ts]);
+                tmp.setTexture(textures[ts].texture);
+                tmp.setObjectHeight(textures[ts].high);
                 tmp.setTextureId(ts);
                 tmp.xPositionOnMap = i+1;
                 tmp.yPositionOnMap = j+1;
@@ -166,16 +168,18 @@ public class Editor extends View{
             }
 
 //                Обновление элемента карты
-            store.objectedMap[arrPointX][arrPointY].setTexture(textures[newTextureId]);
+            store.objectedMap[arrPointX][arrPointY].setTexture(textures[newTextureId].texture);
+            store.objectedMap[arrPointX][arrPointY].setObjectHeight(textures[newTextureId].high);
             store.objectedMap[arrPointX][arrPointY].setTextureId(newTextureId);
-            store.objectedMap[arrPointX][arrPointY].setWidth(textures[newTextureId].getWidth() / store.tileDownScale);
-            store.objectedMap[arrPointX][arrPointY].setHeight(textures[newTextureId].getHeight() / store.tileDownScale);
+            store.objectedMap[arrPointX][arrPointY].setWidth(textures[newTextureId].texture.getWidth() / store.tileDownScale);
+            store.objectedMap[arrPointX][arrPointY].setHeight(textures[newTextureId].texture.getHeight() / store.tileDownScale);
 
 //                Уствновка света
             if (ArrayUtils.checkIntInArray(newTextureId, lightObjectIds)) {
                 light.addPoint(arrPointX, arrPointY);
-                light.recalcOnMapFromPoint(arrPointX, arrPointY);
             }
+
+            light.recalcOnMapFromPoint(arrPointX, arrPointY);
         }
 
         return false;
@@ -212,6 +216,9 @@ public class Editor extends View{
         light.setUserPoint(v.x, v.y);
         selectedTileX = (int) ((dotPoint[0]) / tileSizeX) - 1;
         selectedTileY = (int) ((dotPoint[1]) / tileSizeY);
+
+        store.selectedTileX = (dotPoint[0] / tileSizeX) - 1;
+        store.selectedTileY = dotPoint[1] / tileSizeY;
     }
 
     @Override
@@ -366,7 +373,7 @@ public class Editor extends View{
 
                     int sx, sy;
                     float sw, sh;
-                    Texture t = textures[store.selectedTailId];
+                    Texture t = textures[store.selectedTailId].texture;
 
                     sx = (int) (cursorPoint[0] + store.shiftX);
                     sy = (int) (cursorPoint[1] + store.shiftY);
@@ -375,7 +382,7 @@ public class Editor extends View{
 
 //                    Рисуем рамку и выбранный элемент внутри
                     batch.draw(hintUp,sx + 2, sy + 4, sw, sh);
-                    batch.draw(textures[store.selectedTailId], sx, sy, sw, sh);
+                    batch.draw(textures[store.selectedTailId].texture, sx, sy, sw, sh);
                     batch.draw(hintDown,sx + 3, sy + 3, sw, sh);
                 } else {
 //                    Делаем подсветку для элемента под курсором

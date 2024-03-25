@@ -11,14 +11,26 @@ public class MapContextMenuWindow extends ContextMenuWindow {
     @Override
     public void buildWindow(){
         buttons = new ButtonCommon[5];
-        buttons[0] = createOptionButton(MapContextMenuWindow.class, "test", "Опция 1 / Option 1");
-        buttons[1] = createOptionButton(MapContextMenuWindow.class, "test", "Огшывгшапыгаынрг ыругшап ы олаыпвагшыве гашывпаг");
-        buttons[2] = createOptionButton(MapContextMenuWindow.class, "test", "1234567 пsddfs ывпаг");
-        buttons[3] = createOptionButton(MapContextMenuWindow.class, "test", "SBNDF<GJLU");
-        buttons[4] = createOptionButton(MapContextMenuWindow.class, "test", "12@##RQF#г");
+        buttons[0] = createOptionButton(MapContextMenuWindow.class, "test1", "Опция 1 / Option 1");
+        buttons[1] = createOptionButton(MapContextMenuWindow.class, "test2", "Опция 2 / Option 2");
+        buttons[2] = createOptionButton(MapContextMenuWindow.class, "test3", "Опция 3 / Option 3");
+        buttons[3] = createOptionButton(MapContextMenuWindow.class, "test4", "Опция 4 / Option 4");
+        buttons[4] = createOptionButton(MapContextMenuWindow.class, "test5", "Опция 5 / Option 5");
     }
 
-    public void test(){
-        Gdx.app.log("Debug", "Callback is wooooork!!!!");
+    public void test1(){
+        Gdx.app.log("Debug", "Callback 1");
+    }
+    public void test2(){
+        Gdx.app.log("Debug", "Callback 2");
+    }
+    public void test3(){
+        Gdx.app.log("Debug", "Callback 3");
+    }
+    public void test4(){
+        Gdx.app.log("Debug", "Callback 4");
+    }
+    public void test5(){
+        Gdx.app.log("Debug", "Callback 5");
     }
 }

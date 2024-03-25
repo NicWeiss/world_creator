@@ -1,5 +1,6 @@
 package com.nicweiss.editor.objects;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.utils.Transform;
@@ -10,6 +11,7 @@ public class MapObject  extends BaseObject {
 
     public int xPositionOnMap = 0, yPositionOnMap = 0;
     public boolean isRenderLighAndNigth = true;
+    public int objectHeight;
 
     float[] point;
 
@@ -54,7 +56,7 @@ public class MapObject  extends BaseObject {
         float dark;
         float distByX, distByY, dist;
         float start, end, lp;
-        float rp, gp, bp;
+        float rp, gp, bp, cz = 0;
         float localShiftX, localShiftY;
         int countFrom, countTo;
 
@@ -73,6 +75,7 @@ public class MapObject  extends BaseObject {
         }
 
         for (int i = countFrom; i<countTo; i++) {
+            float[] light = store.lightPoints[i];
             localShiftX = 0;
             localShiftY = 0;
 
@@ -85,11 +88,63 @@ public class MapObject  extends BaseObject {
                 localShiftY = store.shiftY;
             }
 
-            distByX = (float) (x - localShiftX + ((float) width / 2) - store.lightPoints[i][1]);
-            distByY = (float) (y - localShiftY - (height * 0.1) - store.lightPoints[i][2]) * 1.45f;
+            distByX = (float) (x - localShiftX + ((float) width / 2) - light[1]);
+            distByY = (float) (y - localShiftY - (height * 0.1) - light[2]) * 1.45f;
             if (Math.abs(distByX)>400 || Math.abs(distByY)>400){
                 continue;
             }
+
+//            проверяем высоты
+            float dx, dy, tmx, tmy, fx, fy;
+            int heightOfLight, tx, ty;
+
+            tx = xPositionOnMap;
+            ty = yPositionOnMap;
+
+            fx = i == 0 ? store.selectedTileX + 0.5f : (int) light[3] + 2;
+            fy = i == 0 ? store.selectedTileY + 0.5f : (int) light[4] + 2;
+
+            heightOfLight = i == 0 ? store.selectedTailObjectHigh : store.objectedMap[(int) light[3]][(int) light[4]].objectHeight;
+
+            dx = (tx - fx) / 10f;
+            dy = (ty - fy) / 10f;
+
+            tmx = fx+0.25f;
+            tmy = fy+0.25f;
+            boolean isStopLight = false, isCycleDone = false;
+
+
+            int l =0;
+            while (!isCycleDone){
+                l += 1;
+                tmx = tmx + dx;
+                tmy = tmy + dy;
+
+
+                if ((int) tmx == tx && (int) tmy == ty){
+                    isCycleDone = true;
+                }
+
+                if (tmx - 2 >= 0 && tmx - 2 < 1000 && tmy - 2 >= 0 && tmy - 2 < 1000 && !isCycleDone) {
+                    int objHS = store.objectedMap[(int) (tmx) - 2][(int) (tmy) - 2].objectHeight;
+                    if((int)tmx == (int)(fx+0.30f) && (int)tmy == (int)(fy+0.30f)) {
+                        objHS = heightOfLight;
+                    }
+
+                    if (objHS > heightOfLight) {
+                        isStopLight = true;
+                        isCycleDone = true;
+                    }
+                } else {
+                    isCycleDone = true;
+                }
+            }
+
+            if (isStopLight) {
+                cz = (10 - l )  * 0.08f;
+            }
+
+//            рассчёт
 
             dist = (float) Math.sqrt(distByX * distByX + distByY * distByY);
 
@@ -111,6 +166,10 @@ public class MapObject  extends BaseObject {
             if (gp > highestGp){highestGp = gp;}
             if (bp > highestBp){highestBp = bp;}
         }
+
+        highestRp -= cz;
+        highestGp -= cz;
+        highestBp -= cz;
 
         if (highestRp < 0.2) {
             highestRp = (float) 0.2;
@@ -144,5 +203,9 @@ public class MapObject  extends BaseObject {
 
         setWidth(img.getWidth() / store.tileDownScale);
         setHeight(img.getHeight() / store.tileDownScale);
+    }
+
+    public void setObjectHeight(int high) {
+        objectHeight = high;
     }
 }

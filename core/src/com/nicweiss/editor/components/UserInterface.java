@@ -7,6 +7,7 @@ import com.nicweiss.editor.Generic.Store;
 import com.nicweiss.editor.components.windows.MapContextMenuWindow;
 import com.nicweiss.editor.components.windows.TileSelectorWindow;
 import com.nicweiss.editor.objects.MapObject;
+import com.nicweiss.editor.objects.TextureObject;
 import com.nicweiss.editor.utils.ArrayUtils;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.FileManager;
@@ -23,13 +24,13 @@ public class UserInterface {
     public static Store store;
     BaseObject[] ui;
     BaseObject buttonBG;
-    Texture[] tileTextures;
+    TextureObject[] tileTextures;
     Light lightClass;
     int[] lightObjectIds;
 
     int menuItemSize = 40, menuItemSpace = 50;
 
-    public UserInterface(Texture[] tileTextures, Light lightClass, int[] lightObjectIds) {
+    public UserInterface(TextureObject[] tileTextures, Light lightClass, int[] lightObjectIds) {
         this.lightObjectIds = lightObjectIds;
         this.tileTextures = tileTextures;
         this.lightClass = lightClass;
@@ -44,8 +45,8 @@ public class UserInterface {
         mapContextMenuWindow = new MapContextMenuWindow();
     }
 
-    public void build(Texture[] textures) throws Exception {
-        tileSelectorWindow.buildWindow(textures);
+    public void build() throws Exception {
+        tileSelectorWindow.buildWindow(tileTextures);
         mapContextMenuWindow.buildWindow();
 
         ui = new BaseObject[2];
@@ -145,7 +146,8 @@ public class UserInterface {
             for (int j = 0; j < store.mapHeight; j++){
                 textureId = map[i][j];
                 MapObject tmp = new MapObject();
-                tmp.setTexture(tileTextures[textureId]);
+                tmp.setTexture(tileTextures[textureId].texture);
+                tmp.setObjectHeight(tileTextures[textureId].high);
                 tmp.setTextureId(textureId);
                 tmp.xPositionOnMap = i+1;
                 tmp.yPositionOnMap = j+1;

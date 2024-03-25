@@ -96,6 +96,7 @@ public class ContextMenuWindow implements CallBack {
             for (ButtonCommon btn: buttons) {
                 if (btn.checkTouchAndExec(store.mouseX, store.mouseY)) {
                     touchResult = true;
+                    isShow = false;
                 }
             }
         }

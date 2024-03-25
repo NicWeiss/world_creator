@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.objects.TextureObject;
 import com.nicweiss.editor.utils.ArrayUtils;
 import com.nicweiss.editor.utils.BOHelper;
 
@@ -18,6 +19,7 @@ public class TileSelectorWindow {
             tileMenuCloseButton, tileMenuCloseButtonBG, tileBoxButton, boundToMouse, circleButtonBG;
 
     int[] lightObjectIds;
+    TextureObject[] textureObjects;
 
     int widthUIPanel = 770, heightUIPanel = 90;
     int menuTileSpace = 77, menuTileWidth = 70, menuTileHeight = 80;
@@ -47,7 +49,8 @@ public class TileSelectorWindow {
         dayNight = new Texture("day_night.png");
     }
 
-    public void buildWindow(Texture[] textures){
+    public void buildWindow(TextureObject[] textureObjects){
+        this.textureObjects = textureObjects;
         int widthUIPanel = 770;
         int renderUIFrom = (int) store.uiWidthOriginal /2 - widthUIPanel / 2;
 
@@ -58,10 +61,10 @@ public class TileSelectorWindow {
                 dayNight, 0,0, 70, 70, "", 0
         );
 
-        allTiles = new BaseObject[textures.length];
-        for (int i = 0; i<textures.length;  i++) {
+        allTiles = new BaseObject[textureObjects.length];
+        for (int i = 0; i<textureObjects.length;  i++) {
             allTiles[i] = bo_helper.constructObject(
-                    textures[i], renderUIFrom + (i * menuTileSpace) + 3,5, menuTileWidth,
+                    textureObjects[i].texture, renderUIFrom + (i * menuTileSpace) + 3,5, menuTileWidth,
                     menuTileHeight, String.valueOf(i), i
             );
         }
@@ -69,7 +72,7 @@ public class TileSelectorWindow {
         picker = new BaseObject[10];
         for (int i = 0; i<10;  i++) {
             picker[i] = bo_helper.constructObject(
-                    textures[i], renderUIFrom + (i * menuTileSpace) + 3,5, menuTileWidth,
+                    textureObjects[i].texture, renderUIFrom + (i * menuTileSpace) + 3,5, menuTileWidth,
                     menuTileHeight, String.valueOf(i), i
             );
         }
@@ -204,7 +207,9 @@ public class TileSelectorWindow {
             for (int i = 0; i < picker.length; i++) {
                 if (picker[i].isTouched) {
                     if (!isDragged) {
-                        selectElement(picker[i].getTextureId());
+                        int id = picker[i].getTextureId();
+                        int high = textureObjects[id].high;
+                        selectElement(id, high);
                     }
                     return true;
                 }
@@ -229,7 +234,9 @@ public class TileSelectorWindow {
                 if (tile.isTouched) {
                     isUiTouched = true;
                     if (isTouchUp) {
-                        selectElement(tile.getTextureId());
+                        int id = tile.getTextureId();
+                        int high = textureObjects[id].high;
+                        selectElement(id, high);
                         isShowMenuTile = false;
                     }
                     if (isDragged && !isMenuTileBoundToMouse) {
@@ -283,8 +290,9 @@ public class TileSelectorWindow {
         return false;
     }
 
-    private void selectElement(int id){
+    private void selectElement(int id, int high){
         store.selectedTailId = id;
+        store.selectedTailObjectHigh = high;
         if (ArrayUtils.checkIntInArray(store.selectedTailId, lightObjectIds)) {
             store.isSelectedLightObject = true;
         } else {
