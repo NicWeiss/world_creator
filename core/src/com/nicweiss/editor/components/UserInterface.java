@@ -16,7 +16,7 @@ import com.nicweiss.editor.utils.Light;
 public class UserInterface {
     FileManager fileManager;
     BOHelper bo_helper;
-    TileSelectorWindow tileSelectorWindow;
+    public TileSelectorWindow tileSelectorWindow;
     public MapContextMenuWindow mapContextMenuWindow;
 
     Texture openTexture, saveTexture, white;
@@ -85,7 +85,7 @@ public class UserInterface {
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp, int button){
-        if (!tileSelectorWindow.isShowMenuTile && mapContextMenuWindow.checkTouch(isDragged, isTouchUp, button)){
+        if (!tileSelectorWindow.isShowWindow && mapContextMenuWindow.checkTouch(isDragged, isTouchUp, button)){
             return true;
         }
 

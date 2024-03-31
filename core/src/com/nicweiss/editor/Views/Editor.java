@@ -196,7 +196,7 @@ public class Editor extends View{
         store.mouseX = mouseX = screenX;
         store.mouseY = mouseY = (int) store.uiHeightOriginal - screenY;
 
-        if (!userInterface.mapContextMenuWindow.isShow) {
+        if (!userInterface.mapContextMenuWindow.isShow && !userInterface.tileSelectorWindow.isShowWindow) {
             calcPositionCursor();
         }
 

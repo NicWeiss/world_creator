@@ -5,6 +5,8 @@ import com.badlogic.gdx.graphics.g2d.Batch;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.utils.Transform;
 
+import java.util.Arrays;
+
 
 public class MapObject  extends BaseObject {
     Transform transform;
@@ -127,6 +129,7 @@ public class MapObject  extends BaseObject {
 
                 if (tmx - 2 >= 0 && tmx - 2 < 1000 && tmy - 2 >= 0 && tmy - 2 < 1000 && !isCycleDone) {
                     int objHS = store.objectedMap[(int) (tmx) - 2][(int) (tmy) - 2].objectHeight;
+//                    int objRS = store.objectedMap[Math.round(tmx) - 2][Math.round(tmy) - 2].objectHeight;
                     if((int)tmx == (int)(fx+0.30f) && (int)tmy == (int)(fy+0.30f)) {
                         objHS = heightOfLight;
                     }
@@ -141,35 +144,36 @@ public class MapObject  extends BaseObject {
             }
 
             if (isStopLight) {
-                cz = (10 - l )  * 0.08f;
-            }
-
+//                cz = (10 - l )  * 0.08f;
+            } else {
 //            рассчёт
+                dist = (float) Math.sqrt(distByX * distByX + distByY * distByY);
 
-            dist = (float) Math.sqrt(distByX * distByX + distByY * distByY);
+                //            затенение
+                start = 0;
+                end = 120;
+                lp = (dist - start) / (end - start) * 100;
+                dark = (float) 1.6 - (lp / 100 * 80) / 100;
 
-            //            затенение
-            start = 0;
-            end = 120;
-            lp = (dist - start) / (end - start) * 100;
-            dark = (float) 1.6 - (lp / 100 * 80) / 100;
+                if (dark < 0.2) {
+                    dark = (float) 0.2;
+                }
 
-            if (dark < 0.2) {
-                dark = (float) 0.2;
+                rp = (float) 1 - (lp / ((dark * 100) + 35) * 50) / 500;
+                gp = (float) 1 - (lp / ((dark * 100) + 15) * 50) / 500;
+                bp = (float) 1 - (lp / ((dark * 100) + 5) * 50) / 500;
+
+                if (rp > highestRp) {
+                    highestRp = rp;
+                }
+                if (gp > highestGp) {
+                    highestGp = gp;
+                }
+                if (bp > highestBp) {
+                    highestBp = bp;
+                }
             }
-
-            rp = (float) 1 - (lp / ((dark * 100) + 35) * 50) / 500;
-            gp = (float) 1 - (lp / ((dark * 100) + 15) * 50) / 500;
-            bp = (float) 1 - (lp / ((dark * 100) + 5) * 50) / 500;
-
-            if (rp > highestRp){highestRp = rp;}
-            if (gp > highestGp){highestGp = gp;}
-            if (bp > highestBp){highestBp = bp;}
         }
-
-        highestRp -= cz;
-        highestGp -= cz;
-        highestBp -= cz;
 
         if (highestRp < 0.2) {
             highestRp = (float) 0.2;

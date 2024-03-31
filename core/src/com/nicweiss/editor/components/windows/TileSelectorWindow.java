@@ -4,19 +4,19 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.objects.TextureObject;
 import com.nicweiss.editor.utils.ArrayUtils;
 import com.nicweiss.editor.utils.BOHelper;
 
-public class TileSelectorWindow {
+public class TileSelectorWindow extends Window {
     public static Store store;
     BOHelper bo_helper;
 
-    Texture border, black, dark, dayNight, close, white, tileBox, tilePickerSelector,
+    Texture dayNight, tileBox, tilePickerSelector,
             tilePickerBG, itemBgMenuTexture, circleWhite;
     BaseObject[] picker, allTiles;
-    BaseObject dayNightSwitch, tileSelectWindow, tileSelectWindowBorder, tileSelectWindowHeader,
-            tileMenuCloseButton, tileMenuCloseButtonBG, tileBoxButton, boundToMouse, circleButtonBG;
+    BaseObject dayNightSwitch, tileBoxButton, boundToMouse, circleButtonBG;
 
     int[] lightObjectIds;
     TextureObject[] textureObjects;
@@ -24,14 +24,13 @@ public class TileSelectorWindow {
     int widthUIPanel = 770, heightUIPanel = 90;
     int menuTileSpace = 77, menuTileWidth = 70, menuTileHeight = 80;
     int menuShift = 0;
-    int menuItemSize = 40;
 
     int boundToMouseId;
     boolean isMenuTileBoundToMouse = false;
-    public boolean isShowMenuTile = false;
 
 
-    public TileSelectorWindow(int[] lightObjectIds){
+    public TileSelectorWindow(int[] lightObjectIds) {
+        super();
         bo_helper = new BOHelper();
 
         this.lightObjectIds = lightObjectIds;
@@ -39,17 +38,13 @@ public class TileSelectorWindow {
         tilePickerSelector = new Texture("tile_pick_selector.png");
         tilePickerBG = new Texture("tile_pick_bg.png");
         itemBgMenuTexture = new Texture("menu_item_bg.png");
-        dark = new Texture("dark.png");
-        black = new Texture("black.png");
-        close = new Texture("close.png");
-        white = new Texture("white.png");
         circleWhite = new Texture("circle_white.png");
         tileBox = new Texture("tile_box.png");
-        border = new Texture("border.png");
         dayNight = new Texture("day_night.png");
     }
 
     public void buildWindow(TextureObject[] textureObjects){
+        super.buildWindow();
         this.textureObjects = textureObjects;
         int widthUIPanel = 770;
         int renderUIFrom = (int) store.uiWidthOriginal /2 - widthUIPanel / 2;
@@ -77,23 +72,6 @@ public class TileSelectorWindow {
             );
         }
 
-        tileSelectWindow = bo_helper.constructObject(
-                dark, 100, 150, 1, 1, "tileSelectWindow", 0
-        );
-        tileSelectWindowBorder = bo_helper.constructObject(
-                border, 100, 150, 1, 1, "tileSelectWindowBorder", 0
-        );
-        tileSelectWindowHeader = bo_helper.constructObject(
-                black, 0, 0, 1, 1, "tileSelectWindowHeader", 0
-        );
-
-        tileMenuCloseButton = bo_helper.constructObject(
-                close, 0, 0, menuItemSize, menuItemSize, "", 0
-        );
-
-        tileMenuCloseButtonBG = bo_helper.constructObject(
-                white, 100, 150, 1, 1, "tileMenuCloseButtonBG", 0
-        );
         circleButtonBG = bo_helper.constructObject(
                 circleWhite, 0, 0, 1, 1, "circleButtonBG", 0
         );
@@ -101,8 +79,14 @@ public class TileSelectorWindow {
 
 
     public void render(SpriteBatch batch) {
+        super.render(batch);
         int renderUIFrom = (int) store.uiWidthOriginal / 2 - widthUIPanel / 2;
 
+        if (isShowWindow) {
+            renderItemsList(batch, allTiles);
+        }
+
+//        Основная панель пикера
         batch.draw(tilePickerBG, renderUIFrom, 0, widthUIPanel, heightUIPanel);
         bo_helper.drawButton(batch, tileBoxButton, circleButtonBG, renderUIFrom - 75, 5);
         bo_helper.drawButton(batch, dayNightSwitch, circleButtonBG, renderUIFrom + widthUIPanel + 5, 5);
@@ -115,73 +99,23 @@ public class TileSelectorWindow {
             bo_helper.draw(batch, picker[i], xPos, 0);
         }
 
-        if (isShowMenuTile) {
-//            Кнопка закрытия окна
-            int closeButtonX = (int) (tileSelectWindow.getX() + tileSelectWindow.getWidth() - tileMenuCloseButton.getWidth());
-            int closeButtonY = (int) (tileSelectWindow.getY() + tileSelectWindow.getHeight() - tileMenuCloseButton.getHeight());
-
-            bo_helper.drawWithSize(
-                    batch, tileSelectWindow,
-                    (int) (store.uiWidthOriginal - 200), (int) (store.uiHeightOriginal - 250)
-            );
-            bo_helper.drawWithSize(
-                    batch, tileSelectWindowBorder,
-                    (int) (store.uiWidthOriginal - 200), (int) (store.uiHeightOriginal - 250)
-            );
+        //            Выбранный элемент
+        if (isShowWindow && isMenuTileBoundToMouse) {
             bo_helper.draw(
-                    batch, tileSelectWindowHeader,
-                    (int) (tileSelectWindow.getX()), (int) (tileSelectWindow.getHeight() + 110),
-                    (int) (tileSelectWindow.getWidth()), (int) (tileSelectWindow.getY() - 110)
+                    batch, boundToMouse,
+                    (int) (store.mouseX - boundToMouse.getWidth()/2),
+                    (int) (store.mouseY - boundToMouse.getHeight()/2)
             );
-
-            int xShift = 20, yShift = 100 + menuTileWidth + 60;
-            int countPerLine = (int)((store.uiWidthOriginal - 200) / (menuTileWidth + 20));
-
-            menuShift = Math.max(menuShift, 0);
-            menuShift = menuShift * countPerLine > allTiles.length - countPerLine ? (allTiles.length / countPerLine) - 1 : menuShift;
-
-            for (int i = Math.max(Math.min(menuShift * countPerLine, allTiles.length), 0); i < allTiles.length; i++) {
-                int x, y;
-                x = 100 + xShift;
-                y = (int) (store.uiHeightOriginal - yShift);
-
-                if (store.uiHeightOriginal - yShift > 170) {
-                    bo_helper.draw(batch, allTiles[i], x, y);
-                    if (allTiles[i].isTouched) {
-                        batch.draw(tilePickerSelector, x, y, menuTileWidth, 15);
-                    }
-                    allTiles[i].draw(batch);
-                }
-
-                xShift = xShift + (menuTileSpace + 10);
-                if ((xShift + menuTileHeight) > (store.uiWidthOriginal - 200)) {
-                    xShift = 20;
-                    yShift = yShift + (menuTileWidth + 20);
-                }
-            }
-
-//            Выбранный элемент
-            if (isMenuTileBoundToMouse) {
-                bo_helper.draw(
-                        batch, boundToMouse,
-                        (int) (store.mouseX - boundToMouse.getWidth()/2),
-                        (int) (store.mouseY - boundToMouse.getHeight()/2)
-                );
-            }
-
-            if (tileMenuCloseButton.isTouched){
-                bo_helper.draw(
-                        batch,tileMenuCloseButtonBG, closeButtonX, closeButtonY,
-                        (int) tileMenuCloseButton.getWidth(), (int) tileMenuCloseButton.getHeight()
-                );
-            }
-
-            bo_helper.draw(batch,tileMenuCloseButton, closeButtonX, closeButtonY);
         }
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp){
-        boolean isUiTouched = false, isDraggedElementDropped = false;
+        boolean isUiTouched, isDraggedElementDropped = false;
+        isUiTouched = super.checkTouch(isDragged, isTouchUp);
+
+        if (isWindowIsDragged){
+            return isUiTouched;
+        }
 
         //        Проверка на перетягивание элемента
         if (isTouchUp && isDragged) {
@@ -214,19 +148,11 @@ public class TileSelectorWindow {
                     return true;
                 }
             }
-
-//        Обработка открытия и закрытия меню выбора тайлов
-            if (isShowMenuTile && tileMenuCloseButton.isTouched) {
-                if (!isDragged) {
-                    isShowMenuTile = false;
-                }
-                return true;
-            }
         }
 
 //        Обработка собыкий в объектах меню тайлов
-        if (isShowMenuTile && !isDraggedElementDropped) {
-            if (tileSelectWindow.isTouched) {
+        if (isShowWindow && !isDraggedElementDropped) {
+            if (super.window.isTouched) {
                 isUiTouched = true;
             }
 
@@ -237,7 +163,7 @@ public class TileSelectorWindow {
                         int id = tile.getTextureId();
                         int high = textureObjects[id].high;
                         selectElement(id, high);
-                        isShowMenuTile = false;
+                        isShowWindow = false;
                     }
                     if (isDragged && !isMenuTileBoundToMouse) {
                         isMenuTileBoundToMouse = true;
@@ -253,7 +179,8 @@ public class TileSelectorWindow {
         }
 
         if (!isTouchUp && tileBoxButton.isTouched && !isDragged) {
-            isShowMenuTile = !isShowMenuTile;
+            resetWindow();
+            isShowWindow = !isShowWindow;
             return true;
         }
 
@@ -262,32 +189,16 @@ public class TileSelectorWindow {
             return true;
         }
 
-        if (isShowMenuTile) {
+        if (isShowWindow) {
             return true;
         }
 
         return isUiTouched;
     }
 
-
+    @Override
     public boolean checkKey(int keyCode){
-        if (isShowMenuTile){
-            if (keyCode == 19 || keyCode == 156) {
-                menuShift --;
-                return true;
-            }
-
-            if (keyCode == 20 || keyCode == 157) {
-                menuShift ++;
-                return true;
-            }
-
-            if (keyCode == 21 || keyCode == 22){
-                return true;
-            }
-        }
-
-        return false;
+        return super.checkKey(keyCode);
     }
 
     private void selectElement(int id, int high){

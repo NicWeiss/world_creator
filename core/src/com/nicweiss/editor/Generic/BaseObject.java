@@ -92,8 +92,13 @@ public class BaseObject implements Cloneable {
 
     public void checkTouch(float touch_x, float touch_y) {
         this.isTouched = false;
-        if (touch_x >= x && touch_x <= x + width) {
-            if (touch_y >= y && touch_y <= y + height) {
+        int startX = (int) Math.min(x, x + width);
+        int startY = (int) Math.min(y, y + height);
+        int endX = (int) Math.max(x, x + width);
+        int endY = (int) Math.max(y, y + height);
+
+        if (touch_x >= startX && touch_x <= endX) {
+            if (touch_y >= startY && touch_y <= endY) {
                 this.isTouched = true;
                 onTouch();
             }
