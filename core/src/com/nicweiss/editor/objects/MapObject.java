@@ -100,41 +100,65 @@ public class MapObject  extends BaseObject {
             float dx, dy, tmx, tmy, fx, fy;
             int heightOfLight, tx, ty;
 
+//            Точка для которой ведётся вычисление
             tx = xPositionOnMap;
             ty = yPositionOnMap;
 
+//            Источник света
             fx = i == 0 ? store.selectedTileX + 0.5f : (int) light[3] + 2;
             fy = i == 0 ? store.selectedTileY + 0.5f : (int) light[4] + 2;
 
             heightOfLight = i == 0 ? store.selectedTailObjectHigh : store.objectedMap[(int) light[3]][(int) light[4]].objectHeight;
 
-            dx = (tx - fx) / 10f;
-            dy = (ty - fy) / 10f;
+//            шаги для вычисления
+            dx = (tx - fx) / 1000f;
+            dy = (ty - fy) / 1000f;
 
+//            позиционный буфер
             tmx = fx+0.25f;
             tmy = fy+0.25f;
             boolean isStopLight = false, isCycleDone = false;
 
+            /*
+              Цикл вычисления препятствий на пути от источника света
+            Вычислени идёт по трём линиям и если по одной из линий нет препятствий,
+            то объект считаетя освещаемым
 
-            int l =0;
+            Сравнение идёт между высотой источника света и высотой препятствия. Если препятствие выше,
+            значит всё что за ним - не осещённое
+            */
             while (!isCycleDone){
-                l += 1;
                 tmx = tmx + dx;
                 tmy = tmy + dy;
-
 
                 if ((int) tmx == tx && (int) tmy == ty){
                     isCycleDone = true;
                 }
 
-                if (tmx - 2 >= 0 && tmx - 2 < 1000 && tmy - 2 >= 0 && tmy - 2 < 1000 && !isCycleDone) {
-                    int objHS = store.objectedMap[(int) (tmx) - 2][(int) (tmy) - 2].objectHeight;
-//                    int objRS = store.objectedMap[Math.round(tmx) - 2][Math.round(tmy) - 2].objectHeight;
-                    if((int)tmx == (int)(fx+0.30f) && (int)tmy == (int)(fy+0.30f)) {
-                        objHS = heightOfLight;
+                if (tmx - 2 >= 0 && tmx - 2 < store.mapHeight && tmy - 2 >= 0 && tmy - 2 < store.mapWidth && !isCycleDone) {
+                    int heightDown = 100;
+                    int heightUp = 100;
+
+                    int heightMiddle = store.objectedMap[(int) (tmx) - 2][(int) (tmy) - 2].objectHeight;
+
+                    int xRounded = Math.round(tmx) - 2;
+                    int yRounded = Math.round(tmy) - 2;
+                    if (xRounded >= 0 && xRounded < store.mapHeight && yRounded >= 0 && yRounded < store.mapWidth) {
+                        heightDown = store.objectedMap[xRounded][yRounded].objectHeight;
                     }
 
-                    if (objHS > heightOfLight) {
+                    int xCeil = (int) (Math.ceil(tmx) - 3);
+                    int yCeil = (int) (Math.ceil(tmy) - 3);
+                    if (xCeil>= 0 && xCeil < store.mapHeight && yCeil >= 0 && yCeil < store.mapWidth) {
+                        heightUp = store.objectedMap[xCeil][yCeil].objectHeight;
+                    }
+
+                    int mh = Math.min(Math.min(heightMiddle, heightDown), heightUp);
+                    if((int)tmx == (int)(fx+0.30f) && (int)tmy == (int)(fy+0.30f)) {
+                        mh = heightOfLight;
+                    }
+
+                    if (mh > heightOfLight) {
                         isStopLight = true;
                         isCycleDone = true;
                     }
@@ -146,7 +170,7 @@ public class MapObject  extends BaseObject {
             if (isStopLight) {
 //                cz = (10 - l )  * 0.08f;
             } else {
-//            рассчёт
+//            рассчёт освещённости клетки в зависимости от удалённости от источника света
                 dist = (float) Math.sqrt(distByX * distByX + distByY * distByY);
 
                 //            затенение

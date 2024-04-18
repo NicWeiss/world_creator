@@ -317,8 +317,8 @@ public class Editor extends View{
         if (!store.isDay) {
             store.dayCoefficient = store.dayCoefficient - cm;
 
-            if (store.dayCoefficient < 0.20){
-                store.dayCoefficient = (float)0.20;
+            if (store.dayCoefficient < -0.10){
+                store.dayCoefficient = (float)-0.10;
             }
         }
         if (store.isDay) {
