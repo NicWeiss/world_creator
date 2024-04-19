@@ -130,7 +130,7 @@ public class MapObject  extends BaseObject {
 
             /*
               Цикл вычисления препятствий на пути от источника света
-            Вычислени идёт по трём линиям и если по одной из линий нет препятствий,
+            Вычислени идёт по трём линиям и если средняя высота препятствий не превышет высоту источника света,
             то объект считаетя освещаемым
 
             Сравнение идёт между высотой источника света и высотой препятствия. Если препятствие выше,
@@ -164,7 +164,7 @@ public class MapObject  extends BaseObject {
                         heightUp = store.objectedMap[xCeil][yCeil].objectHeight;
                     }
 
-                    int mh = Math.min(Math.min(heightMiddle, heightDown), heightUp);
+                    int mh =(heightMiddle + heightDown + heightUp) / 3;
                     if((int)tmx == (int)(fx+0.30f) && (int)tmy == (int)(fy+0.30f)) {
                         mh = heightOfLight;
                     }
