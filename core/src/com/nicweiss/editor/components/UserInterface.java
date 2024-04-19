@@ -153,7 +153,6 @@ public class UserInterface {
                 tmp.yPositionOnMap = j+1;
                 store.objectedMap[i][j] = tmp;
 
-
                 if (ArrayUtils.checkIntInArray(textureId, lightObjectIds)){
                     lightClass.addPoint(i, j);
                 }

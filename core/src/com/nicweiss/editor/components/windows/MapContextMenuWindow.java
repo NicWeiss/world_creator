@@ -11,7 +11,7 @@ public class MapContextMenuWindow extends ContextMenuWindow {
     @Override
     public void buildWindow(){
         buttons = new ButtonCommon[5];
-        buttons[0] = createOptionButton(MapContextMenuWindow.class, "test1", "Опция 1 / Option 1");
+        buttons[0] = createOptionButton(MapContextMenuWindow.class, "test1", "Редактировать взаимодействие");
         buttons[1] = createOptionButton(MapContextMenuWindow.class, "test2", "Опция 2 / Option 2");
         buttons[2] = createOptionButton(MapContextMenuWindow.class, "test3", "Опция 3 / Option 3");
         buttons[3] = createOptionButton(MapContextMenuWindow.class, "test4", "Опция 4 / Option 4");
@@ -19,7 +19,7 @@ public class MapContextMenuWindow extends ContextMenuWindow {
     }
 
     public void test1(){
-        Gdx.app.log("Debug", "Callback 1");
+        Gdx.app.log("Debug", "Редактировать взаимодействие");
     }
     public void test2(){
         Gdx.app.log("Debug", "Callback 2");

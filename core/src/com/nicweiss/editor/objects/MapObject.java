@@ -5,8 +5,6 @@ import com.badlogic.gdx.graphics.g2d.Batch;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.utils.Transform;
 
-import java.util.Arrays;
-
 
 public class MapObject  extends BaseObject {
     Transform transform;
@@ -14,6 +12,7 @@ public class MapObject  extends BaseObject {
     public int xPositionOnMap = 0, yPositionOnMap = 0;
     public boolean isRenderLighAndNigth = true;
     public int objectHeight;
+    public boolean isLighted = false;
 
     float[] point;
 
@@ -55,10 +54,11 @@ public class MapObject  extends BaseObject {
 
 
     public void calcLight(String environment){
+        float additionalDarkCoeff;
         float dark;
         float distByX, distByY, dist;
         float start, end, lp;
-        float rp, gp, bp, cz = 0;
+        float rp, gp, bp;
         float localShiftX, localShiftY;
         int countFrom, countTo;
 
@@ -67,7 +67,7 @@ public class MapObject  extends BaseObject {
         float highestBp =  (float)0.2;
 
 
-        if (environment == "player"){
+        if (environment.equals("player")){
             countFrom = 0;
             countTo = 1;
         } else {
@@ -105,8 +105,8 @@ public class MapObject  extends BaseObject {
             ty = yPositionOnMap;
 
 //            Источник света
-            fx = i == 0 ? store.selectedTileX + 0.5f : (int) light[3] + 2;
-            fy = i == 0 ? store.selectedTileY + 0.5f : (int) light[4] + 2;
+            fx = i == 0 ? (int) (store.selectedTileX + 0.5f) : (int) light[3] + 2;
+            fy = i == 0 ? (int) (store.selectedTileY + 0.5f) : (int) light[4] + 2;
 
             heightOfLight = i == 0 ? store.selectedTailObjectHigh : store.objectedMap[(int) light[3]][(int) light[4]].objectHeight;
 
@@ -168,34 +168,36 @@ public class MapObject  extends BaseObject {
             }
 
             if (isStopLight) {
-//                cz = (10 - l )  * 0.08f;
+                additionalDarkCoeff = 1.55f;
             } else {
+                additionalDarkCoeff = 1;
+            }
+
 //            рассчёт освещённости клетки в зависимости от удалённости от источника света
-                dist = (float) Math.sqrt(distByX * distByX + distByY * distByY);
+            dist = (float) Math.sqrt(distByX * distByX + distByY * distByY);
 
-                //            затенение
-                start = 0;
-                end = 120;
-                lp = (dist - start) / (end - start) * 100;
-                dark = (float) 1.6 - (lp / 100 * 80) / 100;
+            //            затенение
+            start = 0;
+            end = 120;
+            lp = (dist - start) / (end - start) * 100;
+            dark = (float) 1.6 - (lp / 100 * 80) / 100;
 
-                if (dark < 0.2) {
-                    dark = (float) 0.2;
-                }
+            if (dark < 0.2) {
+                dark = (float) 0.2;
+            }
 
-                rp = (float) 1 - (lp / ((dark * 100) + 35) * 50) / 500;
-                gp = (float) 1 - (lp / ((dark * 100) + 15) * 50) / 500;
-                bp = (float) 1 - (lp / ((dark * 100) + 5) * 50) / 500;
+            rp = ((float) 1 - (lp / ((dark * 100) + 35) * 50) / 500) / additionalDarkCoeff;
+            gp = ((float) 1 - (lp / ((dark * 100) + 15) * 50) / 500) / additionalDarkCoeff;
+            bp = ((float) 1 - (lp / ((dark * 100) + 5) * 50) / 500) / additionalDarkCoeff;
 
-                if (rp > highestRp) {
-                    highestRp = rp;
-                }
-                if (gp > highestGp) {
-                    highestGp = gp;
-                }
-                if (bp > highestBp) {
-                    highestBp = bp;
-                }
+            if (rp > highestRp) {
+                highestRp = rp;
+            }
+            if (gp > highestGp) {
+                highestGp = gp;
+            }
+            if (bp > highestBp) {
+                highestBp = bp;
             }
         }
 
