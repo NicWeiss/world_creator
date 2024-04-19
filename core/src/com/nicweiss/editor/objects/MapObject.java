@@ -12,7 +12,8 @@ public class MapObject  extends BaseObject {
     public int xPositionOnMap = 0, yPositionOnMap = 0;
     public boolean isRenderLighAndNigth = true;
     public int objectHeight;
-    public boolean isLighted = false;
+    public float additionalDarkCoeff = 1;
+    private float nearestLightDist = 999999;
 
     float[] point;
 
@@ -54,13 +55,13 @@ public class MapObject  extends BaseObject {
 
 
     public void calcLight(String environment){
-        float additionalDarkCoeff;
         float dark;
         float distByX, distByY, dist;
         float start, end, lp;
         float rp, gp, bp;
         float localShiftX, localShiftY;
         int countFrom, countTo;
+        boolean isLightSetted = false;
 
         float highestRp =  (float)0.2;
         float highestGp =  (float)0.2;
@@ -96,7 +97,15 @@ public class MapObject  extends BaseObject {
                 continue;
             }
 
-//            проверяем высоты
+//            Вычисление дисстанции до источника света
+            dist = (float) Math.sqrt(distByX * distByX + distByY * distByY);
+
+//            Если источник статический, то дальние источники отбрасываются
+            if (environment.equals("global") && Math.abs(dist) > nearestLightDist){
+                continue;
+            }
+
+//            проверяем высоты для ограничения освещения перекрытых объектов
             float dx, dy, tmx, tmy, fx, fy;
             int heightOfLight, tx, ty;
 
@@ -127,6 +136,8 @@ public class MapObject  extends BaseObject {
             Сравнение идёт между высотой источника света и высотой препятствия. Если препятствие выше,
             значит всё что за ним - не осещённое
             */
+            int distanceFromObstacle = 0;
+
             while (!isCycleDone){
                 tmx = tmx + dx;
                 tmy = tmy + dy;
@@ -161,6 +172,10 @@ public class MapObject  extends BaseObject {
                     if (mh > heightOfLight) {
                         isStopLight = true;
                         isCycleDone = true;
+
+                        int distanceX = Math.max(tx, (int) (tmx)) - Math.min(tx, (int) (tmx));
+                        int distanceY = Math.max(ty, (int) (tmy)) - Math.min(ty, (int) (tmy));
+                        distanceFromObstacle = Math.max(distanceX, distanceY);
                     }
                 } else {
                     isCycleDone = true;
@@ -168,15 +183,30 @@ public class MapObject  extends BaseObject {
             }
 
             if (isStopLight) {
-                additionalDarkCoeff = 1.55f;
+                if (distanceFromObstacle < 4) {
+
+                    float coeffMultiplication;
+
+                    if (objectHeight > heightOfLight){
+                        coeffMultiplication = 10;
+                    }
+                    else {
+                        coeffMultiplication = 2.5f;
+                    }
+
+                    additionalDarkCoeff = 1f + ((distanceFromObstacle * coeffMultiplication) / 10f);
+                    additionalDarkCoeff = Math.max(additionalDarkCoeff, 1);
+                } else {
+                    additionalDarkCoeff = 100;
+                }
             } else {
                 additionalDarkCoeff = 1;
+
+                isLightSetted = true;
+                nearestLightDist = Math.abs(dist)+40;
             }
 
 //            рассчёт освещённости клетки в зависимости от удалённости от источника света
-            dist = (float) Math.sqrt(distByX * distByX + distByY * distByY);
-
-            //            затенение
             start = 0;
             end = 120;
             lp = (dist - start) / (end - start) * 100;
@@ -190,6 +220,7 @@ public class MapObject  extends BaseObject {
             gp = ((float) 1 - (lp / ((dark * 100) + 15) * 50) / 500) / additionalDarkCoeff;
             bp = ((float) 1 - (lp / ((dark * 100) + 5) * 50) / 500) / additionalDarkCoeff;
 
+
             if (rp > highestRp) {
                 highestRp = rp;
             }
@@ -198,6 +229,10 @@ public class MapObject  extends BaseObject {
             }
             if (bp > highestBp) {
                 highestBp = bp;
+            }
+
+            if (highestRp > 0.9f && highestBp> 0.9f && highestGp > 0.9f){
+                break;
             }
         }
 
@@ -219,6 +254,12 @@ public class MapObject  extends BaseObject {
             staticLightRed = highestRp;
             staticLightGreen = highestGp;
             staticLightBlue = highestBp;
+        }
+
+
+        if (!isLightSetted){
+            nearestLightDist = 99999;
+//            calcLight(environment);
         }
     }
 
