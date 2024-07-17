@@ -2,6 +2,8 @@ package com.nicweiss.editor.Generic;
 
 import com.nicweiss.editor.objects.MapObject;
 
+import org.json.simple.JSONObject;
+
 import java.util.HashMap;
 
 
@@ -39,4 +41,8 @@ public class Store {
 
     public static float selectedTileX = 0, selectedTileY = 0;
     public static int selectedTailObjectHigh = 0;
+
+    public static int[][] pressedKeys = new int[100][2];
+
+    public static JSONObject dialogs = new JSONObject();
 }

@@ -41,6 +41,7 @@ public class TileSelectorWindow extends Window {
         circleWhite = new Texture("circle_white.png");
         tileBox = new Texture("tile_box.png");
         dayNight = new Texture("day_night.png");
+        windowName = "Меню выбора и настройки тайлов";
     }
 
     public void buildWindow(TextureObject[] textureObjects){
@@ -83,7 +84,7 @@ public class TileSelectorWindow extends Window {
         int renderUIFrom = (int) store.uiWidthOriginal / 2 - widthUIPanel / 2;
 
         if (isShowWindow) {
-            renderItemsList(batch, allTiles);
+            renderItemsList(batch, allTiles, true);
         }
 
 //        Основная панель пикера

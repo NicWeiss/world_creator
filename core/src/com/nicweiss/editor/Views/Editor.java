@@ -105,6 +105,7 @@ public class Editor extends View{
                 tmp.setTextureId(ts);
                 tmp.xPositionOnMap = i+1;
                 tmp.yPositionOnMap = j+1;
+                tmp.generateAndSetUUID();
                 store.objectedMap[i][j] = tmp;
 
 //                if (ArrayUtils.checkIntInArray(ts, lightObjectIds)){
@@ -118,6 +119,7 @@ public class Editor extends View{
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+        storeKey(button);
         lastTouchedButton = button == -1 ? lastTouchedButton : button;
 
         mouseMoved(screenX,screenY);
@@ -187,6 +189,7 @@ public class Editor extends View{
 
     @Override
     public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+        releaseKey(button);
         isUiTouched = userInterface.checkTouch(isDragged, true, button);
         return super.touchUp(screenX, screenY, pointer, button);
     }
@@ -196,7 +199,7 @@ public class Editor extends View{
         store.mouseX = mouseX = screenX;
         store.mouseY = mouseY = (int) store.uiHeightOriginal - screenY;
 
-        if (!userInterface.mapContextMenuWindow.isShow && !userInterface.tileSelectorWindow.isShowWindow) {
+        if (!userInterface.getMouseMoveBlockStatus()){
             calcPositionCursor();
         }
 

@@ -1,5 +1,7 @@
 package com.nicweiss.editor.utils;
 
+import com.nicweiss.editor.objects.MapObject;
+
 import java.awt.FileDialog;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -11,7 +13,7 @@ public class FileManager {
     public int mapHeight = 0;
     public int mapWidth = 0;
 
-    public void saveMap(int[][] map, int width, int height){
+    public void saveMap(MapObject[][] map, int width, int height){
         FileDialog fd = new FileDialog((java.awt.Frame)null);
         fd.setMode(FileDialog.SAVE);
         fd.setFile("*.imf");
@@ -29,7 +31,9 @@ public class FileManager {
                 for (int i = 0; i < height; i++) {
                     for (int j = 0; j < width; j++) {
                         stream.write(";".getBytes(StandardCharsets.UTF_8));
-                        stream.write(String.valueOf(map[i][j]).getBytes(StandardCharsets.UTF_8));
+                        stream.write(String.valueOf(map[i][j].getUUID()).getBytes(StandardCharsets.UTF_8));
+                        stream.write(",".getBytes(StandardCharsets.UTF_8));
+                        stream.write(String.valueOf(map[i][j].getTextureId()).getBytes(StandardCharsets.UTF_8));
                     }
                 }
                 stream.flush();
@@ -42,11 +46,11 @@ public class FileManager {
         fd.dispose();
     }
 
-    public int[][] openMap() {
+    public String[][][] openMap() {
         mapWidth = 0;
         mapHeight = 0;
 
-        int[][] map = new int[0][0];
+        String[][][] map = new String[0][0][0];
 
         FileDialog fd = new FileDialog((java.awt.Frame)null);
         fd.setMode(FileDialog.LOAD);
@@ -63,12 +67,19 @@ public class FileManager {
                 mapWidth = Integer.parseInt(splitedData[0]);
                 mapHeight = Integer.parseInt(splitedData[1]);
 
-                map = new int[mapHeight][mapWidth];
+                map = new String[mapHeight][mapWidth][2];
                 int k = 2;
+                String uuid;
+                String surface;
 
                 for (int i = 0; i < mapHeight; i++) {
                     for (int j = 0; j < mapWidth; j++) {
-                        map[i][j] = Integer.parseInt(splitedData[k]);
+                        String[] subSplitedData = splitedData[k].split(",");
+                        uuid = subSplitedData[0];
+                        surface = subSplitedData[1];
+
+                        map[i][j][0] = uuid;
+                        map[i][j][1] = surface;
                         k++;
                     }
                 }

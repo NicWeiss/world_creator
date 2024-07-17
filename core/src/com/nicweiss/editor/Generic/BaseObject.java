@@ -1,12 +1,12 @@
 package com.nicweiss.editor.Generic;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.nicweiss.editor.Main;
+import com.nicweiss.editor.utils.Uuid;
 
-import java.util.Arrays;
+import java.security.SecureRandom;
+import java.util.Base64;
 
 
 public class BaseObject implements Cloneable {
@@ -19,12 +19,12 @@ public class BaseObject implements Cloneable {
     protected int width = 0;
     protected int height = 0;
     protected Texture img, bgImg;
-    private TextureRegion imgRegion;
     protected float rotation = 0;
     protected float opacity = 1;
     protected boolean deleted = false;
     protected String objectId;
     protected int textureId;
+    protected String uuid;
 
     protected float defaultLight = (float)0.2;
     protected float staticLightRed=defaultLight, staticLightGreen=defaultLight, staticLightBlue=defaultLight;
@@ -196,5 +196,19 @@ public class BaseObject implements Cloneable {
 
     public Object clone() throws CloneNotSupportedException {
         return super.clone();
+    }
+
+    public void setUUID(String uuid) {
+        this.uuid = uuid;
+    }
+
+    public String generateAndSetUUID(){
+        uuid = Uuid.generate();
+
+        return uuid;
+    }
+
+    public String getUUID(){
+        return uuid;
     }
 }

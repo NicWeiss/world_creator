@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.components.windows.DialogEditorWindow;
 import com.nicweiss.editor.components.windows.MapContextMenuWindow;
 import com.nicweiss.editor.components.windows.TileSelectorWindow;
 import com.nicweiss.editor.objects.MapObject;
@@ -18,6 +19,7 @@ public class UserInterface {
     BOHelper bo_helper;
     public TileSelectorWindow tileSelectorWindow;
     public MapContextMenuWindow mapContextMenuWindow;
+    public DialogEditorWindow dialogEditorWindow;
 
     Texture openTexture, saveTexture, white;
 
@@ -37,17 +39,20 @@ public class UserInterface {
         fileManager = new FileManager();
         bo_helper = new BOHelper();
 
+        dialogEditorWindow = new DialogEditorWindow();
+
         openTexture = new Texture("open.png");
         saveTexture = new Texture("save.png");
         white = new Texture("white.png");
 
         tileSelectorWindow = new TileSelectorWindow(lightObjectIds);
-        mapContextMenuWindow = new MapContextMenuWindow();
+        mapContextMenuWindow = new MapContextMenuWindow(dialogEditorWindow);
     }
 
     public void build() throws Exception {
         tileSelectorWindow.buildWindow(tileTextures);
         mapContextMenuWindow.buildWindow();
+        dialogEditorWindow.buildWindow();
 
         ui = new BaseObject[2];
 
@@ -71,6 +76,7 @@ public class UserInterface {
     public void render(SpriteBatch uiBatch) {
         tileSelectorWindow.render(uiBatch);
         mapContextMenuWindow.render(uiBatch);
+        dialogEditorWindow.render(uiBatch);
 
         for (BaseObject baseObject : ui) {
             if (baseObject.isTouched){
@@ -85,6 +91,10 @@ public class UserInterface {
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp, int button){
+        if (dialogEditorWindow.checkTouch(isDragged, isTouchUp)){
+            return true;
+        }
+
         if (!tileSelectorWindow.isShowWindow && mapContextMenuWindow.checkTouch(isDragged, isTouchUp, button)){
             return true;
         }
@@ -121,6 +131,10 @@ public class UserInterface {
             return true;
         }
 
+        if (dialogEditorWindow.checkKey(keyCode)){
+            return true;
+        }
+
         return false;
     }
 
@@ -130,8 +144,9 @@ public class UserInterface {
 
     private void openMap(){
         int textureId = 0;
-        int[][] map =  fileManager.openMap();
-        float[] point;
+        String uuid;
+        String[][][] map =  fileManager.openMap();;
+
         if (map.length == 0) {
             return;
         }
@@ -144,13 +159,15 @@ public class UserInterface {
         lightClass.clearAll();
         for (int i = 0; i < store.mapWidth; i++){
             for (int j = 0; j < store.mapHeight; j++){
-                textureId = map[i][j];
+                uuid = map[i][j][0];
+                textureId = Integer.parseInt(map[i][j][1]);
                 MapObject tmp = new MapObject();
                 tmp.setTexture(tileTextures[textureId].texture);
                 tmp.setObjectHeight(tileTextures[textureId].high);
                 tmp.setTextureId(textureId);
                 tmp.xPositionOnMap = i+1;
                 tmp.yPositionOnMap = j+1;
+                tmp.setUUID(uuid);
                 store.objectedMap[i][j] = tmp;
 
                 if (ArrayUtils.checkIntInArray(textureId, lightObjectIds)){
@@ -162,14 +179,14 @@ public class UserInterface {
     }
 
     private void saveMap(){
-        int[][] map = new int[store.mapWidth][store.mapHeight];
+        fileManager.saveMap(store.objectedMap, store.mapWidth, store.mapHeight);
+    }
 
-        for (int i = 0; i < store.mapWidth; i++) {
-            for (int j = 0; j < store.mapHeight; j++) {
-                map[i][j] = store.objectedMap[i][j].getTextureId();
-            }
+    public boolean getMouseMoveBlockStatus() {
+        if (mapContextMenuWindow.isShow || tileSelectorWindow.isShowWindow || dialogEditorWindow.isShowWindow) {
+            return true;
         }
 
-        fileManager.saveMap(map, store.mapWidth, store.mapHeight);
+        return false;
     }
 }
