@@ -21,6 +21,7 @@ public class Window {
 
     int controlButtonSize = 40;
     public boolean isShowWindow = false;
+    protected boolean isWindowActive = true;
     protected boolean isWindowIsDragged = false;
     protected boolean isHeaderIsDragged, isSliderIsDragged;
 
@@ -163,7 +164,7 @@ public class Window {
                 if (!isTiled) {
                     objects[i].setWidth(getMenuWidth() - 60);
                 }
-                bo_helper.draw(batch, objects[i], _x, _y);
+                bo_helper.draw(batch, objects[i], _x, _y, isWindowActive);
 
                 if (objects[i].isTouched) {
                     batch.draw(tilePickerSelector, _x, _y, itemWidth, 15);
@@ -182,12 +183,14 @@ public class Window {
     public boolean checkTouch(boolean isDragged, boolean isTouchUp){
         float diffx, diffy;
 
-        if (!isTouchUp) {
+        if (!isWindowActive){
+            return false;
+        }
+
+        if (isTouchUp && !isDragged) {
 //        Обработка открытия и закрытия
             if (isShowWindow && closeButton.isTouched) {
-                if (!isDragged) {
-                    isShowWindow = false;
-                }
+                isShowWindow = false;
                 return true;
             }
         }
@@ -293,10 +296,12 @@ public class Window {
     }
 
     public void show(){
+        isWindowActive = true;
         isShowWindow = true;
     }
 
     public void hide(){
+        isWindowActive = false;
         isShowWindow = false;
     }
 }

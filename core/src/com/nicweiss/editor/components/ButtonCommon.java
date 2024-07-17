@@ -44,8 +44,8 @@ public class ButtonCommon extends ObjectCallBack {
         execCallBack();
     }
 
-    public boolean checkTouchAndExec(float x, float y) {
-        checkTouch(x, y);
+    public boolean checkTouchAndExec() {
+        checkTouch(store.mouseX, store.mouseY);
         if (isTouched) {
             try {
                 execTouch();
@@ -57,21 +57,22 @@ public class ButtonCommon extends ObjectCallBack {
         return isTouched;
     }
 
-    public void checkPressAndExec(float x, float y) {
-        checkTouch(x, y);
-        if (isTouched) {
-            try {
-                for (int[] el : store.pressedKeys) {
-                    if (el[0] == 0 && lastUniqueId != el[1]) {
-                        lastUniqueId = el[1];
-                        execTouch();
-                    }
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
+//    Отключено так как компонент не может корректно понять когда нужно а когда не нужно срабатывать
+//    public void checkPressAndExec(float x, float y) {
+//        checkTouch(x, y);
+//        if (isTouched) {
+//            try {
+//                for (int[] el : store.pressedKeys) {
+//                    if (el[0] == 0 && lastUniqueId != el[1] && store.isTouchUp) {
+//                        lastUniqueId = el[1];
+//                        execTouch();
+//                    }
+//                }
+//            } catch (Exception e) {
+//                e.printStackTrace();
+//            }
+//        }
+//    }
 
     @Override
     public void draw(Batch batch) {
@@ -81,10 +82,8 @@ public class ButtonCommon extends ObjectCallBack {
         if (icon != null){
             iconSize = height;
             batch.draw(icon, x  + textPadding, y + textPadding - 10, iconSize, iconSize);
-//            width = getTextWidth() + (int)(iconSize * 1.5f);
         }
         font.draw( batch, text, x  + textPadding + (iconSize * 1.5f), y + textPadding);
-        checkPressAndExec(store.mouseX, store.mouseY);
     }
 
     public int getTextHeight(){

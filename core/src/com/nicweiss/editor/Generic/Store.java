@@ -29,6 +29,8 @@ public class Store {
 
     public static boolean isEditorLoadComplete = false;
     public static boolean isDragged = false;
+    public static boolean isTouchUp = false;
+
     public static boolean isDay = true;
 
     public static MapObject[][] objectedMap;

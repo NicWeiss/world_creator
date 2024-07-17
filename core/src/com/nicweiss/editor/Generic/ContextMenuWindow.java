@@ -83,6 +83,7 @@ public class ContextMenuWindow implements CallBack {
             calcMenuSize();
         }
 
+//        Показать / Скрыть
         if (!isTouchUp && !isDragged && button == 1) {
             isShow = !isShow;
 
@@ -92,16 +93,18 @@ public class ContextMenuWindow implements CallBack {
             return true;
         }
 
-        if (!isTouchUp && !isDragged && button == 0) {
+//        Чекаем нажатие на элементы
+        if (isTouchUp && !isDragged && button == 0) {
             for (ButtonCommon btn: buttons) {
-                if (btn.checkTouchAndExec(store.mouseX, store.mouseY)) {
+                if (btn.checkTouchAndExec()) {
                     touchResult = true;
                     isShow = false;
                 }
             }
         }
 
-        if (!isTouchUp && button == 0 && isShow && !touchResult) {
+//        Если ничего не выбрано, то скрываем окно
+        if (isTouchUp && button == 0 && isShow && !touchResult) {
             isShow = false;
             touchResult = true;
         }

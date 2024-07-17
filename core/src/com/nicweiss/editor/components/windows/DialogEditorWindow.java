@@ -20,29 +20,12 @@ public class DialogEditorWindow extends Window implements CallBack  {
     BOHelper bo_helper;
     JSONObject dialog = new JSONObject();
     String[] dialogStack;
+    TextInputWindow tiw = new TextInputWindow();
 
     int dialogCursor = 0;
-
     boolean isDialogLoaded = false;
 
     ButtonCommon[] items;
-
-    public void getBackCallback(){
-        dialogCursor--;
-        setUUID(dialogStack[dialogCursor]);
-    }
-
-    public void selectDialogCallback(String uuid){
-        dialogCursor++;
-        dialogStack[dialogCursor] = uuid;
-        setUUID(uuid);
-    }
-
-    public void textEditCallback(String uuid, String key){
-        JSONObject obj = (JSONObject) store.dialogs.get(uuid);
-        obj.put(key, "New value");
-        setUUID(uuid);
-    }
 
     public DialogEditorWindow() {
         super();
@@ -50,8 +33,31 @@ public class DialogEditorWindow extends Window implements CallBack  {
         windowName = "Редактирование взаимодействия";
     }
 
+    public void getBackCallback(){
+        if (tiw.isShowWindow) { return; }
+        dialogCursor--;
+        setUUID(dialogStack[dialogCursor]);
+    }
+
+    public void selectDialogCallback(String uuid){
+        if (tiw.isShowWindow) { return; }
+        dialogCursor++;
+        dialogStack[dialogCursor] = uuid;
+        setUUID(uuid);
+    }
+
+    public void textEditCallback(String uuid, String key){
+        if (tiw.isShowWindow) { return; }
+        tiw.show();
+
+//        JSONObject obj = (JSONObject) store.dialogs.get(uuid);
+//        obj.put(key, "New value");
+//        setUUID(uuid);
+    }
+
     public void buildWindow() {
         super.buildWindow();
+        tiw.buildWindow();
         menuObjectSpace = 7;
         itemWidth = 20;
         itemHeight = 20;
@@ -125,11 +131,32 @@ public class DialogEditorWindow extends Window implements CallBack  {
         if (isShowWindow) {
             renderItemsList(batch, items, false);
         }
+
+        if (tiw.isShowWindow) {
+            tiw.render(batch);
+            isWindowActive = false;
+        } else {
+            isWindowActive = true;
+        }
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp){
+        if (!isShowWindow){
+            return false;
+        }
+
+        if (tiw.checkTouch(isDragged, isTouchUp) || tiw.isShowWindow){
+            return true;
+        }
+
+        if (isTouchUp && items != null) {
+            for (ButtonCommon item : items) {
+                item.checkTouchAndExec();
+            }
+        }
+
         super.checkTouch(isDragged, isTouchUp);
-        
+
         if (isShowWindow) {
             return true;
         }
@@ -381,10 +408,5 @@ public class DialogEditorWindow extends Window implements CallBack  {
         }
 
         items = Arrays.copyOfRange(items, 0, i);
-    }
-
-    @Override
-    public void show(){
-        super.show();
     }
 }

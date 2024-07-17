@@ -29,6 +29,15 @@ public class BOHelper {
         bo.checkTouch(store.mouseX, store.mouseY);
     }
 
+    public void draw(SpriteBatch batch, BaseObject bo, int x, int y, boolean check){
+        bo.setX(x);
+        bo.setY(y);
+        bo.draw(batch);
+        if (check) {
+            bo.checkTouch(store.mouseX, store.mouseY);
+        }
+    }
+
     public void draw(SpriteBatch batch, BaseObject bo, int x, int y, int w, int h){
         bo.setX(x);
         bo.setY(y);

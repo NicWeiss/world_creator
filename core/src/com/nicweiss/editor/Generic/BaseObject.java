@@ -69,8 +69,6 @@ public class BaseObject implements Cloneable {
                 0, 0,
                 img.getWidth(), img.getHeight(),
                 false, false);
-
-//        checkTouch(store.mouseX, store.mouseY);
     }
 
     public void setTexture(Texture texture) {
