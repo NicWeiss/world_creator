@@ -34,20 +34,20 @@ public class DialogEditorWindow extends Window implements CallBack  {
     }
 
     public void getBackCallback(){
-        if (tiw.isShowWindow) { return; }
+        if (tiw.isShowWindow || !isWindowActive) { return; }
         dialogCursor--;
         setUUID(dialogStack[dialogCursor]);
     }
 
     public void selectDialogCallback(String uuid){
-        if (tiw.isShowWindow) { return; }
+        if (tiw.isShowWindow || !isWindowActive) { return; }
         dialogCursor++;
         dialogStack[dialogCursor] = uuid;
         setUUID(uuid);
     }
 
     public void textEditCallback(String uuid, String key){
-        if (tiw.isShowWindow) { return; }
+        if (tiw.isShowWindow || !isWindowActive) { return; }
         tiw.show();
 
 //        JSONObject obj = (JSONObject) store.dialogs.get(uuid);
@@ -166,7 +166,19 @@ public class DialogEditorWindow extends Window implements CallBack  {
 
     @Override
     public boolean checkKey(int keyCode){
+        if (tiw.checkKey(keyCode)){
+            return true;
+        }
+
         return super.checkKey(keyCode);
+    }
+
+    public boolean keyTyped(char character){
+        if (tiw.keyTyped(character)) {
+            return true;
+        }
+
+        return false;
     }
 
     public void setUUID(String uuid){

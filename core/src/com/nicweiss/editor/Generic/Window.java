@@ -5,12 +5,15 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.components.ButtonCommon;
+import com.nicweiss.editor.objects.TextObject;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.Font;
+import com.nicweiss.editor.utils.Text;
 
 public class Window {
     public static Store store;
     BOHelper bo_helper;
+    TextObject[] textObjects;
 
     Texture black, windowBGColor, close, tilePickerSelector, gray, sliderColor, sliderColorBG;
     protected BaseObject windowHeader, window;
@@ -18,6 +21,7 @@ public class Window {
 
     float headerTouchX, headerTouchY, sliderTouchY;
     int x, y, windowOperationalHeight, sliderGlobalY, sliderY = 0;
+    int width, height = 0;
 
     int controlButtonSize = 40;
     public boolean isShowWindow = false;
@@ -30,7 +34,11 @@ public class Window {
     protected String windowName = "";
     protected float textHeight;
 
+    protected int windowWidth = 0;
+    protected int windowHeight = 0;
+
     protected int menuObjectSpace = 77, itemWidth = 70, itemHeight = 80;
+    protected String textForRender = "";
 
     public Window() {
         bo_helper = new BOHelper();
@@ -47,8 +55,10 @@ public class Window {
     }
 
     public void buildWindow(){
-        x = 100;
-        y = sliderY = 150;
+        calcWindowSize();
+
+        x = (int) ((store.uiWidthOriginal / 2) - (width / 2));
+        y = sliderY = (int) ((store.uiHeightOriginal / 2) - (height / 2)) + 50;
 
         window = bo_helper.constructObject(
                 windowBGColor, x, y, 1, 1, "tileSelectWindow", 0
@@ -73,18 +83,30 @@ public class Window {
         );
     }
 
+    private void calcWindowSize(){
+        width = (int) (store.uiWidthOriginal - 200);
+        height = (int) (store.uiHeightOriginal - 250);
+
+        if (windowWidth > 0) {
+            width = windowWidth;
+        }
+
+        if (windowHeight > 0) {
+            height = windowHeight;
+        }
+
+        width = Math.max(width, 350);
+        height = Math.max(height, 100);
+    }
+
 
     public void render(SpriteBatch batch) {
         if (isShowWindow) {
+            int padding = 5;
             int closeButtonX = (int) (window.getX() + window.getWidth() - closeButton.getWidth());
             int closeButtonY = (int) (window.getY() + window.getHeight() - closeButton.getHeight());
 
-            int width = (int) (store.uiWidthOriginal - 200);
-            int height = (int) (store.uiHeightOriginal - 250);
-            int padding = 5;
-
-            width = Math.max(width, 350);
-            height = Math.max(height, 200);
+            calcWindowSize();
 
             bo_helper.draw(batch, window, x, y,  width, height);
 
@@ -138,8 +160,72 @@ public class Window {
         renderItems(batch, objects, isTiled);
     }
 
+    protected void addTextObject(String text, int id) {
+        TextObject to = new TextObject(font, text);
+        textObjects[id] = to;
+    }
+
+    public void renderText(SpriteBatch batch, String text) {
+        if (text != textForRender) {
+            String[] textLines = text.split("\n");
+            int i = 0;
+            int symbolWidth = (int) font.getWidth("W");
+            int maxWindowSymbolCounts = ((width - 50) / symbolWidth);
+            textObjects = new TextObject[1000];
+
+            for(String textLine : textLines ) {
+                String[] subStrings = textLine.split(" ");
+                String part = "";
+
+                for(String subString : subStrings ) {
+                    if ((int)font.getWidth(subString) >= width - 50) {
+                        if (part != "") {
+                            addTextObject(part, i);
+                            i = i+1;
+                        }
+
+                        part = "";
+                        String[] spl = Text.split(subString , maxWindowSymbolCounts);
+
+                        for (String s: spl) {
+                            addTextObject(s, i);
+                            i = i+1;
+                        }
+                        continue;
+                    }
+
+                    if ((int) font.getWidth(part + " " + subString) < width - 50) {
+                        part = part + " " + subString;
+                    } else {
+                        addTextObject(part, i);
+                        part = subString;
+                        i = i + 1;
+                    }
+                }
+                if (part != "") {
+                    addTextObject(part, i);
+                    i = i+1;
+                }
+            }
+        }
+
+        if (textObjects != null) {
+            renderItems(batch, textObjects, false);
+            itemWidth = (int) font.getWidth(".");
+        }
+    }
+
     private void renderItems(SpriteBatch batch, BaseObject[] objects, boolean isTiled) {
-        int objectsCount = objects.length;
+        int objectsCount = 0;
+
+        if (objects != null){
+            for (BaseObject bo : objects){
+                if (bo != null) {
+                    objectsCount ++;
+                }
+            }
+        }
+//        int objectsCount = objects.length;
         if (objectsCount == 0) {
             return;
         }
@@ -184,7 +270,7 @@ public class Window {
         float diffx, diffy;
 
         if (!isWindowActive){
-            return false;
+            return true;
         }
 
         if (isTouchUp && !isDragged) {
@@ -270,6 +356,10 @@ public class Window {
     }
 
     public boolean checkKey(int keyCode){
+        if (!isWindowActive){
+            return true;
+        }
+
         if (isShowWindow){
             if (keyCode == 19 || keyCode == 156) {
                 menuShift --;
@@ -293,6 +383,12 @@ public class Window {
         }
 
         return false;
+    }
+
+    public void scrollDown(){
+        int maxItems = (int)(height/2 / (itemWidth + 20));
+        menuShift = Math.max(totalLines - maxItems, 0);
+        sliderY = (int) (y + (slider.getHeight() * (menuShift)));
     }
 
     public void show(){

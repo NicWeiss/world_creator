@@ -247,12 +247,12 @@ public class Editor extends View{
     @Override
     public boolean keyDown(int keyCode){
 //        Gdx.app.log("Debug", String.valueOf(keyCode));
+        super.keyDown(keyCode);
 
         if(userInterface.checkKey(keyCode)){
-            return true;
+            return false;
         }
 
-        super.keyDown(keyCode);
         boolean isNeedDownScale = false;
         boolean isNeedUpScale = false;
 
@@ -293,6 +293,15 @@ public class Editor extends View{
         if (isImmediatelyReleaseKey){
             isImmediatelyReleaseKey = false;
             releaseKey(keyCode);
+        }
+
+        return false;
+    }
+
+    @Override
+    public boolean keyTyped(char character){
+        if (userInterface.keyTyped(character)){
+            return true;
         }
 
         return false;

@@ -138,6 +138,14 @@ public class UserInterface {
         return false;
     }
 
+    public boolean keyTyped(char character){
+        if (dialogEditorWindow.keyTyped(character)) {
+            return true;
+        }
+
+        return false;
+    }
+
     public void onMouseMoved(){
         mapContextMenuWindow.onMouseMoved();
     }
