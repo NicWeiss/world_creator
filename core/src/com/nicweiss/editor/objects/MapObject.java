@@ -14,6 +14,7 @@ public class MapObject  extends BaseObject {
     public int objectHeight;
     public float additionalDarkCoeff = 1;
     private float nearestLightDist = 999999;
+    public boolean isDialogBind = false;
 
     float[] point;
 
@@ -48,6 +49,15 @@ public class MapObject  extends BaseObject {
                         opacity
                 );
             }
+        }
+
+        if (isDialogBind){
+            batch.setColor(
+                0.56f - store.dayCoefficient / 4,
+                0.77f - store.dayCoefficient / 4,
+                0.55f - store.dayCoefficient / 4,
+                opacity
+            );
         }
 
         super.draw(batch);

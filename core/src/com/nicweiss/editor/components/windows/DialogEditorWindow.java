@@ -71,18 +71,18 @@ public class DialogEditorWindow extends Window implements CallBack  {
 
 // конструктор для отладки
         ob3.put("__uuid__", "jjgyqwYgwg4");
-        ob3.put("__branchRestrictions__", new String[] {"__activeQuest__:1"});
+        ob3.put("__branchRestrictions__", "__activeQuest__:1");
         ob3.put("__isBranchHide__", Boolean.FALSE);
         ob3.put("__request__", "Я не знаю узнаю это место, где мы?");
         ob3.put("__response__", "Это сердце тёмного леса, без надёжного топора тут лучше не ходить. На твоё счастье у меня есть один запасной, вот держи!");
         ob3.put("__goTo__:"+uuid, "У меня ещё есть вопросоы");
         ob3.put("__close__", "Спасибо, до встречи!");
         ob3.put("__farewell__", "Будь осторожнее!");
-        ob3.put("__onClose__", new String[] {"__giveWeapon__:1", "__hideBranch__:Sfwi3wgkfd"});
+        ob3.put("__onClose__",  "__giveWeapon__:1;__hideBranch__:Sfwi3wgkfd");
         store.dialogs.put("jjgyqwYgwg4", ob3);
 
         ob4.put("__uuid__", "Sfwi3wgkfd");
-        ob4.put("__branchRestrictions__", new String[] {"__activeQuest__:1"});
+        ob4.put("__branchRestrictions__", "__activeQuest__:1");
         ob4.put("__isBranchHide__", Boolean.FALSE);
         ob4.put("__request__", "Кто ты?");
         ob4.put("__response__", "Это не имеет особого значения, важно то, почему ты в такой глуши и без какого либо снаряжения?");
@@ -91,14 +91,14 @@ public class DialogEditorWindow extends Window implements CallBack  {
 
 
         ob5.put("__uuid__", "TYYwfwgkbe");
-        ob5.put("__branchRestrictions__", new String[] {"__activeQuest__:1"});
+        ob5.put("__branchRestrictions__", "__activeQuest__:1");
         ob5.put("__isBranchHide__", Boolean.FALSE);
         ob5.put("__request__", "Как отсюда выбраться?");
         ob5.put("__response__", "Иди на северо-восток и выйдешь к \"Крайней деревне\"");
         ob5.put("__goTo__:"+uuid, "У меня ещё есть вопросоы");
         ob5.put("__close__", "Спасибо, до встречи!");
         ob5.put("__farewell__", "Будь осторожнее!");
-        ob5.put("__onClose__", new String[] {"__setMarker__:1312312312321", "__hideBranch__:TYYwfwgkbe"});
+        ob5.put("__onClose__", "__setMarker__:1312312312321;__hideBranch__:TYYwfwgkbe");
         store.dialogs.put("TYYwfwgkbe", ob5);
 
 
@@ -197,14 +197,15 @@ public class DialogEditorWindow extends Window implements CallBack  {
             }
         }
 
-        if (!isDialogLoaded) {
-            loadDialogs(uuid);
-        }
+//        if (!isDialogLoaded) {
+//            loadDialogs(uuid);
+//        }
 
         dialog = (JSONObject) store.dialogs.get(uuid);
 
         if (dialog == null){
             dialog = getEmptyDialog(uuid);
+            store.dialogs.put(uuid, dialog);
         }
 
         prepareDialogView();

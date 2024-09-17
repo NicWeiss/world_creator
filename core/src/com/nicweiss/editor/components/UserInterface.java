@@ -152,7 +152,7 @@ public class UserInterface {
 
     private void openMap(){
         int textureId = 0;
-        String uuid;
+        String uuid, type;
         String[][][] map =  fileManager.openMap();;
 
         if (map.length == 0) {
@@ -169,6 +169,7 @@ public class UserInterface {
             for (int j = 0; j < store.mapHeight; j++){
                 uuid = map[i][j][0];
                 textureId = Integer.parseInt(map[i][j][1]);
+                type = map[i][j][2];
                 MapObject tmp = new MapObject();
                 tmp.setTexture(tileTextures[textureId].texture);
                 tmp.setObjectHeight(tileTextures[textureId].high);
@@ -176,6 +177,11 @@ public class UserInterface {
                 tmp.xPositionOnMap = i+1;
                 tmp.yPositionOnMap = j+1;
                 tmp.setUUID(uuid);
+
+                if (type == "dialog") {
+                    tmp.isDialogBind = true;
+                }
+
                 store.objectedMap[i][j] = tmp;
 
                 if (ArrayUtils.checkIntInArray(textureId, lightObjectIds)){
