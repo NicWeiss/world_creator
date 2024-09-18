@@ -1,8 +1,10 @@
 package com.nicweiss.editor.components.windows;
 
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.Store;
 import com.nicweiss.editor.Generic.Window;
+import com.nicweiss.editor.components.ButtonCommon;
 
 public class TextInputWindow extends Window {
     public static Store store;
@@ -13,15 +15,35 @@ public class TextInputWindow extends Window {
     protected String inputSymbol = "_";
     protected int cursor = 0;
 
+    Texture whiteColor;
+
     public TextInputWindow() {
         super();
         windowName = "Редактирование";
         windowWidth = 600;
         windowHeight = 200;
+
+        whiteColor = new Texture("white.png");
     }
 
     public void buildWindow(){
+        controlButtons = new ButtonCommon[2];
+        controlButtons[0] = createControlButton(TextInputWindow.class, "cancel", "Cancel");
+        controlButtons[1] = createControlButton(TextInputWindow.class, "apply", "Save");
+        windowColor = whiteColor;
+
         super.buildWindow();
+    }
+
+    public void cancel() {
+
+        System.out.println("You chose cancel");
+    }
+
+
+    public void apply() {
+
+        System.out.println("You chose apply");
     }
 
     public void render(SpriteBatch batch) {

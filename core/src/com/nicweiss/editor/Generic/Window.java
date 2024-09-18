@@ -4,19 +4,23 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.nicweiss.editor.Interfaces.ObjectCallBack.CallBack;
 import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.objects.TextObject;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.Font;
 import com.nicweiss.editor.utils.Text;
 
-public class Window {
+import java.lang.reflect.Method;
+
+public class Window implements CallBack {
     public static Store store;
     BOHelper bo_helper;
     TextObject[] textObjects;
 
-    Texture black, windowBGColor, close, tilePickerSelector, gray, sliderColor, sliderColorBG;
-    protected BaseObject windowHeader, window;
+    protected Texture black, windowBGColor, windowColor, close, tilePickerSelector, gray, sliderColor, sliderColorBG;
+    Texture buttonBG, buttonBGHover, buttonSeparator, border;
+    protected BaseObject windowHeader, window, windowBG;
     private BaseObject closeButton, closeButtonBG, slider, sliderBG;
 
     float headerTouchX, headerTouchY, sliderTouchY;
@@ -36,19 +40,23 @@ public class Window {
 
     protected int windowWidth = 0;
     protected int windowHeight = 0;
+    protected int additionalHeight = 0;
 
     protected int menuObjectSpace = 77, itemWidth = 70, itemHeight = 80;
     protected String textForRender = "";
 
+    protected ButtonCommon[] controlButtons;
+
     public Window() {
         bo_helper = new BOHelper();
 
-        windowBGColor = new Texture("Buttons/btn_background.png");
+        windowColor = windowBGColor = new Texture("Buttons/btn_background.png");
+        buttonBG = new Texture("Buttons/btn_window_background.png");
         gray = new Texture("Buttons/border.png");
         black = new Texture("black.png");
         close = new Texture("close.png");
         sliderColorBG = new Texture("Buttons/separator.png");
-        sliderColor = new Texture("Buttons/btn_background_hover.png");
+        buttonBGHover = sliderColor = new Texture("Buttons/btn_background_hover.png");
         tilePickerSelector = new Texture("tile_pick_selector.png");
 
         font = new Font(7, Color.BLACK);
@@ -61,8 +69,13 @@ public class Window {
         y = sliderY = (int) ((store.uiHeightOriginal / 2) - (height / 2)) + 50;
 
         window = bo_helper.constructObject(
-                windowBGColor, x, y, 1, 1, "tileSelectWindow", 0
+                windowColor, x, y, 1, 1, "tileSelectWindow", 0
         );
+
+        windowBG = bo_helper.constructObject(
+            windowBGColor, x, y, 1, 1, "tileSelectWindow", 0
+        );
+
         windowHeader = bo_helper.constructObject(
                 gray, x, y, 1, 1, "tileSelectWindowHeader", 0
         );
@@ -83,7 +96,30 @@ public class Window {
         );
     }
 
+    protected ButtonCommon createControlButton(Class classObject, String callBackMethodName, String buttonText) {
+        ButtonCommon button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, buttonText);
+        Method method = null;
+
+        try {
+            method = classObject.getDeclaredMethod(callBackMethodName);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        button.registerCallBack(this, method);
+
+        return button;
+    }
+
     private void calcWindowSize(){
+        additionalHeight = 0;
+
+        if (controlButtons != null && controlButtons.length > 0){
+            additionalHeight = controlButtons[0].height + 20;
+        }
+
         width = (int) (store.uiWidthOriginal - 200);
         height = (int) (store.uiHeightOriginal - 250);
 
@@ -92,22 +128,20 @@ public class Window {
         }
 
         if (windowHeight > 0) {
-            height = windowHeight;
+            height = windowHeight ;
         }
 
         width = Math.max(width, 350);
-        height = Math.max(height, 100);
+        height = Math.max((height), 100);
     }
 
 
     public void render(SpriteBatch batch) {
         if (isShowWindow) {
-            int padding = 5;
-            int closeButtonX = (int) (window.getX() + window.getWidth() - closeButton.getWidth());
-            int closeButtonY = (int) (window.getY() + window.getHeight() - closeButton.getHeight());
-
             calcWindowSize();
+            int padding = 5;
 
+            bo_helper.draw(batch, windowBG, x, y - additionalHeight,  width, height);
             bo_helper.draw(batch, window, x, y,  width, height);
 
 //            SLIDER
@@ -120,10 +154,10 @@ public class Window {
             bo_helper.draw(batch, slider, x + width - padding, sliderGlobalY, padding-20, sliderHeight * -1);
 
 //            BORDERS
-            batch.draw(gray, x, y, width, padding);
-            batch.draw(gray, x, y, padding, height);
+            batch.draw(gray, x, y - additionalHeight, width, padding);
+            batch.draw(gray, x, y - additionalHeight, padding, height + additionalHeight);
             batch.draw(gray, x + width, y + height - padding, width * -1, padding);
-            batch.draw(gray, x + width - padding, y + height, padding, height * -1);
+            batch.draw(gray, x + width - padding, y + height, padding, (height + additionalHeight) * -1);
 
 //            HEADER
             bo_helper.draw(
@@ -141,11 +175,28 @@ public class Window {
             );
 
 //            CONTROL BUTTONS
+
+            int closeButtonX = (int) (window.getX() + window.getWidth() - closeButton.getWidth());
+            int closeButtonY = (int) (window.getY() + window.getHeight() - closeButton.getHeight());
+
             if (closeButton.isTouched){
                 bo_helper.draw(
                         batch,closeButtonBG, closeButtonX, closeButtonY,
                         (int) closeButton.getWidth(), (int) closeButton.getHeight()
                 );
+            }
+
+            int btnPosX = 0;
+            if (controlButtons != null){
+                for (BaseObject bo : controlButtons){
+                    btnPosX = btnPosX + (int) (bo.getWidth() + 20);
+                    bo_helper.draw(
+                        batch,
+                        bo,
+                        (int) (windowHeader.getX() + window.width - btnPosX),
+                        (int) (windowHeader.getY() - window.getHeight())
+                    );
+                }
             }
 
             bo_helper.draw(batch, closeButton, closeButtonX, closeButtonY);
@@ -238,7 +289,7 @@ public class Window {
         int cpl = (int) Math.ceil((float)objectsCount / countPerLine);
         if (cpl != totalLines ) {
             totalLines = cpl;
-            sliderY = (int) (y + (slider.getHeight() * (menuShift)));
+            sliderY = (int) (y - additionalHeight + (slider.getHeight() * (menuShift)));
         }
         menuShift = menuShift < totalLines ? menuShift : menuShift - 1;
 
@@ -278,6 +329,13 @@ public class Window {
             if (isShowWindow && closeButton.isTouched) {
                 isShowWindow = false;
                 return true;
+            }
+
+            if (controlButtons != null && controlButtons.length > 0){
+                for (ButtonCommon bo : controlButtons){
+                    boolean isButtonTouched = bo.checkTouchAndExec();
+                    if (isButtonTouched) { return true; }
+                }
             }
         }
 
