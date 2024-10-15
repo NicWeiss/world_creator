@@ -2,6 +2,7 @@ package com.nicweiss.editor.Generic;
 
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Batch;
+import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.nicweiss.editor.utils.Uuid;
 
@@ -75,6 +76,10 @@ public class BaseObject implements Cloneable {
         img = texture;
         width = img.getWidth();
         height = img.getHeight();
+    }
+
+    public Texture getTexture() {
+        return img;
     }
 
     public void setImage(String imageName) {

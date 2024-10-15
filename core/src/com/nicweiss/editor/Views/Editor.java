@@ -8,6 +8,7 @@ import com.badlogic.gdx.math.Vector3;
 import com.nicweiss.editor.Generic.View;
 import com.nicweiss.editor.Main;
 import com.nicweiss.editor.components.UserInterface;
+import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
 import com.nicweiss.editor.objects.TextureObject;
 import com.nicweiss.editor.utils.ArrayUtils;
@@ -408,6 +409,9 @@ public class Editor extends View{
                     store.objectedMap[mapI][mapJ].isPlayerInside = false;
                     store.objectedMap[mapI][mapJ].isRenderLighAndNigth = true;
                 }
+
+//                Рисуем существ на карте
+                renderCreations(batch, mapI, mapJ);
             }
         }
     }
@@ -415,5 +419,17 @@ public class Editor extends View{
     @Override
     public void renderUI(SpriteBatch uiBatch) {
         userInterface.render(uiBatch);
+    }
+
+    public void renderCreations(SpriteBatch batch, int mapI, int mapJ) {
+        for (Creation creation: store.creations) {
+            if (creation != null){
+                if (creation.mapCellX != (mapI+1) || creation.mapCellY != (mapJ+1) ){
+                    continue;
+                }
+
+                creation.draw(batch);
+            }
+        }
     }
 }
