@@ -19,12 +19,12 @@ public class BaseObject implements Cloneable {
     protected float y_scale = 1;
     protected int width = 0;
     protected int height = 0;
-    protected Texture img, bgImg;
+    protected Texture img, bgImg, surfaceImg;
     protected float rotation = 0;
     protected float opacity = 1;
     protected boolean deleted = false;
     protected String objectId;
-    protected int textureId;
+    protected int textureId, surfaceId;
     protected String uuid;
 
     protected float defaultLight = (float)0.2;
@@ -37,6 +37,11 @@ public class BaseObject implements Cloneable {
     public boolean isEnableRenderLimits = false;
 
     public void draw(Batch batch) {
+        if (surfaceImg != null && surfaceId == textureId) {
+            return;
+        }
+
+        if (img == null) return;
         if (isEnableRenderLimits) {
             if (x + img.getWidth() < 0 || x > store.display.get("width")) {
                 return;
@@ -46,7 +51,6 @@ public class BaseObject implements Cloneable {
             }
         }
 
-        if (img == null) return;
         if (deleted) return;
 
         if (bgImg != null && isTouched) {
@@ -60,22 +64,52 @@ public class BaseObject implements Cloneable {
                     img.getWidth()+5, img.getHeight()+5,
                     false, false);
         }
-
-        batch.draw(img,
+        if (img != null) {
+            batch.draw(img,
                 x, y,
                 0, 0,
-                (float)width * x_scale, (float)height * y_scale,
+                (float) width * x_scale, (float) height * y_scale,
                 1, 1,
                 rotation,
                 0, 0,
                 img.getWidth(), img.getHeight(),
                 false, false);
+        }
+    }
+
+    public void drawSurface(Batch batch) {
+        if (isEnableRenderLimits) {
+            if (x + img.getWidth() < 0 || x > store.display.get("width")) {
+                return;
+            }
+            if (y + img.getHeight() < 0 || y > store.display.get("height")) {
+                return;
+            }
+        }
+
+        if (surfaceImg == null) {
+            return;
+        }
+
+        batch.draw(surfaceImg,
+            x, y,
+            0, 0,
+            (float) width * x_scale, (float) height * y_scale,
+            1, 1,
+            rotation,
+            0, 0,
+            surfaceImg.getWidth(), surfaceImg.getHeight(),
+            false, false);
     }
 
     public void setTexture(Texture texture) {
         img = texture;
         width = img.getWidth();
         height = img.getHeight();
+    }
+
+    public void setSurfaceTexture(Texture texture) {
+        surfaceImg = texture;
     }
 
     public Texture getTexture() {
@@ -179,6 +213,10 @@ public class BaseObject implements Cloneable {
 
     public void setTextureId(int textureId) {
         this.textureId = textureId;
+    }
+
+    public void setSurfaceId(int textureId) {
+        this.surfaceId = textureId;
     }
 
     public float getWidth() {

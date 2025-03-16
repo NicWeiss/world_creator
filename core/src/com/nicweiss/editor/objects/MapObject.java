@@ -63,6 +63,45 @@ public class MapObject  extends BaseObject {
         super.draw(batch);
     }
 
+    public void drawSurface(Batch batch) {
+        calcPosition();
+        if (isRenderLighAndNigth) {
+            if (store.dayCoefficient < 0.4) {
+                if (store.isSelectedLightObject) {
+                    calcLight("player");
+                } else {
+                    dynamicLightRed = (float) 0.2;
+                    dynamicLightGreen = (float) 0.2;
+                    dynamicLightBlue = (float) 0.2;
+                }
+
+                batch.setColor(
+                    Math.max(staticLightRed, dynamicLightRed) + store.dayCoefficient,
+                    Math.max(staticLightGreen, dynamicLightGreen) + store.dayCoefficient,
+                    Math.max(staticLightBlue, dynamicLightBlue) + store.dayCoefficient,
+                    opacity
+                );
+            } else {
+                batch.setColor(
+                    (float) 0.2 + store.dayCoefficient,
+                    (float) 0.2 + store.dayCoefficient,
+                    (float) 0.2 + store.dayCoefficient,
+                    opacity
+                );
+            }
+        }
+
+        if (isDialogBind){
+            batch.setColor(
+                0.56f - store.dayCoefficient / 4,
+                0.77f - store.dayCoefficient / 4,
+                0.55f - store.dayCoefficient / 4,
+                opacity
+            );
+        }
+
+        super.drawSurface(batch);
+    }
 
     public void calcLight(String environment){
         float dark;

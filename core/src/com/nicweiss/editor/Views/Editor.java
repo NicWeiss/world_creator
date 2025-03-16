@@ -32,31 +32,43 @@ public class Editor extends View{
     int selectedTileX, selectedTileY;
     int mouseX, mouseY;
     float cm = 0.01f;
-    int[] lightObjectIds;
+    int[] lightObjectIds, surfacesIds;
     boolean isImmediatelyReleaseKey = false;
     boolean isUiTouched = false;
 
 
     public Editor(){
         lightObjectIds = new int[] {11};
+        surfacesIds = new int [] {1, 10};
 
         hintUp = new Texture("tile_hint_up.png");
         hintDown = new Texture("tile_hint_down.png");
 
         textures = new TextureObject[] {
-                new TextureObject("gp_0.png", 0),
-                new TextureObject("gp_1.png", 0),
-                new TextureObject("gp_2.png", 50),
-                new TextureObject("gp_3.png", 50),
-                new TextureObject("gp_4.png", 20),
-                new TextureObject("gp_5.png", 2),
-                new TextureObject("gp_6.png", 4),
-                new TextureObject("gp_7.png", 10),
-                new TextureObject("gp_8.png", 1),
-                new TextureObject("gp_9.png", 50),
-                new TextureObject("gp_10.png", 0),
-                new TextureObject("gp_11.png", 5)
-
+            new TextureObject("gp_0.png", 0),
+            new TextureObject("gp_1.png", 0),
+            new TextureObject("gp_2.png", 50),
+            new TextureObject("gp_3.png", 50),
+            new TextureObject("gp_4.png", 20),
+            new TextureObject("gp_5.png", 2),
+            new TextureObject("gp_6.png", 4),
+            new TextureObject("gp_7.png", 10),
+            new TextureObject("gp_8.png", 1),
+            new TextureObject("gp_9.png", 50),
+            new TextureObject("gp_10.png", 0),
+            new TextureObject("gp_11.png", 5),
+            new TextureObject("gp_12.png", 0),
+            new TextureObject("gp_13.png", 0),
+            new TextureObject("gp_14.png", 0),
+            new TextureObject("gp_15.png", 0),
+            new TextureObject("gp_16.png", 0),
+            new TextureObject("gp_17.png", 0),
+            new TextureObject("gp_18.png", 0),
+            new TextureObject("gp_19.png", 0),
+            new TextureObject("gp_20.png", 0),
+            new TextureObject("gp_21.png", 0),
+            new TextureObject("gp_22.png", 0),
+            new TextureObject("gp_23.png", 0)
         };
 
         store.tileSizeWidth = tileSizeX = 158 / store.tileDownScale;
@@ -91,19 +103,30 @@ public class Editor extends View{
             for(int j = 0; j<store.mapWidth; j++) {
                 rn = perlinMap[i][j];
                 ts = 8;
-                if (rn > 30){ts=1;}
-                if (rn > 140){ts=3;}
-                if (rn > 253){ts=2;}
+                if (rn > 30) {
+                    ts = 1;
+                }
+                if (rn > 140) {
+                    ts = 3;
+                }
+                if (rn > 253) {
+                    ts = 2;
+                }
 
 //                if (rn > 254){ts=4;}
-                if (rn == 249){
-                    ts=rand.nextInt(3) + 5;
+                if (rn == 249) {
+                    ts = rand.nextInt(3) + 5;
                 }
 
                 MapObject tmp = new MapObject();
-                tmp.setTexture(textures[ts].texture);
+
+                tmp.setSurfaceTexture(textures[1].texture);
+                tmp.setSurfaceId(1);
+
                 tmp.setObjectHeight(textures[ts].high);
+                tmp.setTexture(textures[ts].texture);
                 tmp.setTextureId(ts);
+
                 tmp.xPositionOnMap = i+1;
                 tmp.yPositionOnMap = j+1;
                 tmp.generateAndSetUUID();
@@ -172,8 +195,14 @@ public class Editor extends View{
 
 //                Обновление элемента карты
             store.objectedMap[arrPointX][arrPointY].setTexture(textures[newTextureId].texture);
-            store.objectedMap[arrPointX][arrPointY].setObjectHeight(textures[newTextureId].high);
             store.objectedMap[arrPointX][arrPointY].setTextureId(newTextureId);
+
+            if (ArrayUtils.checkIntInArray(newTextureId, surfacesIds)){
+                store.objectedMap[arrPointX][arrPointY].setSurfaceTexture(textures[newTextureId].texture);
+                store.objectedMap[arrPointX][arrPointY].setSurfaceId(newTextureId);
+            }
+
+            store.objectedMap[arrPointX][arrPointY].setObjectHeight(textures[newTextureId].high);
             store.objectedMap[arrPointX][arrPointY].setWidth(textures[newTextureId].texture.getWidth() / store.tileDownScale);
             store.objectedMap[arrPointX][arrPointY].setHeight(textures[newTextureId].texture.getHeight() / store.tileDownScale);
 
@@ -354,6 +383,37 @@ public class Editor extends View{
         int e2 = ((store.shiftX / (tileSizeX*2)) - (store.shiftY / (tileSizeY)))-(int)fc;
 
 //        Отрисовка карты
+//        1 Поверхности
+        for (int i=Math.min(d, store.mapHeight); i > Math.max(e1,0); i--) {
+            mapI = i - 1;
+
+            for (int j = Math.min(e2 + (int) (fc * 2), store.mapWidth); j > Math.max(e2, 0); j--) {
+                mapJ = j - 1;
+
+//                Ограничение отрисовки на основе отрисовывемого элемента
+                point = transform.cartesianToIsometric(i * tileSizeX, j * tileSizeY);
+
+                if (point[0] + store.shiftX - (tileSizeX * 2) > store.display.get("width")) {
+                    break;
+                }
+                if (point[1] + store.shiftY + (tileSizeX * 2) < 0) {
+                    break;
+                }
+
+                if (point[0] + store.shiftX + (tileSizeX * 2) < 0) {
+                    continue;
+                }
+                if (point[1] + store.shiftY - (tileSizeY * 2) > store.display.get("height")) {
+                    continue;
+                }
+
+                store.objectedMap[mapI][mapJ].drawSurface(batch);
+                store.objectedMap[mapI][mapJ].isPlayerInside = false;
+                store.objectedMap[mapI][mapJ].isRenderLighAndNigth = true;
+            }
+        }
+
+//        Объекты на поверхностях
         for (int i=Math.min(d, store.mapHeight); i > Math.max(e1,0); i--)
         {
             mapI = i - 1;
@@ -411,7 +471,12 @@ public class Editor extends View{
                 }
 
 //                Рисуем существ на карте
-                renderCreations(batch, mapI, mapJ);
+//                На основной клетке
+                renderCreations(batch, mapI, mapJ, false);
+
+//                на смежных, если они на уровне земли
+                renderCreations(batch, mapI, mapJ+1, true);
+                renderCreations(batch, mapI+1, mapJ, true);
             }
         }
     }
@@ -421,11 +486,19 @@ public class Editor extends View{
         userInterface.render(uiBatch);
     }
 
-    public void renderCreations(SpriteBatch batch, int mapI, int mapJ) {
+    public void renderCreations(SpriteBatch batch, int mapI, int mapJ, boolean filterByHeight) {
         for (Creation creation: store.creations) {
             if (creation != null){
                 if (creation.mapCellX != (mapI+1) || creation.mapCellY != (mapJ+1) ){
                     continue;
+                }
+
+                if (filterByHeight) {
+                    MapObject el = store.objectedMap[mapI][mapJ];
+
+                    if (el.getHeight() != 0) {
+                        continue;
+                    }
                 }
 
                 creation.draw(batch);
