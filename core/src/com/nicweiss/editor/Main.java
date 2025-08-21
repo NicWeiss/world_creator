@@ -4,9 +4,10 @@ import static com.badlogic.gdx.Application.LOG_INFO;
 
 import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.graphics.OrthographicCamera;
-import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.utils.viewport.ExtendViewport;
 
 import com.nicweiss.editor.Generic.View;
@@ -19,6 +20,7 @@ public class Main extends ApplicationAdapter {
 
 	public static ExtendViewport viewport, uiViewport;
 	public static View view;
+	public static Stage stage;
 	public static Store store;
 	public static OrthographicCamera camera, uiCamera;
 
@@ -32,6 +34,7 @@ public class Main extends ApplicationAdapter {
 
 		Gdx.app.setLogLevel(LOG_INFO);
 		setCamera(1920, 1080);
+		stage = new Stage(uiViewport);
 
 		changeView(new Logo());
 		batch = new SpriteBatch();
@@ -133,7 +136,12 @@ public class Main extends ApplicationAdapter {
 
 		System.gc();
 		view = newView;
-		Gdx.input.setInputProcessor(view);
+
+		InputMultiplexer multiplexer = new InputMultiplexer();
+		multiplexer.addProcessor(stage);
+		multiplexer.addProcessor(view);
+
+		Gdx.input.setInputProcessor(multiplexer);
 	}
 
 	@Override

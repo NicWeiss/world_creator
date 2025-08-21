@@ -24,8 +24,8 @@ public class Window implements CallBack {
     private BaseObject closeButton, closeButtonBG, slider, sliderBG;
 
     float headerTouchX, headerTouchY, sliderTouchY;
-    int x, y, windowOperationalHeight, sliderGlobalY, sliderY = 0;
-    int width, height = 0;
+    public int x, y, windowOperationalHeight, sliderGlobalY, sliderY = 0;
+    public int width, height = 0;
 
     int controlButtonSize = 40;
     public boolean isShowWindow = false;
@@ -47,6 +47,8 @@ public class Window implements CallBack {
 
     protected ButtonCommon[] controlButtons;
 
+    public int symbolWidth;
+
     public Window() {
         bo_helper = new BOHelper();
 
@@ -60,6 +62,7 @@ public class Window implements CallBack {
         tilePickerSelector = new Texture("tile_pick_selector.png");
 
         font = new Font(7, Color.BLACK);
+        symbolWidth = (int) font.getWidth("W");
     }
 
     public void buildWindow(){
@@ -220,7 +223,6 @@ public class Window implements CallBack {
         if (text != textForRender) {
             String[] textLines = text.split("\n");
             int i = 0;
-            int symbolWidth = (int) font.getWidth("W");
             int maxWindowSymbolCounts = ((width - 50) / symbolWidth);
             textObjects = new TextObject[1000];
 
