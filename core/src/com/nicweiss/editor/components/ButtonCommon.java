@@ -3,12 +3,12 @@ package com.nicweiss.editor.components;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Batch;
-import com.nicweiss.editor.Interfaces.ObjectCallBack;
+import com.nicweiss.editor.Interfaces.BaseCallBack;
 import com.nicweiss.editor.utils.Font;
 
 
 
-public class ButtonCommon extends ObjectCallBack {
+public class ButtonCommon extends BaseCallBack {
     private Font font;
     private String text;
     public int textPadding = 10;

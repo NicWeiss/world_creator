@@ -1,19 +1,18 @@
 package com.nicweiss.editor.Generic;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.nicweiss.editor.Interfaces.ObjectCallBack.CallBack;
+import com.nicweiss.editor.Interfaces.BaseCallBack;
+import com.nicweiss.editor.Interfaces.BaseCallBack.CallBack;
 import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.objects.TextObject;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.Font;
-import com.nicweiss.editor.utils.Text;
 
 import java.lang.reflect.Method;
 
-public class Window implements CallBack {
+public class Window extends BaseCallBack implements CallBack {
     public static Store store;
     BOHelper bo_helper;
     TextObject[] textObjects;
@@ -214,60 +213,6 @@ public class Window implements CallBack {
         renderItems(batch, objects, isTiled);
     }
 
-    protected void addTextObject(String text, int id) {
-        TextObject to = new TextObject(font, text);
-        textObjects[id] = to;
-    }
-
-    public void renderText(SpriteBatch batch, String text) {
-        if (text != textForRender) {
-            String[] textLines = text.split("\n");
-            int i = 0;
-            int maxWindowSymbolCounts = ((width - 50) / symbolWidth);
-            textObjects = new TextObject[1000];
-
-            for(String textLine : textLines ) {
-                String[] subStrings = textLine.split(" ");
-                String part = "";
-
-                for(String subString : subStrings ) {
-                    if ((int)font.getWidth(subString) >= width - 50) {
-                        if (part != "") {
-                            addTextObject(part, i);
-                            i = i+1;
-                        }
-
-                        part = "";
-                        String[] spl = Text.split(subString , maxWindowSymbolCounts);
-
-                        for (String s: spl) {
-                            addTextObject(s, i);
-                            i = i+1;
-                        }
-                        continue;
-                    }
-
-                    if ((int) font.getWidth(part + " " + subString) < width - 50) {
-                        part = part + " " + subString;
-                    } else {
-                        addTextObject(part, i);
-                        part = subString;
-                        i = i + 1;
-                    }
-                }
-                if (part != "") {
-                    addTextObject(part, i);
-                    i = i+1;
-                }
-            }
-        }
-
-        if (textObjects != null) {
-            renderItems(batch, textObjects, false);
-            itemWidth = (int) font.getWidth(".");
-        }
-    }
-
     private void renderItems(SpriteBatch batch, BaseObject[] objects, boolean isTiled) {
         int objectsCount = 0;
 
@@ -454,10 +399,17 @@ public class Window implements CallBack {
     public void show(){
         isWindowActive = true;
         isShowWindow = true;
+        onShow();
     }
 
     public void hide(){
         isWindowActive = false;
         isShowWindow = false;
+        onHide();
     }
+
+    public void onShow() {}
+
+
+    public void onHide() {}
 }

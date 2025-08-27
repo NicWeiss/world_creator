@@ -6,21 +6,14 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
-import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextArea;
 import com.nicweiss.editor.Generic.Store;
 import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.components.ButtonCommon;
 
 
-public class TextInputWindow extends Window {
+public class TextInputWindow extends Window{
     public static Store store;
-
-    protected int time = 100;
-    protected String text = "";
-    protected String input = "";
-    protected String inputSymbol = "_";
-    protected int cursor = 0;
 
     private Skin skin;
     private TextArea textArea;
@@ -49,13 +42,25 @@ public class TextInputWindow extends Window {
         super.buildWindow();
     }
 
-    public void cancel() {
-        System.out.println("You chose cancel");
+    @Override
+    public void onShow() {
+        stage.setKeyboardFocus(textArea);
     }
 
+    public void setText(String text) {
+        textArea.setText(text);
+    }
 
-    public void apply() {
-        System.out.println("You chose apply");
+    public void cancel() {
+        textArea.setText("");
+        this.hide();
+    }
+
+    public void apply() throws Exception {
+        this.setParams(2, textArea.getText());
+        this.execCallBack();
+        textArea.setText("");
+        this.hide();
     }
 
     public void render(SpriteBatch batch) {

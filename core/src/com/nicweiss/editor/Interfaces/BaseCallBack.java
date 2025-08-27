@@ -5,7 +5,7 @@ import com.nicweiss.editor.Generic.BaseObject;
 import java.lang.reflect.Method;
 
 
-public class ObjectCallBack extends BaseObject {
+public class BaseCallBack extends BaseObject {
     private String[] params = null;
 
     public interface CallBack {
@@ -54,5 +54,9 @@ public class ObjectCallBack extends BaseObject {
 
             method.invoke(callBack);
         }
+    }
+
+    public void setParams(Integer id, String value) {
+        this.params[id] = value;
     }
 }

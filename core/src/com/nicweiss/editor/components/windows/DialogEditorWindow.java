@@ -1,14 +1,14 @@
 package com.nicweiss.editor.components.windows;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.Store;
 import com.nicweiss.editor.Generic.Window;
-import com.nicweiss.editor.Interfaces.ObjectCallBack.CallBack;
+import com.nicweiss.editor.Interfaces.BaseCallBack.CallBack;
 import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.Uuid;
+import com.nicweiss.editor.components.windows.TextInputWindow;
 
 import org.json.simple.JSONObject;
 
@@ -48,11 +48,22 @@ public class DialogEditorWindow extends Window implements CallBack  {
 
     public void textEditCallback(String uuid, String key){
         if (tiw.isShowWindow || !isWindowActive) { return; }
-        tiw.show();
+        JSONObject obj = (JSONObject) store.dialogs.get(uuid);
+        String value = (String) obj.get(key);
 
-//        JSONObject obj = (JSONObject) store.dialogs.get(uuid);
-//        obj.put(key, "New value");
-//        setUUID(uuid);
+        tiw.registerCallBack(
+            this,
+            "textEditDoneCallback",
+            new String[]{uuid,key,""}
+        );
+        tiw.setText(value);
+        tiw.show();
+    }
+
+    public void textEditDoneCallback(String uuid, String key, String value){
+        JSONObject obj = (JSONObject) store.dialogs.get(uuid);
+        obj.put(key, value);
+        setUUID(uuid);
     }
 
     public void buildWindow() {

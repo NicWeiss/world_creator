@@ -3,7 +3,7 @@ package com.nicweiss.editor.Generic;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.nicweiss.editor.Interfaces.ObjectCallBack.CallBack;
+import com.nicweiss.editor.Interfaces.BaseCallBack.CallBack;
 import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.Font;
