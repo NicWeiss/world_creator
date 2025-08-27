@@ -66,6 +66,16 @@ public class DialogEditorWindow extends Window implements CallBack  {
         setUUID(uuid);
     }
 
+    public void addDialogLineCallback(String uuid) {
+        JSONObject parent_dialog = (JSONObject) store.dialogs.get(uuid);
+        JSONObject new_dialog = this.getEmptyDialog();
+
+        String new_uuid = (String) new_dialog.get("__uuid__");
+        store.dialogs.put(new_uuid, new_dialog);
+        parent_dialog.put("__dialog__:" + new_uuid, "-->");
+        this.selectDialogCallback(new_uuid);
+    }
+
     public void buildWindow() {
         super.buildWindow();
         tiw.buildWindow();
@@ -201,7 +211,7 @@ public class DialogEditorWindow extends Window implements CallBack  {
             dialogCursor = 0;
         } else {
             for (int i = 0; i < dialogStack.length; i++) {
-                if (dialogStack[i].equals(uuid)) {
+                if (dialogStack[i] != null && dialogStack[i].equals(uuid)) {
                     dialogCursor = i;
                     break;
                 }
@@ -282,10 +292,10 @@ public class DialogEditorWindow extends Window implements CallBack  {
             button.setIcon(requestIcon);
             items[i] = button;
             i++;
-        } else if (dialog.get("__greeting__") == null) {
+        } else if (dialogCursor > 0) {
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
-            button.setText(font, "Добавить реплику от собеседника");
+            button.setText(font, "Добавить обращение к собеседнику");
             button.registerCallBack(this, "textEditCallback", new String[]{uuid, "__request__"});
             button.setIcon(addDialogIcon);
             items[i] = button;
@@ -313,7 +323,7 @@ public class DialogEditorWindow extends Window implements CallBack  {
             }
         }
 
-//        Ответ собеседнику
+//        Ответ собеседника
         if (dialog.get("__response__") != null){
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
@@ -326,7 +336,7 @@ public class DialogEditorWindow extends Window implements CallBack  {
             if (dialogCursor > 0) {
                 button = new ButtonCommon();
                 button.setBackgrounds(buttonBG, buttonBGHover);
-                button.setText(font, "Добавить ответ собеседнику");
+                button.setText(font, "Добавить ответ собеседника");
                 button.registerCallBack(this, "textEditCallback", new String[]{uuid, "__response__"});
                 button.setIcon(addDialogIcon);
                 items[i] = button;
@@ -344,7 +354,11 @@ public class DialogEditorWindow extends Window implements CallBack  {
                 String[] subKeys = key.split(":");
                 JSONObject subDialog = (JSONObject) store.dialogs.get(subKeys[1]);
                 dialog.replace(key, subDialog);
-                button.setText(font, subDialog.get("__request__").toString());
+                if (subDialog.get("__request__") != null) {
+                    button.setText(font, subDialog.get("__request__").toString());
+                } else {
+                    button.setText(font, "");
+                }
                 button.registerCallBack(this, "selectDialogCallback", new String[]{subKeys[1]});
                 button.setIcon(replicIcon);
                 items[i] = button;
@@ -373,6 +387,7 @@ public class DialogEditorWindow extends Window implements CallBack  {
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setText(font, "Добавить реплику");
         button.setIcon(addDialogIcon);
+        button.registerCallBack(this, "addDialogLineCallback", new String[]{uuid});
         items[i] = button;
         i++;
 
