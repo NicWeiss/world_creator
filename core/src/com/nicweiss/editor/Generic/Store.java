@@ -48,6 +48,7 @@ public class Store {
     public static int[][] pressedKeys = new int[100][2];
 
     public static JSONObject dialogs = new JSONObject();
+    public static JSONObject quests = new JSONObject();
 
     public static Creation[] creations = new Creation[100];
     public static int creationCount = -1;

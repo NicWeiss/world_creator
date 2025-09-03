@@ -2,10 +2,8 @@ package com.nicweiss.editor.components.windows;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
-import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.ContextMenuWindow;
 import com.nicweiss.editor.Generic.Store;
-import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
@@ -43,6 +41,7 @@ public class MapContextMenuWindow extends ContextMenuWindow {
         MapObject mapObject = store.objectedMap[(int) store.selectedTileX - 1][(int) store.selectedTileY - 1];
         String uuid = mapObject.getUUID();
         mapObject.isDialogBind = true;
+        dialogEditorWindow.setRoot("Object_" + uuid);
         dialogEditorWindow.setUUID(uuid);
         dialogEditorWindow.show();
         Gdx.app.log("Debug", "Редактировать взаимодействие для " + uuid);

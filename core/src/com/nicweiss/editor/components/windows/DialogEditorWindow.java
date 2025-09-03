@@ -8,37 +8,58 @@ import com.nicweiss.editor.Interfaces.BaseCallBack.CallBack;
 import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.Uuid;
-import com.nicweiss.editor.components.windows.TextInputWindow;
 
 import org.json.simple.JSONObject;
 
 import java.util.Arrays;
 
-public class DialogEditorWindow extends Window implements CallBack  {
+/**
+ * Класс {@code DialogEditorWindow} представляет окно редактора диалогов.
+ * Он позволяет пользователю создавать, редактировать и связывать
+ * диалоговые ветви.
+ * Реализует интерфейс {@code CallBack} для обработки обратных вызовов.
+ *
+ * @author nicweiss
+ */
+public class DialogEditorWindow extends Window implements CallBack {
     private String uuid;
     public static Store store;
+
     BOHelper bo_helper;
     JSONObject dialog = new JSONObject();
     String[] dialogStack;
     TextInputWindow tiw = new TextInputWindow();
+    JSONObject rootDialogList;
 
     int dialogCursor = 0;
-    boolean isDialogLoaded = false;
-
     ButtonCommon[] items;
 
+    /**
+     * Конструктор класса. Инициализирует вспомогательные объекты
+     * и устанавливает имя окна.
+     */
     public DialogEditorWindow() {
         super();
         bo_helper = new BOHelper();
+        rootDialogList = store.dialogs;
         windowName = "Редактирование взаимодействия";
     }
 
+    /**
+     * Обратный вызов для кнопки "Назад". Переходит на предыдущий
+     * уровень в стеке диалогов.
+     */
     public void getBackCallback(){
         if (tiw.isShowWindow || !isWindowActive) { return; }
         dialogCursor--;
         setUUID(dialogStack[dialogCursor]);
     }
 
+    /**
+     * Обратный вызов для выбора диалога. Переходит на новый
+     * уровень диалога, добавляя его в стек.
+     * @param uuid Уникальный идентификатор диалога, к которому нужно перейти.
+     */
     public void selectDialogCallback(String uuid){
         if (tiw.isShowWindow || !isWindowActive) { return; }
         dialogCursor++;
@@ -46,9 +67,14 @@ public class DialogEditorWindow extends Window implements CallBack  {
         setUUID(uuid);
     }
 
+    /**
+     * Открывает окно для редактирования текста выбранного поля.
+     * @param uuid Уникальный идентификатор диалога.
+     * @param key Ключ поля, которое нужно отредактировать.
+     */
     public void textEditCallback(String uuid, String key){
         if (tiw.isShowWindow || !isWindowActive) { return; }
-        JSONObject obj = (JSONObject) store.dialogs.get(uuid);
+        JSONObject obj = (JSONObject) rootDialogList.get(uuid);
         String value = (String) obj.get(key);
 
         tiw.registerCallBack(
@@ -60,22 +86,36 @@ public class DialogEditorWindow extends Window implements CallBack  {
         tiw.show();
     }
 
+    /**
+     * Обратный вызов, который обновляет значение поля после
+     * завершения редактирования текста.
+     * @param uuid Уникальный идентификатор диалога.
+     * @param key Ключ отредактированного поля.
+     * @param value Новое значение.
+     */
     public void textEditDoneCallback(String uuid, String key, String value){
-        JSONObject obj = (JSONObject) store.dialogs.get(uuid);
+        JSONObject obj = (JSONObject) rootDialogList.get(uuid);
         obj.put(key, value);
         setUUID(uuid);
     }
 
+    /**
+     * Добавляет новую пустую ветвь диалога к текущей.
+     * @param uuid Уникальный идентификатор родительского диалога.
+     */
     public void addDialogLineCallback(String uuid) {
-        JSONObject parent_dialog = (JSONObject) store.dialogs.get(uuid);
+        JSONObject parent_dialog = (JSONObject) rootDialogList.get(uuid);
         JSONObject new_dialog = this.getEmptyDialog();
 
         String new_uuid = (String) new_dialog.get("__uuid__");
-        store.dialogs.put(new_uuid, new_dialog);
+        rootDialogList.put(new_uuid, new_dialog);
         parent_dialog.put("__dialog__:" + new_uuid, "-->");
         this.selectDialogCallback(new_uuid);
     }
 
+    /**
+     * Инициализирует окно и его дочерние компоненты.
+     */
     public void buildWindow() {
         super.buildWindow();
         tiw.buildWindow();
@@ -84,57 +124,11 @@ public class DialogEditorWindow extends Window implements CallBack  {
         itemHeight = 20;
     }
 
-    public void loadDialogs(String uuid){
-        JSONObject obj = new JSONObject();
-        JSONObject ob3 = new JSONObject();
-        JSONObject ob4 = new JSONObject();
-        JSONObject ob5 = new JSONObject();
-
-// конструктор для отладки
-        ob3.put("__uuid__", "jjgyqwYgwg4");
-        ob3.put("__branchRestrictions__", "__activeQuest__:1");
-        ob3.put("__isBranchHide__", Boolean.FALSE);
-        ob3.put("__request__", "Я не знаю узнаю это место, где мы?");
-        ob3.put("__response__", "Это сердце тёмного леса, без надёжного топора тут лучше не ходить. На твоё счастье у меня есть один запасной, вот держи!");
-        ob3.put("__goTo__:"+uuid, "У меня ещё есть вопросоы");
-        ob3.put("__close__", "Спасибо, до встречи!");
-        ob3.put("__farewell__", "Будь осторожнее!");
-        ob3.put("__onClose__",  "__giveWeapon__:1;__hideBranch__:Sfwi3wgkfd");
-        store.dialogs.put("jjgyqwYgwg4", ob3);
-
-        ob4.put("__uuid__", "Sfwi3wgkfd");
-        ob4.put("__branchRestrictions__", "__activeQuest__:1");
-        ob4.put("__isBranchHide__", Boolean.FALSE);
-        ob4.put("__request__", "Кто ты?");
-        ob4.put("__response__", "Это не имеет особого значения, важно то, почему ты в такой глуши и без какого либо снаряжения?");
-        ob4.put("__dialog__:jjgyqwYgwg4", "");
-        store.dialogs.put("Sfwi3wgkfd", ob4);
-
-
-        ob5.put("__uuid__", "TYYwfwgkbe");
-        ob5.put("__branchRestrictions__", "__activeQuest__:1");
-        ob5.put("__isBranchHide__", Boolean.FALSE);
-        ob5.put("__request__", "Как отсюда выбраться?");
-        ob5.put("__response__", "Иди на северо-восток и выйдешь к \"Крайней деревне\"");
-        ob5.put("__goTo__:"+uuid, "У меня ещё есть вопросоы");
-        ob5.put("__close__", "Спасибо, до встречи!");
-        ob5.put("__farewell__", "Будь осторожнее!");
-        ob5.put("__onClose__", "__setMarker__:1312312312321;__hideBranch__:TYYwfwgkbe");
-        store.dialogs.put("TYYwfwgkbe", ob5);
-
-
-        obj.put("__uuid__", uuid);
-        obj.put("__isBranchHide__", Boolean.FALSE);
-        obj.put("__greeting__", "Здравствуй путник");
-        obj.put("__response__", "Чем я могу тебе помочь?");
-        obj.put("__close__", "Пока");
-        obj.put("__farewell__", "Будь осторожнее!");
-        obj.put("__dialog__:Sfwi3wgkfd", "");
-        obj.put("__dialog__:TYYwfwgkbe", "");
-        store.dialogs.put(uuid, obj);
-        isDialogLoaded = true;
-    }
-
+    /**
+     * Создает пустой объект диалога с заданным UUID.
+     * @param uuid Уникальный идентификатор для нового диалога.
+     * @return Объект {@code JSONObject} с пустым диалогом.
+     */
     public JSONObject getEmptyDialog(String uuid){
         JSONObject obj = new JSONObject();
 
@@ -144,8 +138,16 @@ public class DialogEditorWindow extends Window implements CallBack  {
         return obj;
     }
 
+    /**
+     * Создает пустой объект диалога с автоматически сгенерированным UUID.
+     * @return Объект {@code JSONObject} с пустым диалогом.
+     */
     public JSONObject getEmptyDialog(){ return getEmptyDialog(Uuid.generate());}
 
+    /**
+     * Метод отрисовки окна и его компонентов.
+     * @param batch Объект {@code SpriteBatch} для отрисовки.
+     */
     public void render(SpriteBatch batch) {
         super.render(batch);
 
@@ -161,6 +163,12 @@ public class DialogEditorWindow extends Window implements CallBack  {
         }
     }
 
+    /**
+     * Обрабатывает события касания или клика.
+     * @param isDragged Флаг, указывающий, происходит ли перетаскивание.
+     * @param isTouchUp Флаг, указывающий, был ли отпущен клик/касание.
+     * @return {@code true} если событие было обработано, {@code false} в противном случае.
+     */
     public boolean checkTouch(boolean isDragged, boolean isTouchUp){
         if (!isShowWindow){
             return false;
@@ -185,6 +193,11 @@ public class DialogEditorWindow extends Window implements CallBack  {
         return false;
     }
 
+    /**
+     * Обрабатывает нажатия клавиш.
+     * @param keyCode Код нажатой клавиши.
+     * @return {@code true} если клавиша была обработана, {@code false} в противном случае.
+     */
     @Override
     public boolean checkKey(int keyCode){
         if (tiw.checkKey(keyCode)){
@@ -194,6 +207,11 @@ public class DialogEditorWindow extends Window implements CallBack  {
         return super.checkKey(keyCode);
     }
 
+    /**
+     * Обрабатывает символьный ввод.
+     * @param character Введенный символ.
+     * @return {@code true} если символ был обработан, {@code false} в противном случае.
+     */
     public boolean keyTyped(char character){
         if (tiw.keyTyped(character)) {
             return true;
@@ -202,6 +220,24 @@ public class DialogEditorWindow extends Window implements CallBack  {
         return false;
     }
 
+    /**
+     * Устанавливает корневой узел для списка диалогов.
+     * @param rootKey Ключ корневого узла.
+     */
+    public void setRoot(String rootKey) {
+        if (store.dialogs.containsKey(rootKey)) {
+            rootDialogList = (JSONObject) store.dialogs.get(rootKey);
+        } else {
+            JSONObject newRootDialogList = new JSONObject();
+            store.dialogs.put(rootKey, newRootDialogList);
+            rootDialogList = newRootDialogList;
+        }
+    }
+
+    /**
+     * Устанавливает текущий редактируемый диалог по его UUID.
+     * @param uuid Уникальный идентификатор диалога.
+     */
     public void setUUID(String uuid){
         this.uuid = uuid;
 
@@ -218,20 +254,20 @@ public class DialogEditorWindow extends Window implements CallBack  {
             }
         }
 
-//        if (!isDialogLoaded) {
-//            loadDialogs(uuid);
-//        }
-
-        dialog = (JSONObject) store.dialogs.get(uuid);
+        dialog = (JSONObject) rootDialogList.get(uuid);
 
         if (dialog == null){
             dialog = getEmptyDialog(uuid);
-            store.dialogs.put(uuid, dialog);
+            rootDialogList.put(uuid, dialog);
         }
 
         prepareDialogView();
     }
 
+    /**
+     * Подготавливает и отображает кнопки для текущего диалога,
+     * основываясь на его полях.
+     */
     public void prepareDialogView(){
         items = new ButtonCommon[1000];
 
@@ -254,7 +290,7 @@ public class DialogEditorWindow extends Window implements CallBack  {
 
         int i = 0;
 
-//        Возвращение
+//        Кнопка "Возвращение"
         if (dialogCursor > 0) {
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
@@ -352,7 +388,7 @@ public class DialogEditorWindow extends Window implements CallBack  {
 
             if (key.contains("__dialog__")) {
                 String[] subKeys = key.split(":");
-                JSONObject subDialog = (JSONObject) store.dialogs.get(subKeys[1]);
+                JSONObject subDialog = (JSONObject) rootDialogList.get(subKeys[1]);
                 dialog.replace(key, subDialog);
                 if (subDialog.get("__request__") != null) {
                     button.setText(font, subDialog.get("__request__").toString());
