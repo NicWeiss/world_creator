@@ -256,7 +256,6 @@ public class Editor extends View{
 
     @Override
     public boolean scrolled(float amountX, float amountY) {
-//        Gdx.app.log("Debug", String.valueOf(amountY));
         isImmediatelyReleaseKey = true;
         if (amountY > 0) {
             keyDown(156);
@@ -276,12 +275,11 @@ public class Editor extends View{
 
     @Override
     public boolean keyDown(int keyCode){
-//        Gdx.app.log("Debug", String.valueOf(keyCode));
-        super.keyDown(keyCode);
-
         if(userInterface.checkKey(keyCode)){
             return false;
         }
+
+        super.keyDown(keyCode);
 
         boolean isNeedDownScale = false;
         boolean isNeedUpScale = false;

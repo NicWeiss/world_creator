@@ -6,7 +6,6 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Interfaces.BaseCallBack;
 import com.nicweiss.editor.Interfaces.BaseCallBack.CallBack;
 import com.nicweiss.editor.components.ButtonCommon;
-import com.nicweiss.editor.objects.TextObject;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.Font;
 
@@ -15,24 +14,23 @@ import java.lang.reflect.Method;
 public class Window extends BaseCallBack implements CallBack {
     public static Store store;
     BOHelper bo_helper;
-    TextObject[] textObjects;
 
     protected Texture black, windowBGColor, windowColor, close, tilePickerSelector, gray, sliderColor, sliderColorBG;
-    Texture buttonBG, buttonBGHover, buttonSeparator, border;
+    Texture buttonBG, buttonBGHover;
     protected BaseObject windowHeader, window, windowBG;
     private BaseObject closeButton, closeButtonBG, slider, sliderBG;
 
-    float headerTouchX, headerTouchY, sliderTouchY;
-    public int x, y, windowOperationalHeight, sliderGlobalY, sliderY = 0;
+    float headerTouchX, headerTouchY;
+    public int x, y, windowOperationalHeight;
     public int width, height = 0;
 
     int controlButtonSize = 40;
     public boolean isShowWindow = false;
+    public boolean isDualSectionMode = false;
     protected boolean isWindowActive = true;
     protected boolean isWindowIsDragged = false;
     protected boolean isHeaderIsDragged, isSliderIsDragged;
 
-    int totalLines, menuShift = 0;
     protected Font font;
     protected String windowName = "";
     protected float textHeight;
@@ -40,9 +38,12 @@ public class Window extends BaseCallBack implements CallBack {
     protected int windowWidth = 0;
     protected int windowHeight = 0;
     protected int additionalHeight = 0;
+    protected int padding = 5;
 
     protected int menuObjectSpace = 77, itemWidth = 70, itemHeight = 80;
-    protected String textForRender = "";
+
+    public WindowSection leftSection;
+    public WindowSection rightSection;
 
     protected ButtonCommon[] controlButtons;
 
@@ -56,19 +57,21 @@ public class Window extends BaseCallBack implements CallBack {
         gray = new Texture("Buttons/border.png");
         black = new Texture("black.png");
         close = new Texture("close.png");
-        sliderColorBG = new Texture("Buttons/separator.png");
-        buttonBGHover = sliderColor = new Texture("Buttons/btn_background_hover.png");
+        buttonBGHover = new Texture("Buttons/btn_background_hover.png");
         tilePickerSelector = new Texture("tile_pick_selector.png");
 
         font = new Font(7, Color.BLACK);
         symbolWidth = (int) font.getWidth("W");
+
+        leftSection = new WindowSection();
+        rightSection = new WindowSection();
     }
 
     public void buildWindow(){
         calcWindowSize();
 
         x = (int) ((store.uiWidthOriginal / 2) - (width / 2));
-        y = sliderY = (int) ((store.uiHeightOriginal / 2) - (height / 2)) + 50;
+        y = (int) ((store.uiHeightOriginal / 2) - (height / 2)) + 50;
 
         window = bo_helper.constructObject(
                 windowColor, x, y, 1, 1, "tileSelectWindow", 0
@@ -86,15 +89,38 @@ public class Window extends BaseCallBack implements CallBack {
                 close, x, y, controlButtonSize, controlButtonSize, "", 0
         );
 
-        slider = bo_helper.constructObject(
-                sliderColor, x, y, controlButtonSize, controlButtonSize, "slider", 0
-        );
-        sliderBG = bo_helper.constructObject(
-                sliderColorBG, x, y, controlButtonSize, controlButtonSize, "slider", 0
-        );
-
         closeButtonBG = bo_helper.constructObject(
                 black, x, y, 1, 1, "tileMenuCloseButtonBG", 0
+        );
+
+
+        updateSectionSizes();
+        leftSection.build();
+
+        if (isDualSectionMode) {
+            rightSection.build();
+        }
+    }
+
+    private void updateSectionSizes(){
+        int sectionWidth = width;
+        int secondSectionWidth = sectionWidth;
+        int sectionY = y + padding;
+        int sectionHeight = windowOperationalHeight;
+
+        if (isDualSectionMode) {
+            sectionWidth = width / 3;
+            secondSectionWidth = width -sectionWidth;
+        }
+
+        leftSection.setSize(
+            x, sectionY,
+            sectionWidth, sectionHeight
+        );
+
+        rightSection.setSize(
+            x + leftSection.width, sectionY,
+            secondSectionWidth, sectionHeight
         );
     }
 
@@ -135,25 +161,18 @@ public class Window extends BaseCallBack implements CallBack {
 
         width = Math.max(width, 350);
         height = Math.max((height), 100);
+
+        windowOperationalHeight = height - controlButtonSize - padding;
+        updateSectionSizes();
     }
 
 
     public void render(SpriteBatch batch) {
         if (isShowWindow) {
             calcWindowSize();
-            int padding = 5;
 
             bo_helper.draw(batch, windowBG, x, y - additionalHeight,  width, height);
             bo_helper.draw(batch, window, x, y,  width, height);
-
-//            SLIDER
-            windowOperationalHeight = (int)(height - closeButton.getHeight());
-            int sliderHeight = totalLines > 0 ? windowOperationalHeight / totalLines : windowOperationalHeight;
-            sliderGlobalY = sliderY + windowOperationalHeight;
-            sliderGlobalY = Math.min(sliderGlobalY, y + windowOperationalHeight);
-            sliderGlobalY = sliderGlobalY - sliderHeight < y ? y + sliderHeight : sliderGlobalY;
-            bo_helper.draw(batch, sliderBG, x + width - padding, y, padding-20, windowOperationalHeight);
-            bo_helper.draw(batch, slider, x + width - padding, sliderGlobalY, padding-20, sliderHeight * -1);
 
 //            BORDERS
             batch.draw(gray, x, y - additionalHeight, width, padding);
@@ -177,7 +196,6 @@ public class Window extends BaseCallBack implements CallBack {
             );
 
 //            CONTROL BUTTONS
-
             int closeButtonX = (int) (window.getX() + window.getWidth() - closeButton.getWidth());
             int closeButtonY = (int) (window.getY() + window.getHeight() - closeButton.getHeight());
 
@@ -202,71 +220,24 @@ public class Window extends BaseCallBack implements CallBack {
             }
 
             bo_helper.draw(batch, closeButton, closeButtonX, closeButtonY);
+
+            leftSection.render(batch);
+            if (isDualSectionMode) {
+                rightSection.render(batch);
+            }
         }
     }
 
     public void renderItemsList(SpriteBatch batch, BaseObject[] objects, boolean isTiled) {
-        renderItems(batch, objects, isTiled);
+        leftSection.renderItems(batch, objects, isTiled, false);
     }
 
     public void renderItemsList(SpriteBatch batch, ButtonCommon[] objects, boolean isTiled) {
-        renderItems(batch, objects, isTiled);
-    }
-
-    private void renderItems(SpriteBatch batch, BaseObject[] objects, boolean isTiled) {
-        int objectsCount = 0;
-
-        if (objects != null){
-            for (BaseObject bo : objects){
-                if (bo != null) {
-                    objectsCount ++;
-                }
-            }
-        }
-//        int objectsCount = objects.length;
-        if (objectsCount == 0) {
-            return;
-        }
-
-        int xShift = 20, yShift = (int)objects[0].getHeight() + 20;
-        int _x, _y;
-        int countPerLine = isTiled ? getMenuWidth() / (itemWidth + 20) : 1;
-
-//        Перерасчёт позиции слайдера
-        int cpl = (int) Math.ceil((float)objectsCount / countPerLine);
-        if (cpl != totalLines ) {
-            totalLines = cpl;
-            sliderY = (int) (y - additionalHeight + (slider.getHeight() * (menuShift)));
-        }
-        menuShift = menuShift < totalLines ? menuShift : menuShift - 1;
-
-        for (int i = Math.max(Math.min(menuShift * countPerLine, objectsCount), 0); i < objectsCount; i++) {
-            _x = getMenuX() + xShift;
-            _y = getMenuHeight() + getMenuY() - yShift - (int) windowHeader.getHeight();
-
-            if (_y > getMenuY()) {
-                if (!isTiled) {
-                    objects[i].setWidth(getMenuWidth() - 60);
-                }
-                bo_helper.draw(batch, objects[i], _x, _y, isWindowActive);
-
-                if (objects[i].isTouched) {
-                    batch.draw(tilePickerSelector, _x, _y, itemWidth, 15);
-                }
-                objects[i].draw(batch);
-            }
-
-            xShift = xShift + (menuObjectSpace + 10);
-            if ((xShift + itemHeight) > Math.min(getMenuWidth()+slider.getWidth(), (itemHeight + 20) * countPerLine)) {
-                xShift = 20;
-                yShift = yShift + (itemWidth + 20);
-            }
-        }
+        leftSection.renderItems(batch, objects, isTiled, false);
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp){
         float diffx, diffy;
-
         if (!isWindowActive){
             return true;
         }
@@ -294,42 +265,30 @@ public class Window extends BaseCallBack implements CallBack {
                 isHeaderIsDragged = true;
                 return true;
             }
-            if (slider.isTouched && !closeButton.isTouched){
-                sliderTouchY = store.mouseY;
-                isWindowIsDragged = true;
-                isSliderIsDragged = true;
-                return true;
-            }
         }
+
         if (!isTouchUp && isDragged){
             if (isWindowIsDragged && isHeaderIsDragged){
                 diffx = headerTouchX - store.mouseX;
                 diffy = headerTouchY - store.mouseY;
-
                 x = (int) (window.getX() - diffx);
                 y = (int) (window.getY() - diffy);
-
-                sliderY = (int) (sliderY - diffy);
                 headerTouchX = store.mouseX;
                 headerTouchY = store.mouseY;
                 return true;
             }
-            if (isWindowIsDragged && isSliderIsDragged){
-                diffy = sliderTouchY - store.mouseY;
-                sliderY = (int)(sliderY - diffy);
-                sliderTouchY = store.mouseY;
-
-                int newMenuShift = (int) (Math.abs((sliderY-y) / slider.getHeight()));
-                if (menuShift != newMenuShift){
-                    menuShift = newMenuShift;
-                }
-
-                return true;
-            }
         } else {
             isWindowIsDragged = false;
-            isSliderIsDragged = false;
             isHeaderIsDragged = false;
+        }
+
+        if (leftSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)) {
+            return true;
+        }
+        if (isDualSectionMode) {
+            if (rightSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)) {
+                return true;
+            }
         }
 
         if (isShowWindow) {
@@ -339,21 +298,6 @@ public class Window extends BaseCallBack implements CallBack {
         return false;
     }
 
-    public int getMenuX(){
-        return (int)window.getX();
-    }
-
-    public int getMenuY(){
-        return (int)window.getY();
-    }
-
-    public int getMenuWidth(){
-        return (int)window.getWidth();
-    }
-
-    public int getMenuHeight(){
-        return (int)window.getHeight();
-    }
 
     public void resetWindow(){
         x = 100;
@@ -366,24 +310,13 @@ public class Window extends BaseCallBack implements CallBack {
         }
 
         if (isShowWindow){
-            if (keyCode == 19 || keyCode == 156) {
-                menuShift --;
-                menuShift = Math.max(menuShift, 0);
-                sliderY = (int) (y + (slider.getHeight() * (menuShift)));
-
+            if (leftSection.checkKey(keyCode)) {
                 return true;
             }
-
-            if (keyCode == 20 || keyCode == 157) {
-                menuShift ++;
-                menuShift = menuShift < totalLines ? menuShift: menuShift - 1;
-                sliderY = (int) (y + (slider.getHeight() * (menuShift)));
-
-                return true;
-            }
-
-            if (keyCode == 21 || keyCode == 22){
-                return true;
+            if (isDualSectionMode) {
+                if (rightSection.checkKey(keyCode)) {
+                    return true;
+                }
             }
         }
 
@@ -391,9 +324,10 @@ public class Window extends BaseCallBack implements CallBack {
     }
 
     public void scrollDown(){
-        int maxItems = (int)(height/2 / (itemWidth + 20));
-        menuShift = Math.max(totalLines - maxItems, 0);
-        sliderY = (int) (y + (slider.getHeight() * (menuShift)));
+        leftSection.scrollDown();
+        if (isDualSectionMode) {
+            rightSection.scrollDown();
+        }
     }
 
     public void show(){
@@ -410,6 +344,9 @@ public class Window extends BaseCallBack implements CallBack {
 
     public void onShow() {}
 
-
     public void onHide() {}
+
+    public void setDualSectionMode(boolean isDual) {
+        this.isDualSectionMode = isDual;
+    }
 }

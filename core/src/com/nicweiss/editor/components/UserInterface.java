@@ -6,6 +6,7 @@ import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.Store;
 import com.nicweiss.editor.components.windows.DialogEditorWindow;
 import com.nicweiss.editor.components.windows.MapContextMenuWindow;
+import com.nicweiss.editor.components.windows.QuestsEditorWindow;
 import com.nicweiss.editor.components.windows.TileSelectorWindow;
 import com.nicweiss.editor.objects.MapObject;
 import com.nicweiss.editor.objects.TextureObject;
@@ -20,8 +21,9 @@ public class UserInterface {
     public TileSelectorWindow tileSelectorWindow;
     public MapContextMenuWindow mapContextMenuWindow;
     public DialogEditorWindow dialogEditorWindow;
+    public QuestsEditorWindow questsEditorWindow;
 
-    Texture openTexture, saveTexture, white;
+    Texture openTexture, saveTexture, questsTexture, white;
 
     public static Store store;
     BaseObject[] ui;
@@ -40,9 +42,11 @@ public class UserInterface {
         bo_helper = new BOHelper();
 
         dialogEditorWindow = new DialogEditorWindow();
+        questsEditorWindow = new QuestsEditorWindow();
 
         openTexture = new Texture("open.png");
         saveTexture = new Texture("save.png");
+        questsTexture = new Texture("quests_button.png");
         white = new Texture("white.png");
 
         tileSelectorWindow = new TileSelectorWindow(lightObjectIds);
@@ -53,8 +57,9 @@ public class UserInterface {
         tileSelectorWindow.buildWindow(tileTextures);
         mapContextMenuWindow.buildWindow();
         dialogEditorWindow.buildWindow();
+        questsEditorWindow.buildWindow();
 
-        ui = new BaseObject[2];
+        ui = new BaseObject[3];
 
 //        Open button
         ui[0] = bo_helper.constructObject(
@@ -68,6 +73,17 @@ public class UserInterface {
                 menuItemSize, menuItemSize, "save", 0
         );
 
+//        Quest window button
+        ui[2] = bo_helper.constructObject(
+            questsTexture,
+            (int) (ui[1].getX() + menuItemSize + menuItemSpace),
+            (int) (store.uiHeightOriginal - menuItemSize - 10),
+            menuItemSize,
+            menuItemSize,
+            "quests",
+            0
+        );
+
         buttonBG = bo_helper.constructObject(
                 white, 100, 150, 1, 1, "buttonBG", 0
         );
@@ -77,6 +93,7 @@ public class UserInterface {
         tileSelectorWindow.render(uiBatch);
         mapContextMenuWindow.render(uiBatch);
         dialogEditorWindow.render(uiBatch);
+        questsEditorWindow.render(uiBatch);
 
         for (BaseObject baseObject : ui) {
             if (baseObject.isTouched){
@@ -92,6 +109,10 @@ public class UserInterface {
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp, int button){
         if (dialogEditorWindow.checkTouch(isDragged, isTouchUp)){
+            return true;
+        }
+
+        if (questsEditorWindow.checkTouch(isDragged, isTouchUp)){
             return true;
         }
 
@@ -115,6 +136,10 @@ public class UserInterface {
                         saveMap();
                         return true;
                     }
+                    if (baseObject.getObjectId().equals("quests")) {
+                        openQuestsWindow();
+                        return true;
+                    }
                 }
             }
         }
@@ -135,11 +160,19 @@ public class UserInterface {
             return true;
         }
 
+        if (questsEditorWindow.checkKey(keyCode)){
+            return true;
+        }
+
         return false;
     }
 
     public boolean keyTyped(char character){
         if (dialogEditorWindow.keyTyped(character)) {
+            return true;
+        }
+
+        if (questsEditorWindow.keyTyped(character)) {
             return true;
         }
 
@@ -197,10 +230,15 @@ public class UserInterface {
     }
 
     public boolean getMouseMoveBlockStatus() {
-        if (mapContextMenuWindow.isShow || tileSelectorWindow.isShowWindow || dialogEditorWindow.isShowWindow) {
+        if (mapContextMenuWindow.isShow || tileSelectorWindow.isShowWindow || dialogEditorWindow.isShowWindow || questsEditorWindow.isShowWindow) {
             return true;
         }
 
         return false;
+    }
+
+    public void openQuestsWindow()
+    {
+        questsEditorWindow.show();
     }
 }
