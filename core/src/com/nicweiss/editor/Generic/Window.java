@@ -30,6 +30,7 @@ public class Window extends BaseCallBack implements CallBack {
     protected boolean isWindowActive = true;
     protected boolean isWindowIsDragged = false;
     protected boolean isHeaderIsDragged, isSliderIsDragged;
+    public boolean isScrollHidden = false;
 
     protected Font font;
     protected String windowName = "";
@@ -107,6 +108,8 @@ public class Window extends BaseCallBack implements CallBack {
         int secondSectionWidth = sectionWidth;
         int sectionY = y + padding;
         int sectionHeight = windowOperationalHeight;
+        leftSection.isScrollHidden = isScrollHidden;
+        rightSection.isScrollHidden = isScrollHidden;
 
         if (isDualSectionMode) {
             sectionWidth = width / 3;
@@ -238,10 +241,9 @@ public class Window extends BaseCallBack implements CallBack {
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp){
         float diffx, diffy;
-        if (!isWindowActive){
-            return true;
+        if (!isWindowActive || !isShowWindow){
+            return false;
         }
-
         if (isTouchUp && !isDragged) {
 //        Обработка открытия и закрытия
             if (isShowWindow && closeButton.isTouched) {
@@ -305,8 +307,8 @@ public class Window extends BaseCallBack implements CallBack {
     }
 
     public boolean checkKey(int keyCode){
-        if (!isWindowActive){
-            return true;
+        if (!isWindowActive || !isShowWindow){
+            return false;
         }
 
         if (isShowWindow){
@@ -324,9 +326,11 @@ public class Window extends BaseCallBack implements CallBack {
     }
 
     public void scrollDown(){
-        leftSection.scrollDown();
-        if (isDualSectionMode) {
-            rightSection.scrollDown();
+        if (isWindowActive && isShowWindow){
+            leftSection.scrollDown();
+            if (isDualSectionMode) {
+                rightSection.scrollDown();
+            }
         }
     }
 

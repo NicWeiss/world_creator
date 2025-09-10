@@ -9,9 +9,8 @@ import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.Uuid;
 
-import org.json.simple.JSONObject;
-
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 
 
 public class QuestsEditorWindow extends Window implements CallBack {
@@ -20,15 +19,24 @@ public class QuestsEditorWindow extends Window implements CallBack {
 
     BOHelper bo_helper;
     TextInputWindow tiw = new TextInputWindow();
-    JSONObject questsList;
+    LinkedHashMap questsList, selectedQuest;
 
-    ButtonCommon[] items;
+    Texture buttonBG, buttonBGHover, plusIcon, questIcon;
+    ButtonCommon[] items, questItems;
+    ButtonCommon button;
 
     public QuestsEditorWindow() {
         super();
         bo_helper = new BOHelper();
         questsList = store.quests;
         windowName = "Редактирование квестов";
+
+        buttonBG = new Texture("Buttons/btn_background.png");
+        buttonBGHover = new Texture("Buttons/btn_background_hover.png");
+
+        plusIcon = new Texture("icons/quest_window/plus.png");
+        questIcon = new Texture("icons/quest_window/quest.png");
+
     }
 
     @Override
@@ -43,6 +51,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
     }
 
     public void selectQuestCallback(String uuid){
+        prepareSelectedQuestsView(uuid);
 //        if (tiw.isShowWindow || !isWindowActive) { return; }
 //        dialogCursor++;
 //        dialogStack[dialogCursor] = uuid;
@@ -51,7 +60,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
 
     public void textEditCallback(String uuid, String key){
 //        if (tiw.isShowWindow || !isWindowActive) { return; }
-//        JSONObject obj = (JSONObject) rootDialogList.get(uuid);
+//        LinkedHashMap obj = (LinkedHashMap) rootDialogList.get(uuid);
 //        String value = (String) obj.get(key);
 //
 //        tiw.registerCallBack(
@@ -67,16 +76,25 @@ public class QuestsEditorWindow extends Window implements CallBack {
 
     }
 
+    public  LinkedHashMap getEmptyQuest() {
+        LinkedHashMap obj = new LinkedHashMap();
+
+        String uuid = Uuid.generate();
+        obj.put("__uuid__", uuid);
+        obj.put("__name__", "Новый квест #" + uuid);
+
+        return obj;
+    }
 
     public void addQuestCallback() {
         System.out.println("addQuestCallback");
-//        JSONObject parent_dialog = (JSONObject) rootDialogList.get(uuid);
-//        JSONObject new_dialog = this.getEmptyDialog();
-//
-//        String new_uuid = (String) new_dialog.get("__uuid__");
-//        rootDialogList.put(new_uuid, new_dialog);
-//        parent_dialog.put("__dialog__:" + new_uuid, "-->");
+        LinkedHashMap newQuest = this.getEmptyQuest();
+
+        String newUuid = (String) newQuest.get("__uuid__");
+        questsList.put(newUuid, newQuest);
+        prepareQuestsView();
 //        this.selectDialogCallback(new_uuid);
+        prepareSelectedQuestsView(newUuid);
     }
 
     public void buildWindow() {
@@ -94,7 +112,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
 
         if (isShowWindow) {
             renderItemsList(batch, items, false);
-//            rightSection.renderItemsList(batch, items, false);
+            rightSection.renderItemsList(batch, questItems, false);
         }
 
         if (tiw.isShowWindow) {
@@ -122,7 +140,6 @@ public class QuestsEditorWindow extends Window implements CallBack {
         }
 
         super.checkTouch(isDragged, isTouchUp);
-
         if (isShowWindow) {
             return true;
         }
@@ -148,19 +165,8 @@ public class QuestsEditorWindow extends Window implements CallBack {
         return false;
     }
 
-
-
     public void prepareQuestsView(){
         items = new ButtonCommon[1000];
-
-        Texture buttonBG, buttonBGHover;
-        buttonBG = new Texture("Buttons/btn_background.png");
-        buttonBGHover = new Texture("Buttons/btn_background_hover.png");
-
-        Texture plusIcon = new Texture("icons/quest_window/plus.png");
-        Texture questIcon = new Texture("icons/quest_window/quest.png");
-
-        ButtonCommon button;
 
         int i = 0;
 
@@ -175,9 +181,9 @@ public class QuestsEditorWindow extends Window implements CallBack {
         items[i] = button;
         i++;
 
-        for (Object keyEl: questsList.entrySet()) {
+        for (Object keyEl: questsList.keySet()) {
             String key = keyEl.toString();
-            JSONObject quest = (JSONObject) questsList.get(key);
+            LinkedHashMap quest = (LinkedHashMap) questsList.get(key);
 
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
@@ -186,14 +192,51 @@ public class QuestsEditorWindow extends Window implements CallBack {
             button.registerCallBack(
                 this,
                 "selectQuestCallback",
-                new String[]{(String) quest.get("uuid")}
+                new String[]{(String) quest.get("__uuid__")}
             );
             button.setIcon(questIcon);
             items[i] = button;
             i++;
         }
 
-
         items = Arrays.copyOfRange(items, 0, i);
+    }
+
+    public void prepareSelectedQuestsView(String uuid) {
+        questItems = new ButtonCommon[1000];
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(uuid);
+        int i = 0;
+
+//        button = new ButtonCommon();
+//        button.setBackgrounds(buttonBG, buttonBGHover);
+//        button.setText(font, "Добавить квест");
+//        button.registerCallBack(
+//            this,
+//            "addQuestCallback"
+//        );
+//        button.setIcon(plusIcon);
+//        questItems[i] = button;
+//        i++;
+
+        for (Object keyEl : quest.keySet()) {
+            String key = keyEl.toString();
+
+            if (key == "__name__") {
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+
+                button.setText(font, (String) quest.get(key));
+    //            button.registerCallBack(
+    //                this,
+    //                "selectQuestCallback",
+    //                new String[]{(String) quest.get("uuid")}
+    //            );
+    //            button.setIcon(questIcon);
+                questItems[i] = button;
+                i++;
+            }
+        }
+
+        questItems = Arrays.copyOfRange(questItems, 0, i);
     }
 }

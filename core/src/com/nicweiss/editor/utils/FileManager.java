@@ -3,7 +3,6 @@ package com.nicweiss.editor.utils;
 import com.nicweiss.editor.Generic.Store;
 import com.nicweiss.editor.objects.MapObject;
 
-import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
@@ -13,6 +12,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 
 public class FileManager {
     public static Store store;
@@ -69,7 +69,7 @@ public class FileManager {
 
     public String[][][] openMap() {
         JSONParser parser = new JSONParser();
-        store.dialogs = new JSONObject();
+        store.dialogs = new LinkedHashMap();
         mapWidth = 0;
         mapHeight = 0;
 
@@ -106,7 +106,7 @@ public class FileManager {
 
                     dialogUUIDList[i-1] = key;
 
-                    store.dialogs.put(key, (JSONObject) parser.parse(value));
+                    store.dialogs.put(key, (LinkedHashMap) parser.parse(value));
                 }
 
                 for (int i = 0; i < mapHeight; i++) {

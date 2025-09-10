@@ -7,6 +7,7 @@ import com.nicweiss.editor.utils.BOHelper;
 
 public class WindowSection {
     public static Store store;
+    public boolean isScrollHidden = false;
     protected int x, y, width, height;
     private BOHelper bo_helper;
     protected BaseObject slider, sliderBG;
@@ -60,12 +61,14 @@ public class WindowSection {
     }
 
     public void render(SpriteBatch batch) {
-        int sliderHeight = totalLines > 0 ? this.height / totalLines : this.height;
-        sliderGlobalY = sliderY + this.height;
-        sliderGlobalY = Math.min(sliderGlobalY, y + this.height);
-        sliderGlobalY = sliderGlobalY - sliderHeight < y ? y + sliderHeight : sliderGlobalY;
-        bo_helper.draw(batch, sliderBG, x + width - padding, y, padding-20, this.height);
-        bo_helper.draw(batch, slider, x + width - padding, sliderGlobalY, padding-20, sliderHeight * -1);
+        if (!isScrollHidden) {
+            int sliderHeight = totalLines > 0 ? this.height / totalLines : this.height;
+            sliderGlobalY = sliderY + this.height;
+            sliderGlobalY = Math.min(sliderGlobalY, y + this.height);
+            sliderGlobalY = sliderGlobalY - sliderHeight < y ? y + sliderHeight : sliderGlobalY;
+            bo_helper.draw(batch, sliderBG, x + width - padding, y, padding - 20, this.height);
+            bo_helper.draw(batch, slider, x + width - padding, sliderGlobalY, padding - 20, sliderHeight * -1);
+        }
     }
 
     public boolean checkTouch(float touchX, float touchY, boolean isDragged, boolean isTouchUp) {
@@ -108,7 +111,7 @@ public class WindowSection {
 
     public boolean checkKey(int keyCode) {
         if (store.mouseX >= x && store.mouseX <= x + width && store.mouseY >= y && store.mouseY <= y + height) {
-            if (keyCode == 19 || keyCode == 156) {
+            if (keyCode == 19 || keyCode == 157) {
                 menuShift--;
                 menuShift = Math.max(menuShift, 0);
                 sliderY = (int) (y + (slider.getHeight() * (menuShift)));
@@ -116,7 +119,7 @@ public class WindowSection {
                 return true;
             }
 
-            if (keyCode == 20 || keyCode == 157) {
+            if (keyCode == 20 || keyCode == 156) {
                 menuShift++;
                 menuShift = menuShift < totalLines ? menuShift : menuShift - 1;
                 sliderY = (int) (y + (slider.getHeight() * (menuShift)));
@@ -188,6 +191,9 @@ public class WindowSection {
         for (int i = Math.max(Math.min(menuShift * countPerLine, objectsCount), 0); i < objectsCount; i++) {
             _x = getSectionX() + xShift;
             _y = getSectionHeight() + getSectionY() - yShift;
+            if (objects[i] == null){
+                continue;
+            }
 
             if (_y > getSectionY()) {
                 if (!isTiled) {

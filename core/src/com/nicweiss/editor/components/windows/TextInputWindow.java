@@ -39,6 +39,8 @@ public class TextInputWindow extends Window{
         controlButtons[1] = createControlButton(TextInputWindow.class, "apply", "Save");
         windowColor = whiteColor;
 
+        isScrollHidden = true;
+
         super.buildWindow();
     }
 
@@ -88,6 +90,18 @@ public class TextInputWindow extends Window{
             return false;
         }
 
+        if (keyCode == 157) {
+            stage.keyDown(19);
+            stage.keyUp(19);
+            return true;
+        }
+
+        if (keyCode == 156) {
+            stage.keyDown(20);
+            stage.keyUp(20);
+            return true;
+        }
+
         return super.checkKey(keyCode);
     }
 
@@ -97,4 +111,6 @@ public class TextInputWindow extends Window{
         }
         return true;
     }
+
+
 }

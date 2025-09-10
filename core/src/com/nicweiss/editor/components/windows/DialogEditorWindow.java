@@ -9,9 +9,8 @@ import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.utils.BOHelper;
 import com.nicweiss.editor.utils.Uuid;
 
-import org.json.simple.JSONObject;
-
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 
 /**
  * Класс {@code DialogEditorWindow} представляет окно редактора диалогов.
@@ -26,10 +25,10 @@ public class DialogEditorWindow extends Window implements CallBack {
     public static Store store;
 
     BOHelper bo_helper;
-    JSONObject dialog = new JSONObject();
+    LinkedHashMap dialog = new LinkedHashMap();
     String[] dialogStack;
     TextInputWindow tiw = new TextInputWindow();
-    JSONObject rootDialogList;
+    LinkedHashMap rootDialogList;
 
     int dialogCursor = 0;
     ButtonCommon[] items;
@@ -74,7 +73,7 @@ public class DialogEditorWindow extends Window implements CallBack {
      */
     public void textEditCallback(String uuid, String key){
         if (tiw.isShowWindow || !isWindowActive) { return; }
-        JSONObject obj = (JSONObject) rootDialogList.get(uuid);
+        LinkedHashMap obj = (LinkedHashMap) rootDialogList.get(uuid);
         String value = (String) obj.get(key);
 
         tiw.registerCallBack(
@@ -94,7 +93,7 @@ public class DialogEditorWindow extends Window implements CallBack {
      * @param value Новое значение.
      */
     public void textEditDoneCallback(String uuid, String key, String value){
-        JSONObject obj = (JSONObject) rootDialogList.get(uuid);
+        LinkedHashMap obj = (LinkedHashMap) rootDialogList.get(uuid);
         obj.put(key, value);
         setUUID(uuid);
     }
@@ -104,8 +103,8 @@ public class DialogEditorWindow extends Window implements CallBack {
      * @param uuid Уникальный идентификатор родительского диалога.
      */
     public void addDialogLineCallback(String uuid) {
-        JSONObject parent_dialog = (JSONObject) rootDialogList.get(uuid);
-        JSONObject new_dialog = this.getEmptyDialog();
+        LinkedHashMap parent_dialog = (LinkedHashMap) rootDialogList.get(uuid);
+        LinkedHashMap new_dialog = this.getEmptyDialog();
 
         String new_uuid = (String) new_dialog.get("__uuid__");
         rootDialogList.put(new_uuid, new_dialog);
@@ -127,10 +126,10 @@ public class DialogEditorWindow extends Window implements CallBack {
     /**
      * Создает пустой объект диалога с заданным UUID.
      * @param uuid Уникальный идентификатор для нового диалога.
-     * @return Объект {@code JSONObject} с пустым диалогом.
+     * @return Объект {@code LinkedHashMap} с пустым диалогом.
      */
-    public JSONObject getEmptyDialog(String uuid){
-        JSONObject obj = new JSONObject();
+    public LinkedHashMap getEmptyDialog(String uuid){
+        LinkedHashMap obj = new LinkedHashMap();
 
         obj.put("__uuid__", uuid);
         obj.put("__isBranchHide__", Boolean.FALSE);
@@ -140,9 +139,9 @@ public class DialogEditorWindow extends Window implements CallBack {
 
     /**
      * Создает пустой объект диалога с автоматически сгенерированным UUID.
-     * @return Объект {@code JSONObject} с пустым диалогом.
+     * @return Объект {@code LinkedHashMap} с пустым диалогом.
      */
-    public JSONObject getEmptyDialog(){ return getEmptyDialog(Uuid.generate());}
+    public LinkedHashMap getEmptyDialog(){ return getEmptyDialog(Uuid.generate());}
 
     /**
      * Метод отрисовки окна и его компонентов.
@@ -226,9 +225,9 @@ public class DialogEditorWindow extends Window implements CallBack {
      */
     public void setRoot(String rootKey) {
         if (store.dialogs.containsKey(rootKey)) {
-            rootDialogList = (JSONObject) store.dialogs.get(rootKey);
+            rootDialogList = (LinkedHashMap) store.dialogs.get(rootKey);
         } else {
-            JSONObject newRootDialogList = new JSONObject();
+            LinkedHashMap newRootDialogList = new LinkedHashMap();
             store.dialogs.put(rootKey, newRootDialogList);
             rootDialogList = newRootDialogList;
         }
@@ -254,7 +253,7 @@ public class DialogEditorWindow extends Window implements CallBack {
             }
         }
 
-        dialog = (JSONObject) rootDialogList.get(uuid);
+        dialog = (LinkedHashMap) rootDialogList.get(uuid);
 
         if (dialog == null){
             dialog = getEmptyDialog(uuid);
@@ -388,7 +387,7 @@ public class DialogEditorWindow extends Window implements CallBack {
 
             if (key.contains("__dialog__")) {
                 String[] subKeys = key.split(":");
-                JSONObject subDialog = (JSONObject) rootDialogList.get(subKeys[1]);
+                LinkedHashMap subDialog = (LinkedHashMap) rootDialogList.get(subKeys[1]);
                 dialog.replace(key, subDialog);
                 if (subDialog.get("__request__") != null) {
                     button.setText(font, subDialog.get("__request__").toString());

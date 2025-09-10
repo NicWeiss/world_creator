@@ -3,9 +3,8 @@ package com.nicweiss.editor.Generic;
 import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
 
-import org.json.simple.JSONObject;
-
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 
 
 public class Store {
@@ -47,8 +46,8 @@ public class Store {
 
     public static int[][] pressedKeys = new int[100][2];
 
-    public static JSONObject dialogs = new JSONObject();
-    public static JSONObject quests = new JSONObject();
+    public static LinkedHashMap<String, Object> dialogs = new LinkedHashMap<>();
+    public static LinkedHashMap<String, Object> quests = new LinkedHashMap<>();
 
     public static Creation[] creations = new Creation[100];
     public static int creationCount = -1;
