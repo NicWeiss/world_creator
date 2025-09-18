@@ -175,7 +175,7 @@ public class Window extends BaseCallBack implements CallBack {
         if (isShowWindow) {
             calcWindowSize();
 
-            bo_helper.draw(batch, windowBG, x, y - additionalHeight,  width, height);
+            bo_helper.draw(batch, windowBG, x, y - additionalHeight,  width, height + additionalHeight);
             bo_helper.draw(batch, window, x, y,  width, height);
 
 //            BORDERS

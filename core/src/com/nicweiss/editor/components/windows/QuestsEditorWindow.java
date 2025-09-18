@@ -18,9 +18,10 @@ public class QuestsEditorWindow extends Window implements CallBack {
 
     BOHelper bo_helper;
     TextInputWindow tiw = new TextInputWindow();
+    ActionConfirnWindow acw = new ActionConfirnWindow();
     LinkedHashMap questsList, selectedQuest;
 
-    Texture buttonBG, buttonBGHover, plusIcon, questIcon;
+    Texture buttonBG, buttonBGHover, plusIcon, questIcon, trashIcon;
     ButtonCommon[] items, questItems;
     ButtonCommon button;
 
@@ -35,7 +36,18 @@ public class QuestsEditorWindow extends Window implements CallBack {
 
         plusIcon = new Texture("icons/quest_window/plus.png");
         questIcon = new Texture("icons/quest_window/quest.png");
+        trashIcon = new Texture("icons/quest_window/trash.png");
 
+    }
+
+    public void buildWindow() {
+        setDualSectionMode(true);
+        super.buildWindow();
+        tiw.buildWindow();
+        acw.buildWindow();
+        menuObjectSpace = 7;
+        itemWidth = 20;
+        itemHeight = 20;
     }
 
     @Override
@@ -67,6 +79,19 @@ public class QuestsEditorWindow extends Window implements CallBack {
         prepareSelectedQuestView(newUuid);
     }
 
+    public void deleteQuestConfirm(String questUuid) {
+        acw.setText("Удалить квест ?");
+        acw.registerCallBack(this, "deleteQuest", new String[]{questUuid});
+        acw.show();
+    }
+
+    public void deleteQuest(String questUuid){
+        questsList.remove(questUuid);
+        selectedQuest = null;
+        questItems = new ButtonCommon[0];
+        prepareQuestsView();
+    }
+
     public void addQuestOption(String questUuid){
 
     }
@@ -94,15 +119,6 @@ public class QuestsEditorWindow extends Window implements CallBack {
         this.prepareSelectedQuestView(uuid);
     }
 
-    public void buildWindow() {
-        setDualSectionMode(true);
-        super.buildWindow();
-        tiw.buildWindow();
-        menuObjectSpace = 7;
-        itemWidth = 20;
-        itemHeight = 20;
-    }
-
 
     public void render(SpriteBatch batch) {
         super.render(batch);
@@ -115,7 +131,10 @@ public class QuestsEditorWindow extends Window implements CallBack {
         if (tiw.isShowWindow) {
             tiw.render(batch);
             isWindowActive = false;
-        } else {
+        } if (acw.isShowWindow) {
+            acw.render(batch);
+            isWindowActive = false;
+        }else {
             isWindowActive = true;
         }
     }
@@ -130,6 +149,9 @@ public class QuestsEditorWindow extends Window implements CallBack {
             return true;
         }
 
+        if (acw.isShowWindow && acw.checkTouch(isDragged, isTouchUp)){
+            return true;
+        }
 
         if (leftSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)){
             return true;
@@ -137,18 +159,6 @@ public class QuestsEditorWindow extends Window implements CallBack {
         if (rightSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)){
             return true;
         }
-
-//        if (isTouchUp && items != null) {
-//            for (ButtonCommon item : items) {
-//                item.checkTouchAndExec();
-//            }
-//        }
-//
-//        if (isTouchUp && questItems != null) {
-//            for (ButtonCommon item : questItems) {
-//                item.checkTouchAndExec();
-//            }
-//        }
 
         super.checkTouch(isDragged, isTouchUp);
         if (isShowWindow) {
@@ -283,6 +293,19 @@ public class QuestsEditorWindow extends Window implements CallBack {
         button.registerCallBack(
             this,
             "addQuestOption",
+            new String[]{uuid}
+        );
+        questItems[i] = button;
+        i++;
+
+//        Удаление квеста
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(trashIcon);
+        button.setText(font, "Удалить квест");
+        button.registerCallBack(
+            this,
+            "deleteQuestConfirm",
             new String[]{uuid}
         );
         questItems[i] = button;
