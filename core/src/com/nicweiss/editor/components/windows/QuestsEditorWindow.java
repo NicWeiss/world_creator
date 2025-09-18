@@ -14,7 +14,6 @@ import java.util.LinkedHashMap;
 
 
 public class QuestsEditorWindow extends Window implements CallBack {
-    private String uuid;
     public static Store store;
 
     BOHelper bo_helper;
@@ -44,36 +43,8 @@ public class QuestsEditorWindow extends Window implements CallBack {
         prepareQuestsView();
     }
 
-    public void getBackCallback(){
-//        if (tiw.isShowWindow || !isWindowActive) { return; }
-//        dialogCursor--;
-//        setUUID(dialogStack[dialogCursor]);
-    }
-
     public void selectQuestCallback(String uuid){
-        prepareSelectedQuestsView(uuid);
-//        if (tiw.isShowWindow || !isWindowActive) { return; }
-//        dialogCursor++;
-//        dialogStack[dialogCursor] = uuid;
-//        setUUID(uuid);
-    }
-
-    public void textEditCallback(String uuid, String key){
-//        if (tiw.isShowWindow || !isWindowActive) { return; }
-//        LinkedHashMap obj = (LinkedHashMap) rootDialogList.get(uuid);
-//        String value = (String) obj.get(key);
-//
-//        tiw.registerCallBack(
-//            this,
-//            "textEditDoneCallback",
-//            new String[]{uuid,key,""}
-//        );
-//        tiw.setText(value);
-//        tiw.show();
-    }
-
-    public void textEditDoneCallback(String uuid, String key, String value){
-
+        prepareSelectedQuestView(uuid);
     }
 
     public  LinkedHashMap getEmptyQuest() {
@@ -93,8 +64,34 @@ public class QuestsEditorWindow extends Window implements CallBack {
         String newUuid = (String) newQuest.get("__uuid__");
         questsList.put(newUuid, newQuest);
         prepareQuestsView();
-//        this.selectDialogCallback(new_uuid);
-        prepareSelectedQuestsView(newUuid);
+        prepareSelectedQuestView(newUuid);
+    }
+
+    public void addQuestOption(String questUuid){
+
+    }
+
+    public void editQuestTextField(String questUuid, String fieldName) {
+        if (tiw.isShowWindow || !isWindowActive) { return; }
+        LinkedHashMap obj = (LinkedHashMap) questsList.get(questUuid);
+        String value = (String) obj.get(fieldName);
+
+        tiw.registerCallBack(
+            this,
+            "textEditDoneCallback",
+            new String[]{questUuid,fieldName,""}
+        );
+        tiw.setText(value);
+        tiw.show();
+    }
+
+
+    public void textEditDoneCallback(String uuid, String fieldName, String value){
+        LinkedHashMap obj = (LinkedHashMap) questsList.get(uuid);
+        obj.put(fieldName, value);
+
+        this.prepareQuestsView();
+        this.prepareSelectedQuestView(uuid);
     }
 
     public void buildWindow() {
@@ -129,15 +126,29 @@ public class QuestsEditorWindow extends Window implements CallBack {
             return false;
         }
 
-        if (tiw.checkTouch(isDragged, isTouchUp) || tiw.isShowWindow){
+        if (tiw.isShowWindow && tiw.checkTouch(isDragged, isTouchUp)){
             return true;
         }
 
-        if (isTouchUp && items != null) {
-            for (ButtonCommon item : items) {
-                item.checkTouchAndExec();
-            }
+
+        if (leftSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)){
+            return true;
         }
+        if (rightSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)){
+            return true;
+        }
+
+//        if (isTouchUp && items != null) {
+//            for (ButtonCommon item : items) {
+//                item.checkTouchAndExec();
+//            }
+//        }
+//
+//        if (isTouchUp && questItems != null) {
+//            for (ButtonCommon item : questItems) {
+//                item.checkTouchAndExec();
+//            }
+//        }
 
         super.checkTouch(isDragged, isTouchUp);
         if (isShowWindow) {
@@ -172,12 +183,12 @@ public class QuestsEditorWindow extends Window implements CallBack {
 
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(plusIcon);
         button.setText(font, "Добавить квест");
         button.registerCallBack(
             this,
             "addQuestCallback"
         );
-        button.setIcon(plusIcon);
         items[i] = button;
         i++;
 
@@ -187,14 +198,13 @@ public class QuestsEditorWindow extends Window implements CallBack {
 
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
-
+            button.setIcon(questIcon);
             button.setText(font, (String) quest.get("__name__"));
             button.registerCallBack(
                 this,
                 "selectQuestCallback",
                 new String[]{(String) quest.get("__uuid__")}
             );
-            button.setIcon(questIcon);
             items[i] = button;
             i++;
         }
@@ -202,10 +212,11 @@ public class QuestsEditorWindow extends Window implements CallBack {
         items = Arrays.copyOfRange(items, 0, i);
     }
 
-    public void prepareSelectedQuestsView(String uuid) {
+    public void prepareSelectedQuestView(String uuid) {
         questItems = new ButtonCommon[1000];
         LinkedHashMap quest = (LinkedHashMap) questsList.get(uuid);
         int i = 0;
+        boolean hasDescription = false;
 
 //        button = new ButtonCommon();
 //        button.setBackgrounds(buttonBG, buttonBGHover);
@@ -226,16 +237,56 @@ public class QuestsEditorWindow extends Window implements CallBack {
                 button.setBackgrounds(buttonBG, buttonBGHover);
 
                 button.setText(font, (String) quest.get(key));
-    //            button.registerCallBack(
-    //                this,
-    //                "selectQuestCallback",
-    //                new String[]{(String) quest.get("uuid")}
-    //            );
-    //            button.setIcon(questIcon);
+                button.registerCallBack(
+                    this,
+                    "editQuestTextField",
+                    new String[]{uuid, "__name__"}
+                );
+                questItems[i] = button;
+                i++;
+            }
+
+            if (key == "__description__") {
+                hasDescription = true;
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+
+                button.setText(font, (String) quest.get(key));
+                button.registerCallBack(
+                    this,
+                    "editQuestTextField",
+                    new String[]{uuid, "__description__"}
+                );
                 questItems[i] = button;
                 i++;
             }
         }
+
+        if (!hasDescription) {
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(plusIcon);
+            button.setText(font, "Добавить описание");
+            button.registerCallBack(
+                this,
+                "editQuestTextField",
+                new String[]{uuid, "__description__"}
+            );
+            questItems[i] = button;
+            i++;
+        }
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(plusIcon);
+        button.setText(font, "Добавить квестовую цель");
+        button.registerCallBack(
+            this,
+            "addQuestOption",
+            new String[]{uuid}
+        );
+        questItems[i] = button;
+        i++;
 
         questItems = Arrays.copyOfRange(questItems, 0, i);
     }

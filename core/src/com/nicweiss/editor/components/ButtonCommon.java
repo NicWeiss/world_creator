@@ -1,11 +1,12 @@
 package com.nicweiss.editor.components;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.nicweiss.editor.Interfaces.BaseCallBack;
 import com.nicweiss.editor.utils.Font;
 
+import java.util.ArrayList;
+import java.util.List;
 
 
 public class ButtonCommon extends BaseCallBack {
@@ -13,7 +14,7 @@ public class ButtonCommon extends BaseCallBack {
     private String text;
     public int textPadding = 10;
     int iconSize = 0;
-    int lastUniqueId = -999;
+    private List<String> lines = new ArrayList<>();
 
     String key;
 
@@ -28,11 +29,20 @@ public class ButtonCommon extends BaseCallBack {
         this.font = font;
         text = buttonText;
 
-        textHeight = font.getHeight(text);
+        this.recalculateLines();
         height = getTextHeight();
+    }
 
+    public void setWidthByText(){
         textWidth = font.getWidth(text);
         width = getTextWidth();
+    }
+
+    public void setWidth(int width) {
+        super.setWidth(width);
+
+        recalculateLines();
+        height = getTextHeight();
     }
 
     public String getText(){
@@ -44,6 +54,7 @@ public class ButtonCommon extends BaseCallBack {
         execCallBack();
     }
 
+    @Override
     public boolean checkTouchAndExec() {
         checkTouch(store.mouseX, store.mouseY);
         if (isTouched) {
@@ -57,41 +68,93 @@ public class ButtonCommon extends BaseCallBack {
         return isTouched;
     }
 
-//    Отключено так как компонент не может корректно понять когда нужно а когда не нужно срабатывать
-//    public void checkPressAndExec(float x, float y) {
-//        checkTouch(x, y);
-//        if (isTouched) {
-//            try {
-//                for (int[] el : store.pressedKeys) {
-//                    if (el[0] == 0 && lastUniqueId != el[1] && store.isTouchUp) {
-//                        lastUniqueId = el[1];
-//                        execTouch();
-//                    }
-//                }
-//            } catch (Exception e) {
-//                e.printStackTrace();
-//            }
-//        }
-//    }
+    private void recalculateLines() {
+        if (font == null || text == null) {
+            return;
+        }
+
+        lines.clear();
+
+        if ( width == 0) {
+            lines.add(text);
+            return;
+        }
+
+        float maxTextWidth = this.width - 20;
+        maxTextWidth -= (iconSize * 1.5f);
+
+        String[] paragraphs = text.split("\n");
+        for (String paragraph : paragraphs) {
+            String[] words = paragraph.split("\\s+");
+            StringBuilder currentLine = new StringBuilder();
+
+            for (String word : words) {
+                if (word.isEmpty()) {
+                    continue;
+                }
+                String testLine = currentLine.length() == 0 ? word : currentLine + " " + word;
+                if (font.getWidth(testLine) <= maxTextWidth) {
+                    currentLine.append(currentLine.length() == 0 ? word : " " + word);
+                } else {
+                    if (currentLine.length() > 0) {
+                        lines.add(currentLine.toString());
+                        currentLine = new StringBuilder(word);
+                    } else {
+                        lines.add(word);
+                        currentLine = new StringBuilder();
+                    }
+                }
+            }
+            if (currentLine.length() > 0) {
+                lines.add(currentLine.toString());
+            }
+        }
+
+        if (lines.isEmpty()) {
+            lines.add("");
+        }
+    }
 
     @Override
     public void draw(Batch batch) {
         img = isTouched ? backgroundHover : background;
+
+        this.recalculateLines();
+        height = getTextHeight();
+
         super.draw(batch);
 
         if (icon != null){
-            iconSize = height;
-            batch.draw(icon, x  + textPadding, y + textPadding - 10, iconSize, iconSize);
+            iconSize = 30;
+            batch.draw(icon, x  + textPadding, y + height - iconSize, iconSize, iconSize);
         }
-        font.draw( batch, text, x  + textPadding + (iconSize * 1.5f), y + textPadding);
+
+        float startY = y + getTextHeight() - (textPadding * 2);
+        float startX = x + textPadding;
+        if (icon != null) {
+            startX += iconSize * 1.5f;
+        }
+
+        for (String line : lines) {
+            font.draw(batch, line, startX, startY);
+            startY -= textHeight + 5; // Сдвигаем вниз на высоту строки + небольшой отступ
+        }
     }
 
     public int getTextHeight(){
-        return (int) (textHeight + (textPadding * 2));
+        textHeight = font.getHeight("A");
+        int lineCount = lines.size();
+         int heightOfText = (int) ((lineCount * textHeight) + (textPadding * 2));
+
+         if (lineCount > 1) {
+             heightOfText = heightOfText + (lineCount * 5);
+         }
+
+         return heightOfText;
     }
 
     public int getTextWidth(){
-        return (int) (textWidth + (textPadding *2));
+        return (int) (textWidth + (textPadding * 2));
     }
 
     public void setBackgrounds(Texture background, Texture backgroundHover){
@@ -114,5 +177,6 @@ public class ButtonCommon extends BaseCallBack {
 
     public void setIcon(Texture icon) {
         this.icon = icon;
+        iconSize = 30;
     }
 }

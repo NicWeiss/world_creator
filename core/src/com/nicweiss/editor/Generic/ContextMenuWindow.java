@@ -35,6 +35,7 @@ public class ContextMenuWindow implements CallBack {
         ButtonCommon button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setText(font, buttonText);
+        button.setWidthByText();
         Method method = null;
 
         try {

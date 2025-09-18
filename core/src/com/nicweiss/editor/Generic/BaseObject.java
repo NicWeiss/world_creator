@@ -32,6 +32,7 @@ public class BaseObject implements Cloneable {
     protected float dynamicLightRed=defaultLight, dynamicLightGreen=defaultLight, dynamicLightBlue=defaultLight;
 
     public boolean isTouched = false;
+    public boolean hasCallback = false;
     public boolean isShowBackgroundWhileHover = false;
     public boolean isPlayerInside = false;
     public boolean isEnableRenderLimits = false;
@@ -251,5 +252,9 @@ public class BaseObject implements Cloneable {
 
     public String getUUID(){
         return uuid;
+    }
+
+    public boolean checkTouchAndExec() {
+        return isTouched;
     }
 }

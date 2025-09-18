@@ -17,6 +17,7 @@ public class BaseCallBack extends BaseObject {
     public void registerCallBack(CallBack classInstance, Method method) {
         this.callBack = classInstance;
         this.method = method;
+        hasCallback = true;
     }
 
     public void registerCallBack(CallBack classInstance, String methodName) {
@@ -27,6 +28,7 @@ public class BaseCallBack extends BaseObject {
                 this.method = m;
             }
         }
+        hasCallback = true;
     }
 
     public void registerCallBack(CallBack classInstance, String methodName, String[] params) {
@@ -43,6 +45,7 @@ public class BaseCallBack extends BaseObject {
             this.method = null;
             this.params = null;
         }
+        hasCallback = true;
     }
     
     public void execCallBack() throws Exception {

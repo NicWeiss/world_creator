@@ -140,6 +140,7 @@ public class Window extends BaseCallBack implements CallBack {
         }
 
         button.registerCallBack(this, method);
+        button.setWidth(130);
 
         return button;
     }

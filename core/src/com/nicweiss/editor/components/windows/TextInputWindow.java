@@ -23,8 +23,8 @@ public class TextInputWindow extends Window{
     public TextInputWindow() {
         super();
         windowName = "Редактирование";
-        windowWidth = 600;
-        windowHeight = 200;
+        windowWidth = 800;
+        windowHeight = 400;
 
         whiteColor = new Texture("white.png");
 
@@ -47,6 +47,11 @@ public class TextInputWindow extends Window{
     @Override
     public void onShow() {
         stage.setKeyboardFocus(textArea);
+    }
+
+    @Override
+    public  void onHide(){
+        textArea.setBounds(-10, -10, 1, 1);
     }
 
     public void setText(String text) {
@@ -74,6 +79,10 @@ public class TextInputWindow extends Window{
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp){
+        if (!isShowWindow) {
+            return false;
+        }
+
         super.checkTouch(isDragged, isTouchUp);
 
         if (isShowWindow) {

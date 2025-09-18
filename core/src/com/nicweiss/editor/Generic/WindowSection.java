@@ -25,6 +25,8 @@ public class WindowSection {
     protected int sliderY = 0;
     protected int padding = 5;
     protected int sliderGlobalY;
+    protected int menuWidth = 0;
+    protected BaseObject[] visibleItems;
 
     public WindowSection() {
         sliderColorBG = new Texture("Buttons/separator.png");
@@ -104,6 +106,15 @@ public class WindowSection {
             } else {
                 isSliderIsDragged = false;
             }
+
+//        проверка нажатий на видимые объекты
+            if (isTouchUp && visibleItems != null) {
+                for (BaseObject item : visibleItems) {
+                    if (item == null){ break; }
+                    item.checkTouchAndExec();
+                }
+            }
+
             return true;
         }
         return false;
@@ -155,6 +166,9 @@ public class WindowSection {
     }
 
     public void renderItems(SpriteBatch batch, BaseObject[] objects, boolean isTiled, boolean withDetails) {
+        int visibleItemId = 0;
+        visibleItems = new BaseObject[1000];
+
         if (!isBuilt){return;}
         setObjects(objects, isTiled);
 
@@ -175,7 +189,6 @@ public class WindowSection {
 
         int xShift = 20, yShift = (int)objects[0].getHeight() + 20;
         int _x, _y;
-        int menuWidth;
         menuWidth = withDetails ? getSectionWidth() / 3 : getSectionWidth();
         int countPerLine = isTiled ? menuWidth / (itemWidth + 20) : 1;
 
@@ -189,28 +202,41 @@ public class WindowSection {
 
 //        Отрисовка объектов
         for (int i = Math.max(Math.min(menuShift * countPerLine, objectsCount), 0); i < objectsCount; i++) {
-            _x = getSectionX() + xShift;
-            _y = getSectionHeight() + getSectionY() - yShift;
             if (objects[i] == null){
                 continue;
             }
 
-            if (_y > getSectionY()) {
-                if (!isTiled) {
-                    objects[i].setWidth(menuWidth - 60);
-                }
-                bo_helper.draw(batch, objects[i], _x, _y, true);
+            if (!isTiled) {
+                objects[i].setWidth(menuWidth - 60);
 
-                if (objects[i].isTouched) {
-                    batch.draw(tilePickerSelector, _x, _y, itemWidth, 15);
+                int newYShift = (int)objects[i].getHeight() + 20;
+                if (i==menuShift) {
+                    yShift = newYShift;
+                } else {
+                    yShift = yShift + newYShift;
                 }
-                objects[i].draw(batch);
             }
 
-            xShift = xShift + (menuObjectSpace + 10);
-            if ((xShift + itemHeight) > Math.min(menuWidth+slider.getWidth(), (itemHeight + 20) * countPerLine)) {
-                xShift = 20;
-                yShift = yShift + (itemHeight + 20);
+            _x = getSectionX() + xShift;
+            _y = getSectionHeight() + getSectionY() - yShift;
+
+            if (_y > getSectionY()) {
+                bo_helper.draw(batch, objects[i], _x, _y, true);
+                visibleItems[visibleItemId] = objects[i];
+                visibleItemId += 1;
+
+                if (objects[i].isTouched && isTiled) {
+                    batch.draw(tilePickerSelector, _x, _y, objects[i].getWidth(), 15);
+                }
+            }
+
+            if (isTiled) {
+                itemHeight = (int) objects[i].getHeight();
+                xShift = xShift + (menuObjectSpace + 10);
+                if ((xShift + itemHeight) > Math.min(menuWidth + slider.getWidth(), (itemHeight + 20) * countPerLine)) {
+                    xShift = 20;
+                    yShift = yShift + (itemHeight + 20);
+                }
             }
         }
     }
