@@ -280,17 +280,21 @@ public class Window extends BaseCallBack implements CallBack {
                 headerTouchY = store.mouseY;
                 return true;
             }
-        } else {
+        }
+
+        if (isTouchUp){
             isWindowIsDragged = false;
             isHeaderIsDragged = false;
         }
 
-        if (leftSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)) {
-            return true;
-        }
-        if (isDualSectionMode) {
-            if (rightSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)) {
+        if (!isHeaderIsDragged) {
+            if (leftSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)) {
                 return true;
+            }
+            if (isDualSectionMode) {
+                if (rightSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)) {
+                    return true;
+                }
             }
         }
 

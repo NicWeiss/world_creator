@@ -21,7 +21,8 @@ public class QuestsEditorWindow extends Window implements CallBack {
     ActionConfirnWindow acw = new ActionConfirnWindow();
     LinkedHashMap questsList, selectedQuest;
 
-    Texture buttonBG, buttonBGHover, plusIcon, questIcon, trashIcon;
+    Texture buttonBG, buttonBGHover, plusIcon, questIcon, trashIcon, questOptionIcon, nameIcon, descriptionIcon;
+    Texture checkboxOn, checkboxOff, experienceIcon;
     ButtonCommon[] items, questItems;
     ButtonCommon button;
 
@@ -36,7 +37,14 @@ public class QuestsEditorWindow extends Window implements CallBack {
 
         plusIcon = new Texture("icons/quest_window/plus.png");
         questIcon = new Texture("icons/quest_window/quest.png");
+        questOptionIcon = new Texture("icons/quest_window/quest_option.png");
         trashIcon = new Texture("icons/quest_window/trash.png");
+        nameIcon = new Texture("icons/quest_window/name.png");
+        descriptionIcon = new Texture("icons/quest_window/description.png");
+        experienceIcon = new Texture("icons/quest_window/experience.png");
+
+        checkboxOn = new Texture("icons/forms/checkbox_on.png");
+        checkboxOff = new Texture("icons/forms/checkbox_off.png");
 
     }
 
@@ -65,12 +73,13 @@ public class QuestsEditorWindow extends Window implements CallBack {
         String uuid = Uuid.generate();
         obj.put("__uuid__", uuid);
         obj.put("__name__", "Новый квест #" + uuid);
+        obj.put("__is_received__", 0);
+        obj.put("__is_complete__", 0);
 
         return obj;
     }
 
     public void addQuestCallback() {
-        System.out.println("addQuestCallback");
         LinkedHashMap newQuest = this.getEmptyQuest();
 
         String newUuid = (String) newQuest.get("__uuid__");
@@ -79,6 +88,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
         prepareSelectedQuestView(newUuid);
     }
 
+//    Deleting quest
     public void deleteQuestConfirm(String questUuid) {
         acw.setText("Удалить квест ?");
         acw.registerCallBack(this, "deleteQuest", new String[]{questUuid});
@@ -92,10 +102,35 @@ public class QuestsEditorWindow extends Window implements CallBack {
         prepareQuestsView();
     }
 
+//    Adding quest option
     public void addQuestOption(String questUuid){
-
+        tiw.registerCallBack(
+            this,
+            "addQuestOptionDoneCallback",
+            new String[]{questUuid,""}
+        );
+        tiw.setText("");
+        tiw.show();
     }
 
+    public void addQuestOptionDoneCallback(String questUuid, String optionText) {
+        LinkedHashMap option = new LinkedHashMap();
+
+        String uuid = Uuid.generate();
+        String optionUuid = "quest_" + uuid;
+        option.put("__uuid__", optionUuid);
+        option.put("__text__", optionText);
+        option.put("__exp__", 0);
+        option.put("__is_available__", 1);
+        option.put("__is_complete__", 0);
+
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        quest.put(optionUuid, option);
+
+        prepareOptionOfSelectedQuestView(questUuid, optionUuid);
+    }
+
+//    Change Quest text field
     public void editQuestTextField(String questUuid, String fieldName) {
         if (tiw.isShowWindow || !isWindowActive) { return; }
         LinkedHashMap obj = (LinkedHashMap) questsList.get(questUuid);
@@ -110,7 +145,6 @@ public class QuestsEditorWindow extends Window implements CallBack {
         tiw.show();
     }
 
-
     public void textEditDoneCallback(String uuid, String fieldName, String value){
         LinkedHashMap obj = (LinkedHashMap) questsList.get(uuid);
         obj.put(fieldName, value);
@@ -119,7 +153,84 @@ public class QuestsEditorWindow extends Window implements CallBack {
         this.prepareSelectedQuestView(uuid);
     }
 
+// Change Quest option text
+    public void editQuestOptionText(String questUuid, String optionUuid) {
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        LinkedHashMap option = (LinkedHashMap) quest.get(optionUuid);
 
+        tiw.registerCallBack(
+            this,
+            "editQuestOptionTextDone",
+            new String[]{questUuid,optionUuid,""}
+        );
+        tiw.setText((String) option.get("__text__"));
+        tiw.show();
+    }
+
+    public void editQuestOptionTextDone(String questUuid, String optionUuid, String text) {
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        LinkedHashMap option = (LinkedHashMap) quest.get(optionUuid);
+        option.put("__text__", text);
+
+        prepareOptionOfSelectedQuestView(questUuid, optionUuid);
+    }
+
+// Change Quest option experience
+    public void editQuestOptionExp(String questUuid, String optionUuid) {
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        LinkedHashMap option = (LinkedHashMap) quest.get(optionUuid);
+
+        tiw.registerCallBack(
+            this,
+            "editQuestOptionExpDone",
+            new String[]{questUuid,optionUuid,""}
+        );
+        tiw.setText(String.valueOf((int)option.get("__exp__")));
+        tiw.show();
+    }
+
+    public void editQuestOptionExpDone(String questUuid, String optionUuid, String text) {
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        LinkedHashMap option = (LinkedHashMap) quest.get(optionUuid);
+        text = text.replaceAll("[^0-9]", "");
+        if (text.isEmpty()){
+            text = "0";
+        }
+
+        option.put("__exp__", Integer.parseInt(text));
+
+        prepareOptionOfSelectedQuestView(questUuid, optionUuid);
+    }
+
+//    Deleting quest
+    public void deleteQuestOptionConfirm(String questUuid, String optionUuid) {
+        acw.setText("Удалить квестовую опцию ?");
+        acw.registerCallBack(
+            this,
+            "deleteQuestOption",
+            new String[]{questUuid, optionUuid}
+        );
+        acw.show();
+    }
+
+    public void deleteQuestOption(String questUuid, String optionUuid){
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        quest.remove(optionUuid);
+        prepareSelectedQuestView(questUuid);
+    }
+
+//    Toggle available quest option
+    public void toggleQuestOptionAvailable(String questUuid, String optionUuid) {
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        LinkedHashMap option = (LinkedHashMap) quest.get(optionUuid);
+        int isAvailable = (int) option.get("__is_available__");
+        isAvailable = isAvailable == 1 ? 0 : 1;
+        option.put("__is_available__", isAvailable);
+
+        prepareOptionOfSelectedQuestView(questUuid, optionUuid);
+    }
+
+//    RENDER
     public void render(SpriteBatch batch) {
         super.render(batch);
 
@@ -150,13 +261,6 @@ public class QuestsEditorWindow extends Window implements CallBack {
         }
 
         if (acw.isShowWindow && acw.checkTouch(isDragged, isTouchUp)){
-            return true;
-        }
-
-        if (leftSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)){
-            return true;
-        }
-        if (rightSection.checkTouch(store.mouseX, store.mouseY, isDragged, isTouchUp)){
             return true;
         }
 
@@ -239,14 +343,16 @@ public class QuestsEditorWindow extends Window implements CallBack {
 //        questItems[i] = button;
 //        i++;
 
+//        Собираем название и описание квеста
         for (Object keyEl : quest.keySet()) {
             String key = keyEl.toString();
 
             if (key == "__name__") {
                 button = new ButtonCommon();
                 button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(nameIcon);
 
-                button.setText(font, (String) quest.get(key));
+                button.setText(font, "Название: " + (String) quest.get(key));
                 button.registerCallBack(
                     this,
                     "editQuestTextField",
@@ -260,8 +366,9 @@ public class QuestsEditorWindow extends Window implements CallBack {
                 hasDescription = true;
                 button = new ButtonCommon();
                 button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(descriptionIcon);
 
-                button.setText(font, (String) quest.get(key));
+                button.setText(font, "Описание: " + (String) quest.get(key));
                 button.registerCallBack(
                     this,
                     "editQuestTextField",
@@ -286,6 +393,27 @@ public class QuestsEditorWindow extends Window implements CallBack {
             i++;
         }
 
+        // Собираем квестовые опции если есть
+        for (Object keyEl : quest.keySet()) {
+            String key = keyEl.toString();
+
+            if (key.contains("quest_")){
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                LinkedHashMap option = (LinkedHashMap) quest.get(key);
+                button.setIcon(questOptionIcon);
+
+                button.setText(font, "Цель : " + (String) option.get("__text__"));
+                button.registerCallBack(
+                    this,
+                    "prepareOptionOfSelectedQuestView",
+                    new String[]{uuid, (String) option.get("__uuid__")}
+                );
+                questItems[i] = button;
+                i++;
+            }
+        }
+
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setIcon(plusIcon);
@@ -307,6 +435,95 @@ public class QuestsEditorWindow extends Window implements CallBack {
             this,
             "deleteQuestConfirm",
             new String[]{uuid}
+        );
+        questItems[i] = button;
+        i++;
+
+        questItems = Arrays.copyOfRange(questItems, 0, i);
+    }
+
+    public void prepareOptionOfSelectedQuestView(String questUuid, String optionUuid) {
+        questItems = new ButtonCommon[1000];
+        int i = 0;
+
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        LinkedHashMap option = (LinkedHashMap) quest.get(optionUuid);
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(
+            this,
+            "prepareSelectedQuestView",
+            new String[]{questUuid}
+        );
+        questItems[i] = button;
+        i++;
+
+        for (Object keyEl : option.keySet()) {
+            String key = keyEl.toString();
+
+            if (key == "__text__"){
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(nameIcon);
+
+                button.setText(font, "Название : " + (String) option.get("__text__"));
+                button.registerCallBack(
+                    this,
+                    "editQuestOptionText",
+                    new String[]{questUuid, optionUuid}
+                );
+                questItems[i] = button;
+                i++;
+            }
+
+            if (key == "__exp__"){
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(experienceIcon);
+                int expCount = (int) option.get("__exp__");
+
+                button.setText(font, "Опыт за выполнение : " + expCount);
+                button.registerCallBack(
+                    this,
+                    "editQuestOptionExp",
+                    new String[]{questUuid, optionUuid}
+                );
+                questItems[i] = button;
+                i++;
+            }
+
+            if (key == "__is_available__"){
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                int isAvailable = (int) option.get("__is_available__");
+                if (isAvailable == 0) {
+                    button.setIcon(checkboxOff);
+                }else {
+                    button.setIcon(checkboxOn);
+                }
+
+                button.setText(font, "Доступно при получении квеста ");
+                button.registerCallBack(
+                    this,
+                    "toggleQuestOptionAvailable",
+                    new String[]{questUuid, optionUuid}
+                );
+                questItems[i] = button;
+                i++;
+            }
+        }
+
+        //        Удаление цели квеста
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(trashIcon);
+        button.setText(font, "Удалить квестовую цель");
+        button.registerCallBack(
+            this,
+            "deleteQuestOptionConfirm",
+            new String[]{questUuid, optionUuid}
         );
         questItems[i] = button;
         i++;

@@ -64,7 +64,12 @@ public class TextInputWindow extends Window{
     }
 
     public void apply() throws Exception {
-        this.setParams(2, textArea.getText());
+        int paramsCount = this.method.getParameterCount();
+        if (paramsCount > 2) {
+            this.setParams(2, textArea.getText());
+        } else {
+            this.setParams(paramsCount-1, textArea.getText());
+        }
         this.execCallBack();
         textArea.setText("");
         this.hide();

@@ -90,21 +90,21 @@ public class UserInterface {
     }
 
     public void render(SpriteBatch uiBatch) {
-        tileSelectorWindow.render(uiBatch);
-        mapContextMenuWindow.render(uiBatch);
-        dialogEditorWindow.render(uiBatch);
-        questsEditorWindow.render(uiBatch);
-
         for (BaseObject baseObject : ui) {
             if (baseObject.isTouched){
                 bo_helper.draw(
-                        uiBatch,buttonBG,
-                        (int) baseObject.getX() - 5, (int) (store.uiHeightOriginal - menuItemSize - 15),
-                        (int)baseObject.getWidth() + 10, (int)baseObject.getHeight() + 10
+                    uiBatch,buttonBG,
+                    (int) baseObject.getX() - 5, (int) (store.uiHeightOriginal - menuItemSize - 15),
+                    (int)baseObject.getWidth() + 10, (int)baseObject.getHeight() + 10
                 );
             }
             bo_helper.draw(uiBatch, baseObject, (int) baseObject.getX(), (int) (store.uiHeightOriginal - menuItemSize - 10));
         }
+
+        tileSelectorWindow.render(uiBatch);
+        mapContextMenuWindow.render(uiBatch);
+        dialogEditorWindow.render(uiBatch);
+        questsEditorWindow.render(uiBatch);
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp, int button){
