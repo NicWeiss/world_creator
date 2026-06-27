@@ -10,13 +10,13 @@ import com.nicweiss.editor.Main;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
-import java.util.function.Function;
 
-class RecourceLoader implements Callable<String> {
+
+class ResourceLoader implements Callable<String> {
     Editor localEditorClass;
     public static Store store;
 
-    public RecourceLoader(Editor editorClass) {
+    public ResourceLoader(Editor editorClass) {
         localEditorClass = editorClass;
     }
 
@@ -37,9 +37,9 @@ public class Logo extends View{
     public Logo(){
         img = new Texture("logo.png");
         editorClass = new Editor();
-        RecourceLoader resurceLoader = new RecourceLoader(editorClass);
+        ResourceLoader resourceLoader = new ResourceLoader(editorClass);
 
-        FutureTask<String> task = new FutureTask(resurceLoader);
+        FutureTask<String> task = new FutureTask<>(resourceLoader);
         Thread myThready = new Thread(task);
         myThready.start();
     }
@@ -49,7 +49,7 @@ public class Logo extends View{
     }
 
     public void render(SpriteBatch batch) {
-                Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         Gdx.gl.glClearColor(1, 1, 1, 1);
 
         float displayHeight = store.display.get("height");

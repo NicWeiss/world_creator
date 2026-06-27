@@ -67,12 +67,13 @@ public class QuestsEditorWindow extends Window implements CallBack {
         prepareSelectedQuestView(uuid);
     }
 
-    public  LinkedHashMap getEmptyQuest() {
+    public LinkedHashMap getEmptyQuest() {
         LinkedHashMap obj = new LinkedHashMap();
 
         String uuid = Uuid.generate();
         obj.put("__uuid__", uuid);
         obj.put("__name__", "Новый квест #" + uuid);
+        obj.put("__exp__", 0);
         obj.put("__is_received__", 0);
         obj.put("__is_complete__", 0);
 
@@ -141,7 +142,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
             "textEditDoneCallback",
             new String[]{questUuid,fieldName,""}
         );
-        tiw.setText(value);
+        tiw.setText(value != null ? value : "");
         tiw.show();
     }
 
@@ -283,11 +284,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
     }
 
     public boolean keyTyped(char character){
-        if (tiw.keyTyped(character)) {
-            return true;
-        }
-
-        return false;
+        return tiw.keyTyped(character);
     }
 
     public void prepareQuestsView(){
@@ -330,116 +327,123 @@ public class QuestsEditorWindow extends Window implements CallBack {
         questItems = new ButtonCommon[1000];
         LinkedHashMap quest = (LinkedHashMap) questsList.get(uuid);
         int i = 0;
-        boolean hasDescription = false;
 
-//        button = new ButtonCommon();
-//        button.setBackgrounds(buttonBG, buttonBGHover);
-//        button.setText(font, "Добавить квест");
-//        button.registerCallBack(
-//            this,
-//            "addQuestCallback"
-//        );
-//        button.setIcon(plusIcon);
-//        questItems[i] = button;
-//        i++;
+        // ──────── О КВЕСТЕ ────────
+        questItems[i++] = makeSectionHeader("── О КВЕСТЕ ──");
 
-//        Собираем название и описание квеста
-        for (Object keyEl : quest.keySet()) {
-            String key = keyEl.toString();
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(nameIcon);
+        button.setText(font, "Название: " + quest.get("__name__"));
+        button.registerCallBack(this, "editQuestTextField", new String[]{uuid, "__name__"});
+        questItems[i++] = button;
 
-            if (key == "__name__") {
-                button = new ButtonCommon();
-                button.setBackgrounds(buttonBG, buttonBGHover);
-                button.setIcon(nameIcon);
-
-                button.setText(font, "Название: " + (String) quest.get(key));
-                button.registerCallBack(
-                    this,
-                    "editQuestTextField",
-                    new String[]{uuid, "__name__"}
-                );
-                questItems[i] = button;
-                i++;
-            }
-
-            if (key == "__description__") {
-                hasDescription = true;
-                button = new ButtonCommon();
-                button.setBackgrounds(buttonBG, buttonBGHover);
-                button.setIcon(descriptionIcon);
-
-                button.setText(font, "Описание: " + (String) quest.get(key));
-                button.registerCallBack(
-                    this,
-                    "editQuestTextField",
-                    new String[]{uuid, "__description__"}
-                );
-                questItems[i] = button;
-                i++;
-            }
-        }
-
-        if (!hasDescription) {
+        if (quest.containsKey("__description__")) {
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(descriptionIcon);
+            button.setText(font, "Описание: " + quest.get("__description__"));
+            button.registerCallBack(this, "editQuestTextField", new String[]{uuid, "__description__"});
+            questItems[i++] = button;
+        } else {
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
             button.setIcon(plusIcon);
             button.setText(font, "Добавить описание");
-            button.registerCallBack(
-                this,
-                "editQuestTextField",
-                new String[]{uuid, "__description__"}
-            );
-            questItems[i] = button;
-            i++;
+            button.registerCallBack(this, "editQuestTextField", new String[]{uuid, "__description__"});
+            questItems[i++] = button;
         }
 
-        // Собираем квестовые опции если есть
+        int exp = quest.containsKey("__exp__") ? (int) quest.get("__exp__") : 0;
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(experienceIcon);
+        button.setText(font, "Опыт за квест: " + exp);
+        button.registerCallBack(this, "editQuestExp", new String[]{uuid});
+        questItems[i++] = button;
+
+        // ──────── ЦЕЛИ ────────
+        questItems[i++] = makeSectionHeader("── ЦЕЛИ ──");
+
         for (Object keyEl : quest.keySet()) {
             String key = keyEl.toString();
-
-            if (key.contains("quest_")){
+            if (key.contains("quest_")) {
+                LinkedHashMap option = (LinkedHashMap) quest.get(key);
                 button = new ButtonCommon();
                 button.setBackgrounds(buttonBG, buttonBGHover);
-                LinkedHashMap option = (LinkedHashMap) quest.get(key);
                 button.setIcon(questOptionIcon);
-
-                button.setText(font, "Цель : " + (String) option.get("__text__"));
-                button.registerCallBack(
-                    this,
-                    "prepareOptionOfSelectedQuestView",
-                    new String[]{uuid, (String) option.get("__uuid__")}
-                );
-                questItems[i] = button;
-                i++;
+                button.setText(font, (String) option.get("__text__"));
+                button.registerCallBack(this, "prepareOptionOfSelectedQuestView",
+                    new String[]{uuid, (String) option.get("__uuid__")});
+                questItems[i++] = button;
             }
         }
 
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setIcon(plusIcon);
-        button.setText(font, "Добавить квестовую цель");
-        button.registerCallBack(
-            this,
-            "addQuestOption",
-            new String[]{uuid}
-        );
-        questItems[i] = button;
-        i++;
+        button.setText(font, "Добавить цель");
+        button.registerCallBack(this, "addQuestOption", new String[]{uuid});
+        questItems[i++] = button;
 
-//        Удаление квеста
+        // ──────── НАГРАДЫ ────────
+        questItems[i++] = makeSectionHeader("── НАГРАДЫ ──");
+
+        for (Object keyEl : quest.keySet()) {
+            String key = keyEl.toString();
+            if (key.contains("reward_")) {
+                LinkedHashMap reward = (LinkedHashMap) quest.get(key);
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(questOptionIcon);
+                button.setText(font, (String) reward.get("__name__"));
+                button.registerCallBack(this, "removeRewardConfirm",
+                    new String[]{uuid, (String) reward.get("__uuid__")});
+                questItems[i++] = button;
+            }
+        }
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(plusIcon);
+        button.setText(font, "Добавить предмет в награду");
+        button.registerCallBack(this, "prepareItemPickerView", new String[]{uuid});
+        questItems[i++] = button;
+
+        // ──────── ────────
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setIcon(trashIcon);
         button.setText(font, "Удалить квест");
-        button.registerCallBack(
-            this,
-            "deleteQuestConfirm",
-            new String[]{uuid}
-        );
-        questItems[i] = button;
-        i++;
+        button.registerCallBack(this, "deleteQuestConfirm", new String[]{uuid});
+        questItems[i++] = button;
 
         questItems = Arrays.copyOfRange(questItems, 0, i);
+    }
+
+    private ButtonCommon makeSectionHeader(String text) {
+        ButtonCommon header = new ButtonCommon();
+        header.setBackgrounds(buttonBGHover, buttonBGHover);
+        header.setText(font, text);
+        return header;
+    }
+
+//    Опыт за квест
+    public void editQuestExp(String questUuid) {
+        if (tiw.isShowWindow || !isWindowActive) return;
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        int current = quest.containsKey("__exp__") ? (int) quest.get("__exp__") : 0;
+        tiw.registerCallBack(this, "editQuestExpDone", new String[]{questUuid, ""});
+        tiw.setText(String.valueOf(current));
+        tiw.show();
+    }
+
+    public void editQuestExpDone(String questUuid, String value) {
+        value = value.replaceAll("[^0-9]", "");
+        if (value.isEmpty()) value = "0";
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        quest.put("__exp__", Integer.parseInt(value));
+        prepareSelectedQuestView(questUuid);
     }
 
     public void prepareOptionOfSelectedQuestView(String questUuid, String optionUuid) {
@@ -463,7 +467,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
         for (Object keyEl : option.keySet()) {
             String key = keyEl.toString();
 
-            if (key == "__text__"){
+            if (key.equals("__text__")){
                 button = new ButtonCommon();
                 button.setBackgrounds(buttonBG, buttonBGHover);
                 button.setIcon(nameIcon);
@@ -478,7 +482,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
                 i++;
             }
 
-            if (key == "__exp__"){
+            if (key.equals("__exp__")){
                 button = new ButtonCommon();
                 button.setBackgrounds(buttonBG, buttonBGHover);
                 button.setIcon(experienceIcon);
@@ -494,7 +498,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
                 i++;
             }
 
-            if (key == "__is_available__"){
+            if (key.equals("__is_available__")){
                 button = new ButtonCommon();
                 button.setBackgrounds(buttonBG, buttonBGHover);
                 int isAvailable = (int) option.get("__is_available__");
@@ -529,5 +533,70 @@ public class QuestsEditorWindow extends Window implements CallBack {
         i++;
 
         questItems = Arrays.copyOfRange(questItems, 0, i);
+    }
+
+//    Picker: список всех шаблонов предметов для выбора награды
+    public void prepareItemPickerView(String questUuid) {
+        questItems = new ButtonCommon[1000];
+        int i = 0;
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "prepareSelectedQuestView", new String[]{questUuid});
+        questItems[i] = button;
+        i++;
+
+        if (store.itemTemplates.isEmpty()) {
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setText(font, "Нет доступных предметов");
+            questItems[i] = button;
+            i++;
+        } else {
+            for (Object keyEl : store.itemTemplates.keySet()) {
+                String templateUuid = keyEl.toString();
+                LinkedHashMap template = (LinkedHashMap) store.itemTemplates.get(templateUuid);
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(questIcon);
+                button.setText(font, (String) template.get("__name__"));
+                button.registerCallBack(
+                    this,
+                    "addRewardItem",
+                    new String[]{questUuid, templateUuid}
+                );
+                questItems[i] = button;
+                i++;
+            }
+        }
+
+        questItems = Arrays.copyOfRange(questItems, 0, i);
+    }
+
+    public void addRewardItem(String questUuid, String templateUuid) {
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        LinkedHashMap template = (LinkedHashMap) store.itemTemplates.get(templateUuid);
+
+        String rewardUuid = "reward_" + Uuid.generate();
+        LinkedHashMap reward = new LinkedHashMap();
+        reward.put("__uuid__", rewardUuid);
+        reward.put("__template_id__", templateUuid);
+        reward.put("__name__", (String) template.get("__name__"));
+        quest.put(rewardUuid, reward);
+
+        prepareSelectedQuestView(questUuid);
+    }
+
+    public void removeRewardConfirm(String questUuid, String rewardUuid) {
+        acw.setText("Убрать предмет из награды ?");
+        acw.registerCallBack(this, "removeReward", new String[]{questUuid, rewardUuid});
+        acw.show();
+    }
+
+    public void removeReward(String questUuid, String rewardUuid) {
+        LinkedHashMap quest = (LinkedHashMap) questsList.get(questUuid);
+        quest.remove(rewardUuid);
+        prepareSelectedQuestView(questUuid);
     }
 }

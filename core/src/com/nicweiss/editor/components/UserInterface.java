@@ -5,6 +5,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.Store;
 import com.nicweiss.editor.components.windows.DialogEditorWindow;
+import com.nicweiss.editor.components.windows.ItemsEditorWindow;
 import com.nicweiss.editor.components.windows.MapContextMenuWindow;
 import com.nicweiss.editor.components.windows.QuestsEditorWindow;
 import com.nicweiss.editor.components.windows.TileSelectorWindow;
@@ -22,8 +23,9 @@ public class UserInterface {
     public MapContextMenuWindow mapContextMenuWindow;
     public DialogEditorWindow dialogEditorWindow;
     public QuestsEditorWindow questsEditorWindow;
+    public ItemsEditorWindow itemsEditorWindow;
 
-    Texture openTexture, saveTexture, questsTexture, white;
+    Texture openTexture, saveTexture, questsTexture, itemsTexture, white;
 
     public static Store store;
     BaseObject[] ui;
@@ -43,10 +45,12 @@ public class UserInterface {
 
         dialogEditorWindow = new DialogEditorWindow();
         questsEditorWindow = new QuestsEditorWindow();
+        itemsEditorWindow = new ItemsEditorWindow();
 
         openTexture = new Texture("open.png");
         saveTexture = new Texture("save.png");
         questsTexture = new Texture("quests_button.png");
+        itemsTexture = new Texture("items_button.png");
         white = new Texture("white.png");
 
         tileSelectorWindow = new TileSelectorWindow(lightObjectIds);
@@ -58,8 +62,9 @@ public class UserInterface {
         mapContextMenuWindow.buildWindow();
         dialogEditorWindow.buildWindow();
         questsEditorWindow.buildWindow();
+        itemsEditorWindow.buildWindow();
 
-        ui = new BaseObject[3];
+        ui = new BaseObject[4];
 
 //        Open button
         ui[0] = bo_helper.constructObject(
@@ -84,6 +89,17 @@ public class UserInterface {
             0
         );
 
+//        Items window button
+        ui[3] = bo_helper.constructObject(
+            itemsTexture,
+            (int) (ui[2].getX() + menuItemSize + menuItemSpace),
+            (int) (store.uiHeightOriginal - menuItemSize - 10),
+            menuItemSize,
+            menuItemSize,
+            "items",
+            0
+        );
+
         buttonBG = bo_helper.constructObject(
                 white, 100, 150, 1, 1, "buttonBG", 0
         );
@@ -105,6 +121,7 @@ public class UserInterface {
         mapContextMenuWindow.render(uiBatch);
         dialogEditorWindow.render(uiBatch);
         questsEditorWindow.render(uiBatch);
+        itemsEditorWindow.render(uiBatch);
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp, int button){
@@ -113,6 +130,10 @@ public class UserInterface {
         }
 
         if (questsEditorWindow.checkTouch(isDragged, isTouchUp)){
+            return true;
+        }
+
+        if (itemsEditorWindow.checkTouch(isDragged, isTouchUp)){
             return true;
         }
 
@@ -140,6 +161,10 @@ public class UserInterface {
                         openQuestsWindow();
                         return true;
                     }
+                    if (baseObject.getObjectId().equals("items")) {
+                        itemsEditorWindow.show();
+                        return true;
+                    }
                 }
             }
         }
@@ -164,6 +189,10 @@ public class UserInterface {
             return true;
         }
 
+        if (itemsEditorWindow.checkKey(keyCode)){
+            return true;
+        }
+
         return false;
     }
 
@@ -173,6 +202,10 @@ public class UserInterface {
         }
 
         if (questsEditorWindow.keyTyped(character)) {
+            return true;
+        }
+
+        if (itemsEditorWindow.keyTyped(character)) {
             return true;
         }
 
@@ -230,7 +263,7 @@ public class UserInterface {
     }
 
     public boolean getMouseMoveBlockStatus() {
-        if (mapContextMenuWindow.isShow || tileSelectorWindow.isShowWindow || dialogEditorWindow.isShowWindow || questsEditorWindow.isShowWindow) {
+        if (mapContextMenuWindow.isShow || tileSelectorWindow.isShowWindow || dialogEditorWindow.isShowWindow || questsEditorWindow.isShowWindow || itemsEditorWindow.isShowWindow) {
             return true;
         }
 

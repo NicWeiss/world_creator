@@ -5,7 +5,7 @@ import java.util.Random;
 
 public class Perlin{
 
-    private byte[] permutationTable;
+    private final byte[] permutationTable;
 
     public Perlin(long seed) {
         Random random = new Random(seed);
