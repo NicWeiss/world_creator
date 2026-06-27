@@ -36,7 +36,7 @@ public class ActionConfirnWindow extends Window{
 
     @Override
     public void onShow() {
-
+        repositionToCenter();
     }
 
     @Override

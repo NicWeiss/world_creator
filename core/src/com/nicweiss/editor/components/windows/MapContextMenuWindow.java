@@ -30,11 +30,15 @@ public class MapContextMenuWindow extends ContextMenuWindow {
 
     public void createCreation(){
         Gdx.app.log("Debug", "Callback createCreation");
-        store.creationCount ++;
-        store.creations[store.creationCount] = new Creation();
-        store.creations[store.creationCount].setPosition(store.playerPositionX-store.shiftX, store.playerPositionY - store.shiftY);
-        store.creations[store.creationCount].setCell((int) store.selectedTileX, (int) store.selectedTileY);
-        store.creations[store.creationCount].setTexture(new Texture("creations/creation.png"));
+        store.creationCount++;
+        Creation cr = new Creation();
+        String uuid = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        cr.setUUID(uuid);
+        cr.setPosition(store.playerPositionX - store.shiftX, store.playerPositionY - store.shiftY);
+        cr.setCell((int) store.selectedTileX, (int) store.selectedTileY);
+        cr.setTexture(new Texture("creations/creation.png"));
+        store.creations[store.creationCount] = cr;
+        store.npcs.put(uuid, "NPC");
     }
 
     public void openDialogEditor(){

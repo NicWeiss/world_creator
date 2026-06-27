@@ -4,9 +4,11 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.BaseObject;
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.components.windows.DialogEditorWindow;
 import com.nicweiss.editor.components.windows.ItemsEditorWindow;
 import com.nicweiss.editor.components.windows.MapContextMenuWindow;
+import com.nicweiss.editor.components.windows.NpcEditorWindow;
 import com.nicweiss.editor.components.windows.QuestsEditorWindow;
 import com.nicweiss.editor.components.windows.TileSelectorWindow;
 import com.nicweiss.editor.objects.MapObject;
@@ -24,8 +26,9 @@ public class UserInterface {
     public DialogEditorWindow dialogEditorWindow;
     public QuestsEditorWindow questsEditorWindow;
     public ItemsEditorWindow itemsEditorWindow;
+    public NpcEditorWindow npcEditorWindow;
 
-    Texture openTexture, saveTexture, questsTexture, itemsTexture, white;
+    Texture openTexture, saveTexture, questsTexture, itemsTexture, npcTexture, white;
 
     public static Store store;
     BaseObject[] ui;
@@ -35,6 +38,9 @@ public class UserInterface {
     int[] lightObjectIds;
 
     int menuItemSize = 40, menuItemSpace = 50;
+
+    // Окна, участвующие в z-сортировке по фокусу
+    private Window[] focusWindows;
 
     public UserInterface(TextureObject[] tileTextures, Light lightClass, int[] lightObjectIds) {
         this.lightObjectIds = lightObjectIds;
@@ -46,11 +52,13 @@ public class UserInterface {
         dialogEditorWindow = new DialogEditorWindow();
         questsEditorWindow = new QuestsEditorWindow();
         itemsEditorWindow = new ItemsEditorWindow();
+        npcEditorWindow = new NpcEditorWindow(dialogEditorWindow);
 
         openTexture = new Texture("open.png");
         saveTexture = new Texture("save.png");
         questsTexture = new Texture("quests_button.png");
         itemsTexture = new Texture("items_button.png");
+        npcTexture = new Texture("npc_button.png");
         white = new Texture("white.png");
 
         tileSelectorWindow = new TileSelectorWindow(lightObjectIds);
@@ -63,8 +71,9 @@ public class UserInterface {
         dialogEditorWindow.buildWindow();
         questsEditorWindow.buildWindow();
         itemsEditorWindow.buildWindow();
+        npcEditorWindow.buildWindow();
 
-        ui = new BaseObject[4];
+        ui = new BaseObject[5];
 
 //        Open button
         ui[0] = bo_helper.constructObject(
@@ -100,9 +109,37 @@ public class UserInterface {
             0
         );
 
+//        NPC window button
+        ui[4] = bo_helper.constructObject(
+            npcTexture,
+            (int) (ui[3].getX() + menuItemSize + menuItemSpace),
+            (int) (store.uiHeightOriginal - menuItemSize - 10),
+            menuItemSize,
+            menuItemSize,
+            "npc",
+            0
+        );
+
         buttonBG = bo_helper.constructObject(
                 white, 100, 150, 1, 1, "buttonBG", 0
         );
+
+        focusWindows = new Window[]{
+            dialogEditorWindow, questsEditorWindow, itemsEditorWindow, npcEditorWindow
+        };
+    }
+
+    // Сортирует focusWindows по focusOrder (ascending) — результат: первый рендерится позади, последний сверху
+    private void sortWindowsByFocus() {
+        for (int i = 0; i < focusWindows.length - 1; i++) {
+            for (int j = 0; j < focusWindows.length - 1 - i; j++) {
+                if (focusWindows[j].focusOrder > focusWindows[j + 1].focusOrder) {
+                    Window t = focusWindows[j];
+                    focusWindows[j] = focusWindows[j + 1];
+                    focusWindows[j + 1] = t;
+                }
+            }
+        }
     }
 
     public void render(SpriteBatch uiBatch) {
@@ -119,22 +156,17 @@ public class UserInterface {
 
         tileSelectorWindow.render(uiBatch);
         mapContextMenuWindow.render(uiBatch);
-        dialogEditorWindow.render(uiBatch);
-        questsEditorWindow.render(uiBatch);
-        itemsEditorWindow.render(uiBatch);
+        sortWindowsByFocus();
+        for (Window w : focusWindows) w.render(uiBatch);
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp, int button){
-        if (dialogEditorWindow.checkTouch(isDragged, isTouchUp)){
-            return true;
-        }
-
-        if (questsEditorWindow.checkTouch(isDragged, isTouchUp)){
-            return true;
-        }
-
-        if (itemsEditorWindow.checkTouch(isDragged, isTouchUp)){
-            return true;
+        // Обрабатываем в обратном порядке фокуса — верхнее окно получает ввод первым
+        sortWindowsByFocus();
+        for (int i = focusWindows.length - 1; i >= 0; i--) {
+            if (focusWindows[i].checkTouch(isDragged, isTouchUp)) {
+                return true;
+            }
         }
 
         if (!tileSelectorWindow.isShowWindow && mapContextMenuWindow.checkTouch(isDragged, isTouchUp, button)){
@@ -165,6 +197,10 @@ public class UserInterface {
                         itemsEditorWindow.show();
                         return true;
                     }
+                    if (baseObject.getObjectId().equals("npc")) {
+                        npcEditorWindow.show();
+                        return true;
+                    }
                 }
             }
         }
@@ -181,34 +217,22 @@ public class UserInterface {
             return true;
         }
 
-        if (dialogEditorWindow.checkKey(keyCode)){
-            return true;
-        }
-
-        if (questsEditorWindow.checkKey(keyCode)){
-            return true;
-        }
-
-        if (itemsEditorWindow.checkKey(keyCode)){
-            return true;
+        for (int i = focusWindows.length - 1; i >= 0; i--) {
+            if (focusWindows[i].checkKey(keyCode)) return true;
         }
 
         return false;
     }
 
     public boolean keyTyped(char character){
-        if (dialogEditorWindow.keyTyped(character)) {
-            return true;
+        sortWindowsByFocus();
+        for (int i = focusWindows.length - 1; i >= 0; i--) {
+            Window w = focusWindows[i];
+            if (w == dialogEditorWindow  && dialogEditorWindow.keyTyped(character))  return true;
+            if (w == questsEditorWindow  && questsEditorWindow.keyTyped(character))  return true;
+            if (w == itemsEditorWindow   && itemsEditorWindow.keyTyped(character))   return true;
+            if (w == npcEditorWindow     && npcEditorWindow.keyTyped(character))     return true;
         }
-
-        if (questsEditorWindow.keyTyped(character)) {
-            return true;
-        }
-
-        if (itemsEditorWindow.keyTyped(character)) {
-            return true;
-        }
-
         return false;
     }
 
@@ -263,7 +287,7 @@ public class UserInterface {
     }
 
     public boolean getMouseMoveBlockStatus() {
-        if (mapContextMenuWindow.isShow || tileSelectorWindow.isShowWindow || dialogEditorWindow.isShowWindow || questsEditorWindow.isShowWindow || itemsEditorWindow.isShowWindow) {
+        if (mapContextMenuWindow.isShow || tileSelectorWindow.isShowWindow || dialogEditorWindow.isShowWindow || questsEditorWindow.isShowWindow || itemsEditorWindow.isShowWindow || npcEditorWindow.isShowWindow) {
             return true;
         }
 

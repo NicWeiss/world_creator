@@ -26,6 +26,8 @@ public class Window extends BaseCallBack implements CallBack {
 
     int controlButtonSize = 40;
     public boolean isShowWindow = false;
+    public int focusOrder = 0;
+    private static int globalFocusCounter = 0;
     public boolean isDualSectionMode = false;
     protected boolean isWindowActive = true;
     protected boolean isWindowIsDragged = false;
@@ -342,7 +344,14 @@ public class Window extends BaseCallBack implements CallBack {
     public void show(){
         isWindowActive = true;
         isShowWindow = true;
+        focusOrder = ++globalFocusCounter;
         onShow();
+    }
+
+    // Перецентрирует окно по текущим размерам экрана — вызывать из onShow() для модальных окон
+    protected void repositionToCenter() {
+        x = (int)((store.uiWidthOriginal / 2) - (width / 2));
+        y = (int)((store.uiHeightOriginal / 2) - (height / 2)) + 50;
     }
 
     public void hide(){

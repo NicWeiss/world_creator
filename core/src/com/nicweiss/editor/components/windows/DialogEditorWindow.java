@@ -177,12 +177,6 @@ public class DialogEditorWindow extends Window implements CallBack {
             return true;
         }
 
-        if (isTouchUp && items != null) {
-            for (ButtonCommon item : items) {
-                item.checkTouchAndExec();
-            }
-        }
-
         super.checkTouch(isDragged, isTouchUp);
 
         if (isShowWindow) {

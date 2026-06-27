@@ -46,6 +46,7 @@ public class TextInputWindow extends Window{
 
     @Override
     public void onShow() {
+        repositionToCenter();
         stage.setKeyboardFocus(textArea);
     }
 

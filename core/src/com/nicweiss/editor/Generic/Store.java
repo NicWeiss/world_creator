@@ -50,6 +50,7 @@ public class Store {
     public static LinkedHashMap<String, Object> quests = new LinkedHashMap<>();
     public static LinkedHashMap<String, Object> itemTemplates = new LinkedHashMap<>();
     public static LinkedHashMap<String, Object> inventory = new LinkedHashMap<>();
+    public static LinkedHashMap<String, Object> npcs = new LinkedHashMap<>();
 
     public static Creation[] creations = new Creation[100];
     public static int creationCount = -1;
