@@ -62,6 +62,8 @@ public class ItemsEditorWindow extends Window implements CallBack {
         String uuid = Uuid.generate();
         template.put("__uuid__", uuid);
         template.put("__name__", "Новый предмет #" + uuid);
+        template.put("__width__", 1);
+        template.put("__height__", 1);
         template.put("__stats__", new LinkedHashMap());
         itemTemplates.put(uuid, template);
         prepareItemsView();
@@ -227,6 +229,22 @@ public class ItemsEditorWindow extends Window implements CallBack {
             itemDetails[i++] = button;
         }
 
+        // ──────── РАЗМЕР ────────
+        itemDetails[i++] = makeSectionHeader("── РАЗМЕР ──");
+
+        int selW = template.containsKey("__width__")  ? (int) template.get("__width__")  : 1;
+        int selH = template.containsKey("__height__") ? (int) template.get("__height__") : 1;
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(statIcon);
+        button.setText(font, "Размер: " + selW + "x" + selH + "\n" + makeSizeGrid(selW, selH));
+        button.registerCallBack(this, "prepareSizePickerView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        // ──────── ХАРАКТЕРИСТИКИ ────────
+        itemDetails[i++] = makeSectionHeader("── ХАРАКТЕРИСТИКИ ──");
+
         LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
         for (Object statKey : stats.keySet()) {
             String statUuid = statKey.toString();
@@ -308,6 +326,60 @@ public class ItemsEditorWindow extends Window implements CallBack {
         itemDetails[i++] = button;
 
         itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
+    }
+
+    public void prepareSizePickerView(String uuid) {
+        itemDetails = new ButtonCommon[1000];
+        int i = 0;
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        int selW = template.containsKey("__width__")  ? (int) template.get("__width__")  : 1;
+        int selH = template.containsKey("__height__") ? (int) template.get("__height__") : 1;
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "prepareSelectedItemView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        int[][] sizes = {{1,1},{1,2},{1,3},{1,4},{2,1},{2,2},{2,3},{2,4}};
+        for (int[] sz : sizes) {
+            int sw = sz[0], sh = sz[1];
+            boolean selected = (sw == selW && sh == selH);
+            button = new ButtonCommon();
+            button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
+            // Метка + визуальная сетка из # (символ блока поддерживается шрифтом)
+            button.setText(font, sw + "x" + sh + (selected ? "  <" : "") + "\n" + makeSizeGrid(sw, sh));
+            button.registerCallBack(this, "setItemSize", new String[]{uuid, String.valueOf(sw), String.valueOf(sh)});
+            itemDetails[i++] = button;
+        }
+
+        itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
+    }
+
+    public void setItemSize(String uuid, String widthStr, String heightStr) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        template.put("__width__", Integer.parseInt(widthStr));
+        template.put("__height__", Integer.parseInt(heightStr));
+        prepareSelectedItemView(uuid);
+    }
+
+    private String makeSizeGrid(int w, int h) {
+        StringBuilder sb = new StringBuilder();
+        for (int row = 0; row < h; row++) {
+            if (row > 0) sb.append("\n");
+            for (int col = 0; col < w; col++) {
+                if (col > 0) sb.append("  ");
+                sb.append("#");
+            }
+        }
+        return sb.toString();
+    }
+
+    private ButtonCommon makeSectionHeader(String text) {
+        ButtonCommon header = new ButtonCommon();
+        header.setBackgrounds(buttonBGHover, buttonBGHover);
+        header.setText(font, text);
+        return header;
     }
 
     // ---- Рендер и ввод ----
