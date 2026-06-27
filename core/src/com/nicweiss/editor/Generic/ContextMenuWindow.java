@@ -13,7 +13,7 @@ import java.lang.reflect.Method;
 public class ContextMenuWindow implements CallBack {
     public static Store store;
     BOHelper bo_helper;
-    Texture buttonBG, buttonBGHover, buttonSeparator, border;
+    protected Texture buttonBG, buttonBGHover, buttonSeparator, border;
 
     protected ButtonCommon[] buttons;
     protected Font font;

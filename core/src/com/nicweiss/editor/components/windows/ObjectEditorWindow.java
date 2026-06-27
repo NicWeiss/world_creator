@@ -12,29 +12,30 @@ import com.nicweiss.editor.utils.Uuid;
 
 import java.util.Arrays;
 
-public class NpcEditorWindow extends Window implements CallBack {
+public class ObjectEditorWindow extends Window implements CallBack {
     public static Store store;
 
     TextInputWindow tiw = new TextInputWindow();
     ActionConfirnWindow acw = new ActionConfirnWindow();
     AssetPickerWindow assetPicker = new AssetPickerWindow();
-    DialogEditorWindow dialogEditorWindow;
+    MapRedirectWindow mapRedirectWindow = new MapRedirectWindow();
+    DialogEditorWindow dialogEditorWindow; // kept for potential future use
 
-    Texture buttonBG, buttonBGHover, plusIcon, npcIcon, trashIcon, nameIcon, coordIcon;
-    ButtonCommon[] items, npcDetails;
+    Texture buttonBG, buttonBGHover, plusIcon, objectIcon, trashIcon, nameIcon, coordIcon;
+    ButtonCommon[] items, objectDetails;
     ButtonCommon button;
 
-    private String npcSearchQuery = "";
+    private String objectSearchQuery = "";
 
-    public NpcEditorWindow(DialogEditorWindow dialogEditorWindow) {
+    public ObjectEditorWindow(DialogEditorWindow dialogEditorWindow) {
         super();
         this.dialogEditorWindow = dialogEditorWindow;
-        windowName = "Сущности (NPC)";
+        windowName = "Недвижимость";
 
         buttonBG      = new Texture("Buttons/btn_background.png");
         buttonBGHover = new Texture("Buttons/btn_background_hover.png");
         plusIcon      = new Texture("icons/quest_window/plus.png");
-        npcIcon       = new Texture("icons/quest_window/quest_option.png");
+        objectIcon    = new Texture("icons/quest_window/quest_option.png");
         trashIcon     = new Texture("icons/quest_window/trash.png");
         nameIcon      = new Texture("icons/quest_window/name.png");
         coordIcon     = new Texture("icons/quest_window/experience.png");
@@ -46,6 +47,7 @@ public class NpcEditorWindow extends Window implements CallBack {
         tiw.buildWindow();
         acw.buildWindow();
         assetPicker.buildWindow();
+        mapRedirectWindow.buildWindow();
         menuObjectSpace = 7;
         itemWidth = 20;
         itemHeight = 20;
@@ -53,50 +55,43 @@ public class NpcEditorWindow extends Window implements CallBack {
 
     @Override
     public void onShow() {
-        prepareNpcListView();
+        prepareObjectListView();
     }
 
     // ── Список (левая панель) ──────────────────────────────────────────────────
 
-    public void prepareNpcListView() {
+    public void prepareObjectListView() {
         items = new ButtonCommon[1000];
         int i = 0;
 
-        // Поиск (первым в списке)
-        String searchLabel = npcSearchQuery.isEmpty() ? "Поиск по имени..." : "Поиск: " + npcSearchQuery;
+        String searchLabel = objectSearchQuery.isEmpty() ? "Поиск по имени..." : "Поиск: " + objectSearchQuery;
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setIcon(nameIcon);
         button.setText(font, searchLabel);
-        button.registerCallBack(this, "openNpcSearch");
+        button.registerCallBack(this, "openObjectSearch");
         items[i++] = button;
 
-        // Добавить NPC
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setIcon(plusIcon);
-        button.setText(font, "Добавить NPC");
-        button.registerCallBack(this, "addNpcCallback");
+        button.setText(font, "Добавить объект");
+        button.registerCallBack(this, "addObjectCallback");
         items[i++] = button;
 
-        // Список из Store.creations
-        for (int idx = 0; idx <= store.creationCount; idx++) {
-            Creation cr = store.creations[idx];
-            if (cr == null) continue;
-
-            String uuid = cr.getUUID();
-            String name = getNpcName(uuid);
-
-            if (!npcSearchQuery.isEmpty() &&
-                !name.toLowerCase().contains(npcSearchQuery.toLowerCase())) {
-                continue;
-            }
+        for (int idx = 0; idx <= store.buildingCount; idx++) {
+            Creation b = store.buildings[idx];
+            if (b == null) continue;
+            String uuid = b.getUUID();
+            String name = getObjectName(uuid);
+            if (!objectSearchQuery.isEmpty() &&
+                !name.toLowerCase().contains(objectSearchQuery.toLowerCase())) continue;
 
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
-            button.setIcon(npcIcon);
+            button.setIcon(objectIcon);
             button.setText(font, name);
-            button.registerCallBack(this, "selectNpcCallback", new String[]{uuid});
+            button.registerCallBack(this, "selectObjectCallback", new String[]{uuid});
             items[i++] = button;
         }
 
@@ -105,21 +100,21 @@ public class NpcEditorWindow extends Window implements CallBack {
 
     // ── Поиск ─────────────────────────────────────────────────────────────────
 
-    public void openNpcSearch() {
+    public void openObjectSearch() {
         if (tiw.isShowWindow || !isWindowActive) return;
-        tiw.registerCallBack(this, "applyNpcSearch", new String[]{""});
-        tiw.setText(npcSearchQuery);
+        tiw.registerCallBack(this, "applyObjectSearch", new String[]{""});
+        tiw.setText(objectSearchQuery);
         tiw.show();
     }
 
-    public void applyNpcSearch(String query) {
-        npcSearchQuery = query;
-        prepareNpcListView();
+    public void applyObjectSearch(String query) {
+        objectSearchQuery = query;
+        prepareObjectListView();
     }
 
-    // ── Создание и удаление ────────────────────────────────────────────────────
+    // ── CRUD ──────────────────────────────────────────────────────────────────
 
-    public void addNpcCallback() {
+    public void addObjectCallback() {
         int[] center = getCenterTile();
         String uuid = Uuid.generate();
 
@@ -128,226 +123,224 @@ public class NpcEditorWindow extends Window implements CallBack {
             (int)(center[1] * store.tileSizeHeight)
         );
 
-        store.creationCount++;
-        Creation cr = new Creation();
-        cr.setUUID(uuid);
-        cr.setTexture(new com.badlogic.gdx.graphics.Texture("creations/creation.png"));
-        cr.setPosition(isoPos[0], isoPos[1]);
-        cr.setCell(center[0], center[1]);
-        store.creations[store.creationCount] = cr;
-        store.npcs.put(uuid, "Новый NPC");
+        store.buildingCount++;
+        Creation b = new Creation();
+        b.setUUID(uuid);
+        b.setTexture(new Texture("objects/default_object.png"));
+        b.setPosition(isoPos[0], isoPos[1]);
+        b.setCell(center[0], center[1]);
+        store.buildings[store.buildingCount] = b;
+        store.buildingNames.put(uuid, "Новый объект");
 
-        prepareNpcListView();
-        prepareNpcInteractionView(uuid);
+        prepareObjectListView();
+        prepareObjectInteractionView(uuid);
     }
 
-    public void selectNpcCallback(String uuid) {
-        prepareNpcInteractionView(uuid);
+    public void selectObjectCallback(String uuid) {
+        prepareObjectInteractionView(uuid);
     }
 
-    public void deleteNpcConfirm(String uuid) {
-        acw.setText("Удалить NPC ?");
-        acw.registerCallBack(this, "deleteNpc", new String[]{uuid});
+    public void deleteObjectConfirm(String uuid) {
+        acw.setText("Удалить объект ?");
+        acw.registerCallBack(this, "deleteObject", new String[]{uuid});
         acw.show();
     }
 
-    public void deleteNpc(String uuid) {
-        // Удаляем из массива creations, сдвигаем оставшиеся
-        for (int i = 0; i <= store.creationCount; i++) {
-            if (store.creations[i] != null && uuid.equals(store.creations[i].getUUID())) {
-                for (int j = i; j < store.creationCount; j++) {
-                    store.creations[j] = store.creations[j + 1];
+    public void deleteObject(String uuid) {
+        for (int i = 0; i <= store.buildingCount; i++) {
+            if (store.buildings[i] != null && uuid.equals(store.buildings[i].getUUID())) {
+                for (int j = i; j < store.buildingCount; j++) {
+                    store.buildings[j] = store.buildings[j + 1];
                 }
-                store.creations[store.creationCount] = null;
-                store.creationCount--;
+                store.buildings[store.buildingCount] = null;
+                store.buildingCount--;
                 break;
             }
         }
-        store.npcs.remove(uuid);
-        npcDetails = new ButtonCommon[0];
-        prepareNpcListView();
+        store.buildingNames.remove(uuid);
+        objectDetails = new ButtonCommon[0];
+        prepareObjectListView();
     }
 
     // ── Редактирование полей ───────────────────────────────────────────────────
 
-    public void editNpcName(String uuid) {
+    public void editObjectName(String uuid) {
         if (tiw.isShowWindow || !isWindowActive) return;
-        tiw.registerCallBack(this, "editNpcNameDone", new String[]{uuid, ""});
-        tiw.setText(getNpcName(uuid));
+        tiw.registerCallBack(this, "editObjectNameDone", new String[]{uuid, ""});
+        tiw.setText(getObjectName(uuid));
         tiw.show();
     }
 
-    public void editNpcNameDone(String uuid, String value) {
-        store.npcs.put(uuid, value.isEmpty() ? "NPC" : value);
-        prepareNpcListView();
-        prepareNpcInteractionView(uuid);
+    public void editObjectNameDone(String uuid, String value) {
+        store.buildingNames.put(uuid, value.isEmpty() ? "Объект" : value);
+        prepareObjectListView();
+        prepareObjectInteractionView(uuid);
     }
 
-    public void editNpcCoordX(String uuid) {
+    public void editObjectCoordX(String uuid) {
         if (tiw.isShowWindow || !isWindowActive) return;
-        Creation cr = findCreation(uuid);
-        if (cr == null) return;
-        tiw.registerCallBack(this, "editNpcCoordXDone", new String[]{uuid, ""});
-        tiw.setText(String.valueOf(cr.mapCellX));
+        Creation b = findBuilding(uuid);
+        if (b == null) return;
+        tiw.registerCallBack(this, "editObjectCoordXDone", new String[]{uuid, ""});
+        tiw.setText(String.valueOf(b.mapCellX));
         tiw.show();
     }
 
-    public void editNpcCoordXDone(String uuid, String value) {
+    public void editObjectCoordXDone(String uuid, String value) {
         value = value.replaceAll("[^0-9]", "");
         if (value.isEmpty()) value = "0";
         int newX = Math.max(0, Math.min(Integer.parseInt(value), store.mapWidth - 1));
-        updateCreationCell(uuid, newX, -1);
-        prepareNpcInteractionView(uuid);
+        updateBuildingCell(uuid, newX, -1);
+        prepareObjectInteractionView(uuid);
     }
 
-    public void editNpcCoordY(String uuid) {
+    public void editObjectCoordY(String uuid) {
         if (tiw.isShowWindow || !isWindowActive) return;
-        Creation cr = findCreation(uuid);
-        if (cr == null) return;
-        tiw.registerCallBack(this, "editNpcCoordYDone", new String[]{uuid, ""});
-        tiw.setText(String.valueOf(cr.mapCellY));
+        Creation b = findBuilding(uuid);
+        if (b == null) return;
+        tiw.registerCallBack(this, "editObjectCoordYDone", new String[]{uuid, ""});
+        tiw.setText(String.valueOf(b.mapCellY));
         tiw.show();
     }
 
-    public void editNpcCoordYDone(String uuid, String value) {
+    public void editObjectCoordYDone(String uuid, String value) {
         value = value.replaceAll("[^0-9]", "");
         if (value.isEmpty()) value = "0";
         int newY = Math.max(0, Math.min(Integer.parseInt(value), store.mapHeight - 1));
-        updateCreationCell(uuid, -1, newY);
-        prepareNpcInteractionView(uuid);
+        updateBuildingCell(uuid, -1, newY);
+        prepareObjectInteractionView(uuid);
     }
 
-    // Перемещает NPC к текущей выделенной клетке
     public void placeOnMap(String uuid) {
-        updateCreationCell(uuid, (int) store.selectedTileX, (int) store.selectedTileY);
-        prepareNpcInteractionView(uuid);
+        updateBuildingCell(uuid, (int) store.selectedTileX, (int) store.selectedTileY);
+        prepareObjectInteractionView(uuid);
     }
+
+    // ── Выбор тайла ───────────────────────────────────────────────────────────
 
     public void openAssetPicker(String uuid) {
         if (!isWindowActive) return;
-        assetPicker.populate("creations", this, "setCreationTexture", uuid);
+        assetPicker.populate("objects", this, "setBuildingTexture", uuid);
         assetPicker.setX(x + width + 10);
         assetPicker.setY(y);
         assetPicker.show();
     }
 
-    public void setCreationTexture(String uuid, String filePath) {
-        Creation cr = findCreation(uuid);
-        if (cr != null) cr.setTexture(new com.badlogic.gdx.graphics.Texture(
-            com.badlogic.gdx.Gdx.files.absolute(filePath)
-        ));
-        prepareNpcInteractionView(uuid);
+    public void setBuildingTexture(String uuid, String filePath) {
+        Creation b = findBuilding(uuid);
+        if (b != null) b.setTexture(new Texture(com.badlogic.gdx.Gdx.files.absolute(filePath)));
+        prepareObjectInteractionView(uuid);
     }
 
-    // Открывает редактор диалога для этого NPC
+    // ── Редактор взаимодействия: открывает окно перенаправления (не диалог) ──
+
     public void openInteractionEditor(String uuid) {
-        dialogEditorWindow.setRoot("NPC_" + uuid);
-        dialogEditorWindow.setUUID(uuid);
-        dialogEditorWindow.show();
+        String name = getObjectName(uuid);
+        mapRedirectWindow.configure(name, uuid);
+        mapRedirectWindow.setX(x + width + 10);
+        mapRedirectWindow.setY(y);
+        mapRedirectWindow.show();
     }
 
-    // ── Редактор взаимодействия (правая панель) ───────────────────────────────
-
-    public void prepareNpcInteractionView(String uuid) {
-        npcDetails = new ButtonCommon[1000];
+    public void prepareObjectInteractionView(String uuid) {
+        objectDetails = new ButtonCommon[1000];
         int i = 0;
-        Creation cr = findCreation(uuid);
+        Creation b = findBuilding(uuid);
 
-        // ── СУЩНОСТЬ ──
-        npcDetails[i++] = makeSectionHeader("── СУЩНОСТЬ ──");
+        // ── ОБЪЕКТ ──
+        objectDetails[i++] = makeSectionHeader("── ОБЪЕКТ ──");
 
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setIcon(nameIcon);
-        button.setText(font, "Имя: " + getNpcName(uuid));
-        button.registerCallBack(this, "editNpcName", new String[]{uuid});
-        npcDetails[i++] = button;
+        button.setText(font, "Имя: " + getObjectName(uuid));
+        button.registerCallBack(this, "editObjectName", new String[]{uuid});
+        objectDetails[i++] = button;
 
-        if (cr != null) {
-            // Выбор тайла
+        if (b != null) {
+            // Выбрать тайл
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
-            if (cr.getTexture() != null) button.setIcon(cr.getTexture());
+            if (b.getTexture() != null) button.setIcon(b.getTexture());
             button.setText(font, "Выбрать тайл");
             button.registerCallBack(this, "openAssetPicker", new String[]{uuid});
-            npcDetails[i++] = button;
+            objectDetails[i++] = button;
 
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
             button.setIcon(coordIcon);
-            button.setText(font, "Координата X: " + cr.mapCellX);
-            button.registerCallBack(this, "editNpcCoordX", new String[]{uuid});
-            npcDetails[i++] = button;
+            button.setText(font, "Координата X: " + b.mapCellX);
+            button.registerCallBack(this, "editObjectCoordX", new String[]{uuid});
+            objectDetails[i++] = button;
 
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
             button.setIcon(coordIcon);
-            button.setText(font, "Координата Y: " + cr.mapCellY);
-            button.registerCallBack(this, "editNpcCoordY", new String[]{uuid});
-            npcDetails[i++] = button;
+            button.setText(font, "Координата Y: " + b.mapCellY);
+            button.registerCallBack(this, "editObjectCoordY", new String[]{uuid});
+            objectDetails[i++] = button;
 
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
             button.setIcon(plusIcon);
             button.setText(font, "Установить на карте (с выделенной клетки)");
             button.registerCallBack(this, "placeOnMap", new String[]{uuid});
-            npcDetails[i++] = button;
+            objectDetails[i++] = button;
         }
 
         // ── ВЗАИМОДЕЙСТВИЕ ──
-        npcDetails[i++] = makeSectionHeader("── ВЗАИМОДЕЙСТВИЕ ──");
+        objectDetails[i++] = makeSectionHeader("── ВЗАИМОДЕЙСТВИЕ ──");
 
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(npcIcon);
-        button.setText(font, "Редактировать диалог");
+        button.setIcon(objectIcon);
+        button.setText(font, "Редактировать переход");
         button.registerCallBack(this, "openInteractionEditor", new String[]{uuid});
-        npcDetails[i++] = button;
+        objectDetails[i++] = button;
 
         // Заглушка перехода на карту
         button = new ButtonCommon();
         button.setBackgrounds(buttonBGHover, buttonBGHover);
         button.setText(font, "Переход на карту: (не реализовано)");
-        npcDetails[i++] = button;
+        objectDetails[i++] = button;
 
-        // Удалить
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setIcon(trashIcon);
-        button.setText(font, "Удалить NPC");
-        button.registerCallBack(this, "deleteNpcConfirm", new String[]{uuid});
-        npcDetails[i++] = button;
+        button.setText(font, "Удалить объект");
+        button.registerCallBack(this, "deleteObjectConfirm", new String[]{uuid});
+        objectDetails[i++] = button;
 
-        npcDetails = Arrays.copyOfRange(npcDetails, 0, i);
+        objectDetails = Arrays.copyOfRange(objectDetails, 0, i);
     }
 
     // ── Вспомогательные методы ────────────────────────────────────────────────
 
-    private Creation findCreation(String uuid) {
+    private Creation findBuilding(String uuid) {
         if (uuid == null) return null;
-        for (int i = 0; i <= store.creationCount; i++) {
-            Creation cr = store.creations[i];
-            if (cr != null && uuid.equals(cr.getUUID())) return cr;
+        for (int i = 0; i <= store.buildingCount; i++) {
+            Creation b = store.buildings[i];
+            if (b != null && uuid.equals(b.getUUID())) return b;
         }
         return null;
     }
 
-    private String getNpcName(String uuid) {
-        Object name = store.npcs.get(uuid);
-        return name != null ? name.toString() : "NPC";
+    private String getObjectName(String uuid) {
+        Object name = store.buildingNames.get(uuid);
+        return name != null ? name.toString() : "Объект";
     }
 
-    private void updateCreationCell(String uuid, int newX, int newY) {
-        Creation cr = findCreation(uuid);
-        if (cr == null) return;
-        int finalX = newX >= 0 ? newX : cr.mapCellX;
-        int finalY = newY >= 0 ? newY : cr.mapCellY;
-        cr.setCell(finalX, finalY);
+    private void updateBuildingCell(String uuid, int newX, int newY) {
+        Creation b = findBuilding(uuid);
+        if (b == null) return;
+        int finalX = newX >= 0 ? newX : b.mapCellX;
+        int finalY = newY >= 0 ? newY : b.mapCellY;
+        b.setCell(finalX, finalY);
         float[] isoPos = Transform.cartesianToIsometric(
             (int)(finalX * store.tileSizeWidth),
             (int)(finalY * store.tileSizeHeight)
         );
-        cr.setPosition(isoPos[0], isoPos[1]);
+        b.setPosition(isoPos[0], isoPos[1]);
     }
 
     private int[] getCenterTile() {
@@ -374,7 +367,7 @@ public class NpcEditorWindow extends Window implements CallBack {
 
         if (isShowWindow) {
             renderItemsList(batch, items, false);
-            rightSection.renderItemsList(batch, npcDetails, false);
+            rightSection.renderItemsList(batch, objectDetails, false);
         }
 
         if (tiw.isShowWindow) {
@@ -392,11 +385,21 @@ public class NpcEditorWindow extends Window implements CallBack {
             assetPicker.render(batch);
             isWindowActive = false;
         }
+
+        if (mapRedirectWindow.isShowWindow) {
+            mapRedirectWindow.render(batch);
+            isWindowActive = false;
+        }
     }
 
     @Override
     public boolean checkTouch(boolean isDragged, boolean isTouchUp) {
         if (!isShowWindow) return false;
+
+        if (mapRedirectWindow.isShowWindow) {
+            mapRedirectWindow.checkTouch(isDragged, isTouchUp);
+            return true;
+        }
 
         if (assetPicker.isShowWindow) {
             if (assetPicker.isTouchInsideBounds()) {

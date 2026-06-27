@@ -136,8 +136,10 @@ public class ButtonCommon extends BaseCallBack {
         }
 
         for (String line : lines) {
-            font.draw(batch, line, startX, startY);
-            startY -= textHeight + 5; // Сдвигаем вниз на высоту строки + небольшой отступ
+            if (!line.isEmpty()) {
+                font.draw(batch, line, startX, startY);
+            }
+            startY -= textHeight + 5;
         }
     }
 

@@ -51,7 +51,7 @@ public class BaseCallBack extends BaseObject {
     public void execCallBack() throws Exception {
         if (this.method != null) {
             if (this.params != null) {
-                method.invoke(callBack, this.params);
+                method.invoke(callBack, (Object[]) this.params);
                 return;
             }
 

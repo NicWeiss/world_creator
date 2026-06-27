@@ -8,7 +8,9 @@ import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.components.windows.DialogEditorWindow;
 import com.nicweiss.editor.components.windows.ItemsEditorWindow;
 import com.nicweiss.editor.components.windows.MapContextMenuWindow;
+import com.nicweiss.editor.components.windows.MapRedirectWindow;
 import com.nicweiss.editor.components.windows.NpcEditorWindow;
+import com.nicweiss.editor.components.windows.ObjectEditorWindow;
 import com.nicweiss.editor.components.windows.QuestsEditorWindow;
 import com.nicweiss.editor.components.windows.TileSelectorWindow;
 import com.nicweiss.editor.objects.MapObject;
@@ -27,8 +29,10 @@ public class UserInterface {
     public QuestsEditorWindow questsEditorWindow;
     public ItemsEditorWindow itemsEditorWindow;
     public NpcEditorWindow npcEditorWindow;
+    public ObjectEditorWindow objectEditorWindow;
+    public MapRedirectWindow mapRedirectWindow;
 
-    Texture openTexture, saveTexture, questsTexture, itemsTexture, npcTexture, white;
+    Texture openTexture, saveTexture, questsTexture, itemsTexture, npcTexture, objectTexture, white;
 
     public static Store store;
     BaseObject[] ui;
@@ -53,16 +57,19 @@ public class UserInterface {
         questsEditorWindow = new QuestsEditorWindow();
         itemsEditorWindow = new ItemsEditorWindow();
         npcEditorWindow = new NpcEditorWindow(dialogEditorWindow);
+        objectEditorWindow = new ObjectEditorWindow(dialogEditorWindow);
+        mapRedirectWindow = new MapRedirectWindow();
 
         openTexture = new Texture("open.png");
         saveTexture = new Texture("save.png");
         questsTexture = new Texture("quests_button.png");
         itemsTexture = new Texture("items_button.png");
         npcTexture = new Texture("npc_button.png");
+        objectTexture = new Texture("object_button.png");
         white = new Texture("white.png");
 
         tileSelectorWindow = new TileSelectorWindow(lightObjectIds);
-        mapContextMenuWindow = new MapContextMenuWindow(dialogEditorWindow);
+        mapContextMenuWindow = new MapContextMenuWindow(dialogEditorWindow, mapRedirectWindow);
     }
 
     public void build() throws Exception {
@@ -72,8 +79,10 @@ public class UserInterface {
         questsEditorWindow.buildWindow();
         itemsEditorWindow.buildWindow();
         npcEditorWindow.buildWindow();
+        objectEditorWindow.buildWindow();
+        mapRedirectWindow.buildWindow();
 
-        ui = new BaseObject[5];
+        ui = new BaseObject[6];
 
 //        Open button
         ui[0] = bo_helper.constructObject(
@@ -87,37 +96,40 @@ public class UserInterface {
                 menuItemSize, menuItemSize, "save", 0
         );
 
+        // Группа иконок редактора — 10px между кнопками (как между open и save)
+        int editorIconStep = menuItemSize + 10;
+        int editorStartX = (int)(ui[1].getX() + menuItemSize + menuItemSpace);
+
 //        Quest window button
         ui[2] = bo_helper.constructObject(
             questsTexture,
-            (int) (ui[1].getX() + menuItemSize + menuItemSpace),
+            editorStartX,
             (int) (store.uiHeightOriginal - menuItemSize - 10),
-            menuItemSize,
-            menuItemSize,
-            "quests",
-            0
+            menuItemSize, menuItemSize, "quests", 0
         );
 
 //        Items window button
         ui[3] = bo_helper.constructObject(
             itemsTexture,
-            (int) (ui[2].getX() + menuItemSize + menuItemSpace),
+            editorStartX + editorIconStep,
             (int) (store.uiHeightOriginal - menuItemSize - 10),
-            menuItemSize,
-            menuItemSize,
-            "items",
-            0
+            menuItemSize, menuItemSize, "items", 0
         );
 
 //        NPC window button
         ui[4] = bo_helper.constructObject(
             npcTexture,
-            (int) (ui[3].getX() + menuItemSize + menuItemSpace),
+            editorStartX + editorIconStep * 2,
             (int) (store.uiHeightOriginal - menuItemSize - 10),
-            menuItemSize,
-            menuItemSize,
-            "npc",
-            0
+            menuItemSize, menuItemSize, "npc", 0
+        );
+
+//        Object/Building window button
+        ui[5] = bo_helper.constructObject(
+            objectTexture,
+            editorStartX + editorIconStep * 3,
+            (int) (store.uiHeightOriginal - menuItemSize - 10),
+            menuItemSize, menuItemSize, "object", 0
         );
 
         buttonBG = bo_helper.constructObject(
@@ -125,7 +137,8 @@ public class UserInterface {
         );
 
         focusWindows = new Window[]{
-            dialogEditorWindow, questsEditorWindow, itemsEditorWindow, npcEditorWindow
+            dialogEditorWindow, questsEditorWindow, itemsEditorWindow,
+            npcEditorWindow, objectEditorWindow, mapRedirectWindow
         };
     }
 
@@ -201,6 +214,10 @@ public class UserInterface {
                         npcEditorWindow.show();
                         return true;
                     }
+                    if (baseObject.getObjectId().equals("object")) {
+                        objectEditorWindow.show();
+                        return true;
+                    }
                 }
             }
         }
@@ -232,6 +249,7 @@ public class UserInterface {
             if (w == questsEditorWindow  && questsEditorWindow.keyTyped(character))  return true;
             if (w == itemsEditorWindow   && itemsEditorWindow.keyTyped(character))   return true;
             if (w == npcEditorWindow     && npcEditorWindow.keyTyped(character))     return true;
+            if (w == objectEditorWindow  && objectEditorWindow.keyTyped(character))  return true;
         }
         return false;
     }
@@ -287,7 +305,7 @@ public class UserInterface {
     }
 
     public boolean getMouseMoveBlockStatus() {
-        if (mapContextMenuWindow.isShow || tileSelectorWindow.isShowWindow || dialogEditorWindow.isShowWindow || questsEditorWindow.isShowWindow || itemsEditorWindow.isShowWindow || npcEditorWindow.isShowWindow) {
+        if (mapContextMenuWindow.isShow || tileSelectorWindow.isShowWindow || dialogEditorWindow.isShowWindow || questsEditorWindow.isShowWindow || itemsEditorWindow.isShowWindow || npcEditorWindow.isShowWindow || objectEditorWindow.isShowWindow || mapRedirectWindow.isShowWindow) {
             return true;
         }
 

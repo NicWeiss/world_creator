@@ -468,13 +468,15 @@ public class Editor extends View{
                     store.objectedMap[mapI][mapJ].isRenderLighAndNigth = true;
                 }
 
-//                Рисуем существ на карте
-//                На основной клетке
+//                Рисуем существ и здания на карте
                 renderCreations(batch, mapI, mapJ, false);
+                renderBuildings(batch, mapI, mapJ, false);
 
 //                на смежных, если они на уровне земли
                 renderCreations(batch, mapI, mapJ+1, true);
                 renderCreations(batch, mapI+1, mapJ, true);
+                renderBuildings(batch, mapI, mapJ+1, true);
+                renderBuildings(batch, mapI+1, mapJ, true);
             }
         }
     }
@@ -490,16 +492,25 @@ public class Editor extends View{
                 if (creation.mapCellX != (mapI+1) || creation.mapCellY != (mapJ+1) ){
                     continue;
                 }
-
                 if (filterByHeight) {
                     MapObject el = store.objectedMap[mapI][mapJ];
-
-                    if (el.getHeight() != 0) {
-                        continue;
-                    }
+                    if (el.getHeight() != 0) { continue; }
                 }
-
                 creation.draw(batch);
+            }
+        }
+    }
+
+    public void renderBuildings(SpriteBatch batch, int mapI, int mapJ, boolean filterByHeight) {
+        for (int i = 0; i <= store.buildingCount; i++) {
+            Creation b = store.buildings[i];
+            if (b != null) {
+                if (b.mapCellX != (mapI+1) || b.mapCellY != (mapJ+1)) { continue; }
+                if (filterByHeight) {
+                    MapObject el = store.objectedMap[mapI][mapJ];
+                    if (el.getHeight() != 0) { continue; }
+                }
+                b.draw(batch);
             }
         }
     }
