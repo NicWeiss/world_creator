@@ -19,7 +19,9 @@ public class QuestsEditorWindow extends Window implements CallBack {
     BOHelper bo_helper;
     TextInputWindow tiw = new TextInputWindow();
     ActionConfirnWindow acw = new ActionConfirnWindow();
+    ItemCardWindow itemCard = new ItemCardWindow();
     LinkedHashMap questsList, selectedQuest;
+    private String itemSearchQuery = "";
 
     Texture buttonBG, buttonBGHover, plusIcon, questIcon, trashIcon, questOptionIcon, nameIcon, descriptionIcon;
     Texture checkboxOn, checkboxOff, experienceIcon;
@@ -53,6 +55,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
         super.buildWindow();
         tiw.buildWindow();
         acw.buildWindow();
+        itemCard.buildWindow();
         menuObjectSpace = 7;
         itemWidth = 20;
         itemHeight = 20;
@@ -246,8 +249,13 @@ public class QuestsEditorWindow extends Window implements CallBack {
         } if (acw.isShowWindow) {
             acw.render(batch);
             isWindowActive = false;
-        }else {
+        } else {
             isWindowActive = true;
+        }
+
+        if (itemCard.isShowWindow) {
+            itemCard.render(batch);
+            isWindowActive = false;
         }
     }
 
@@ -255,6 +263,16 @@ public class QuestsEditorWindow extends Window implements CallBack {
     public boolean checkTouch(boolean isDragged, boolean isTouchUp){
         if (!isShowWindow){
             return false;
+        }
+
+        // Карточка предмета: клик внутри — обрабатываем, снаружи — закрываем
+        if (itemCard.isShowWindow) {
+            if (itemCard.isTouchInsideBounds()) {
+                itemCard.checkTouch(isDragged, isTouchUp);
+            } else if (!isDragged && isTouchUp) {
+                itemCard.hide();
+            }
+            return true;
         }
 
         if (tiw.isShowWindow && tiw.checkTouch(isDragged, isTouchUp)){
@@ -535,43 +553,89 @@ public class QuestsEditorWindow extends Window implements CallBack {
         questItems = Arrays.copyOfRange(questItems, 0, i);
     }
 
-//    Picker: список всех шаблонов предметов для выбора награды
+//    Picker: список шаблонов предметов для выбора награды
     public void prepareItemPickerView(String questUuid) {
         questItems = new ButtonCommon[1000];
         int i = 0;
 
+        // Кнопка назад
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setText(font, "<--");
         button.registerCallBack(this, "prepareSelectedQuestView", new String[]{questUuid});
-        questItems[i] = button;
-        i++;
+        questItems[i++] = button;
 
+        // Строка поиска
+        String searchLabel = itemSearchQuery.isEmpty() ? "Поиск по имени..." : "Поиск: " + itemSearchQuery;
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(nameIcon);
+        button.setText(font, searchLabel);
+        button.registerCallBack(this, "openItemSearch", new String[]{questUuid});
+        questItems[i++] = button;
+
+        // Список предметов с фильтрацией
         if (store.itemTemplates.isEmpty()) {
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
             button.setText(font, "Нет доступных предметов");
-            questItems[i] = button;
-            i++;
+            questItems[i++] = button;
         } else {
+            boolean anyFound = false;
             for (Object keyEl : store.itemTemplates.keySet()) {
                 String templateUuid = keyEl.toString();
                 LinkedHashMap template = (LinkedHashMap) store.itemTemplates.get(templateUuid);
+                String name = (String) template.get("__name__");
+
+                if (!itemSearchQuery.isEmpty() &&
+                    !name.toLowerCase().contains(itemSearchQuery.toLowerCase())) {
+                    continue;
+                }
+
                 button = new ButtonCommon();
                 button.setBackgrounds(buttonBG, buttonBGHover);
                 button.setIcon(questIcon);
-                button.setText(font, (String) template.get("__name__"));
-                button.registerCallBack(
-                    this,
-                    "addRewardItem",
-                    new String[]{questUuid, templateUuid}
-                );
-                questItems[i] = button;
-                i++;
+                button.setText(font, name);
+                button.registerCallBack(this, "showItemCard", new String[]{questUuid, templateUuid});
+                questItems[i++] = button;
+                anyFound = true;
+            }
+
+            if (!anyFound) {
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setText(font, "Ничего не найдено");
+                questItems[i++] = button;
             }
         }
 
         questItems = Arrays.copyOfRange(questItems, 0, i);
+    }
+
+    public void openItemSearch(String questUuid) {
+        if (tiw.isShowWindow || !isWindowActive) return;
+        tiw.registerCallBack(this, "applyItemSearch", new String[]{questUuid, ""});
+        tiw.setText(itemSearchQuery);
+        tiw.show();
+    }
+
+    public void applyItemSearch(String questUuid, String query) {
+        itemSearchQuery = query;
+        prepareItemPickerView(questUuid);
+    }
+
+    public void showItemCard(String questUuid, String templateUuid) {
+        LinkedHashMap template = (LinkedHashMap) store.itemTemplates.get(templateUuid);
+        itemCard.registerCallBack(this, "selectRewardFromCard", new String[]{questUuid, templateUuid});
+        itemCard.populate(template, font);
+        itemCard.setX(x + width + 10);
+        itemCard.setY(y);
+        itemCard.show();
+    }
+
+    public void selectRewardFromCard(String questUuid, String templateUuid) {
+        itemSearchQuery = "";
+        addRewardItem(questUuid, templateUuid);
     }
 
     public void addRewardItem(String questUuid, String templateUuid) {
