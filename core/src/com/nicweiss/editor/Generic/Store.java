@@ -2,6 +2,7 @@ package com.nicweiss.editor.Generic;
 
 import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
+import com.nicweiss.editor.simulation.Player;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -18,6 +19,9 @@ public class Store {
 
     public static float playerPositionX, playerPositionY;
     public static float dayCoefficient = 1f;
+
+    // Игрок — единственный экземпляр, создаётся при запуске симуляции
+    public static Player player = null;
 
     public static int lightPointsCount = 10000;
     public static float[][] lightPoints;

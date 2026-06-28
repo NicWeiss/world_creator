@@ -39,6 +39,7 @@ public class Editor extends View{
     boolean isUiTouched = false;
 
 
+
     public Editor(){
         lightObjectIds = new int[] {11};
         surfacesIds = new int [] {1, 10};
@@ -381,14 +382,12 @@ public class Editor extends View{
         Gdx.gl.glClearColor(store.dayCoefficient, store.dayCoefficient, store.dayCoefficient, 1);
 
 
-//        Камера симуляции: применяем атомарный дельта до рендера (нет разрывов)
-        if (store.isSimulationMode) {
-            long delta = store.simCamDelta;
-            if (delta != 0L) {
-                store.shiftX -= (int)(delta >> 32);
-                store.shiftY -= (int)(delta & 0xFFFFFFFFL);
-                store.simCamDelta = 0L;
-            }
+//        Симуляция: PhysicThread двигает player; здесь только центрируем камеру
+        if (store.isSimulationMode && store.player != null && store.player.isInitialized()) {
+            float[] isoPos = Transform.cartesianToIsometric(
+                (int) store.player.worldX, (int) store.player.worldY);
+            store.shiftX = (int)(store.display.get("width")  / 2 - isoPos[0]);
+            store.shiftY = (int)(store.display.get("height") / 2 - isoPos[1]);
         }
 
 //        Геймпад: опрос левого стика на GL-потоке, результат в Store для SimulationInputThread
@@ -519,6 +518,15 @@ public class Editor extends View{
 //                Рисуем существ и здания на карте
                 renderCreations(batch, mapI, mapJ, false);
                 renderBuildings(batch, mapI, mapJ, false);
+
+//                Рисуем игрока в его тайловой позиции (как creations)
+                if (store.isSimulationMode && store.player != null && store.player.isInitialized()) {
+                    int pi = (int)(store.player.worldX / tileSizeX);
+                    int pj = (int)(store.player.worldY / tileSizeY);
+                    if (i == pi && j == pj) {
+                        store.player.draw(batch);
+                    }
+                }
 
 //                на смежных, если они на уровне земли
                 renderCreations(batch, mapI, mapJ+1, true);
