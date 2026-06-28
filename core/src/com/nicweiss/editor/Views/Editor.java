@@ -275,6 +275,15 @@ public class Editor extends View{
 
     @Override
     public boolean keyDown(int keyCode){
+        // В симуляции — только обновляем флаги для SimulationInputThread
+        if (store.isSimulationMode) {
+            if (keyCode == 19 || keyCode == 51) store.simKeyUp    = true; // UP / W
+            if (keyCode == 20 || keyCode == 47) store.simKeyDown  = true; // DOWN / S
+            if (keyCode == 21 || keyCode == 29) store.simKeyLeft  = true; // LEFT / A
+            if (keyCode == 22 || keyCode == 32) store.simKeyRight = true; // RIGHT / D
+            return true;
+        }
+
         if(userInterface.checkKey(keyCode)){
             return false;
         }
@@ -324,6 +333,18 @@ public class Editor extends View{
         }
 
         return false;
+    }
+
+    @Override
+    public boolean keyUp(int keyCode) {
+        if (store.isSimulationMode) {
+            if (keyCode == 19 || keyCode == 51) store.simKeyUp    = false;
+            if (keyCode == 20 || keyCode == 47) store.simKeyDown  = false;
+            if (keyCode == 21 || keyCode == 29) store.simKeyLeft  = false;
+            if (keyCode == 22 || keyCode == 32) store.simKeyRight = false;
+            return true;
+        }
+        return super.keyUp(keyCode);
     }
 
     @Override

@@ -32,6 +32,12 @@ public class Store {
     public static boolean isEditorLoadComplete = false;
     public static boolean isMapLoading     = false;
     public static boolean isSimulationMode = false;
+
+    // Состояние клавиш движения в симуляции (volatile — читает SimulationInputThread)
+    public static volatile boolean simKeyUp    = false;
+    public static volatile boolean simKeyDown  = false;
+    public static volatile boolean simKeyLeft  = false;
+    public static volatile boolean simKeyRight = false;
     public static boolean isDragged = false;
     public static boolean isTouchUp = false;
 

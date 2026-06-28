@@ -11,7 +11,9 @@ import com.nicweiss.editor.components.windows.LoadingWindow;
 import com.nicweiss.editor.simulation.CreationThread;
 import com.nicweiss.editor.simulation.MagickThread;
 import com.nicweiss.editor.simulation.PhysicThread;
+import com.nicweiss.editor.simulation.SimulationInputThread;
 import com.nicweiss.editor.simulation.WeatherThread;
+import com.nicweiss.editor.utils.CameraSettings;
 import com.nicweiss.editor.utils.Transform;
 import com.nicweiss.editor.components.windows.MapContextMenuWindow;
 import com.nicweiss.editor.components.windows.MapRedirectWindow;
@@ -53,6 +55,11 @@ public class UserInterface {
     private Thread weatherThread;
     private Thread physicThread;
     private Thread magickThread;
+    private Thread inputThread;
+
+    // Фиксированный scaleTotal для игрового режима (сильное приближение)
+    private static final int SIM_ZOOM_TARGET = -900;
+    private int editorScaleTotal = 0; // сохранённый зум редактора
 
     public static Store store;
     BaseObject[] ui;
@@ -489,23 +496,22 @@ public class UserInterface {
     }
 
     private void startSimulation() {
+        editorScaleTotal = store.scaleTotal; // запоминаем зум редактора
         store.isSimulationMode = true;
 
-        creationThread = new Thread(new CreationThread(), "CreationThread");
-        weatherThread  = new Thread(new WeatherThread(),  "WeatherThread");
-        physicThread   = new Thread(new PhysicThread(),   "PhysicThread");
-        magickThread   = new Thread(new MagickThread(),   "MagickThread");
-
-        // Daemon — потоки завершатся вместе с JVM
-        creationThread.setDaemon(true);
-        weatherThread.setDaemon(true);
-        physicThread.setDaemon(true);
-        magickThread.setDaemon(true);
+        creationThread = newDaemon(new CreationThread(),        "CreationThread");
+        weatherThread  = newDaemon(new WeatherThread(),         "WeatherThread");
+        physicThread   = newDaemon(new PhysicThread(),          "PhysicThread");
+        magickThread   = newDaemon(new MagickThread(),          "MagickThread");
+        inputThread    = newDaemon(new SimulationInputThread(), "SimulationInputThread");
 
         creationThread.start();
         weatherThread.start();
         physicThread.start();
         magickThread.start();
+        inputThread.start();
+
+        animateZoom(SIM_ZOOM_TARGET); // плавно до фиксированного игрового зума
     }
 
     private void stopSimulation() {
@@ -515,5 +521,33 @@ public class UserInterface {
         if (weatherThread  != null) weatherThread.interrupt();
         if (physicThread   != null) physicThread.interrupt();
         if (magickThread   != null) magickThread.interrupt();
+        if (inputThread    != null) inputThread.interrupt();
+
+        animateZoom(editorScaleTotal); // плавно возвращаем зум редактора
+    }
+
+    /** Плавно анимирует scaleTotal к targetScaleTotal через CameraSettings */
+    private void animateZoom(int targetScaleTotal) {
+        new Thread(() -> {
+            boolean zoomIn = targetScaleTotal < store.scaleTotal;
+            while (!Thread.currentThread().isInterrupted()) {
+                int diff = targetScaleTotal - store.scaleTotal;
+                if (Math.abs(diff) < 100) {
+                    // Финальный snap до точного значения
+                    store.scaleTotal = targetScaleTotal;
+                    store.isNeedToChangeScale = true;
+                    break;
+                }
+                if (zoomIn) CameraSettings.upScale();
+                else        CameraSettings.downScale();
+                try { Thread.sleep(35); } catch (InterruptedException e) { break; }
+            }
+        }, "ZoomAnim").start();
+    }
+
+    private Thread newDaemon(Runnable r, String name) {
+        Thread t = new Thread(r, name);
+        t.setDaemon(true);
+        return t;
     }
 }
