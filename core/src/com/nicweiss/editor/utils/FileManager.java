@@ -1,6 +1,7 @@
 package com.nicweiss.editor.utils;
 
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.components.windows.LoadingWindow;
 import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
 
@@ -69,24 +70,39 @@ public class FileManager {
     // ЗАГРУЗКА
     // ═══════════════════════════════════════════════════════════════════════
 
-    public String[][][] openMap() {
+    /** Показывает FileDialog и возвращает выбранный путь (или null). Вызывать на GL-потоке. */
+    public String pickFile() {
         FileDialog fd = new FileDialog((java.awt.Frame) null);
         fd.setMode(FileDialog.LOAD);
         fd.setFile("*.wcf");
         fd.setVisible(true);
-
-        if (fd.getFile() == null) { fd.dispose(); return new String[0][0][0]; }
-
-        String filename = fd.getDirectory() + fd.getFile();
+        if (fd.getFile() == null) { fd.dispose(); return null; }
+        String path = fd.getDirectory() + fd.getFile();
         fd.dispose();
+        return path;
+    }
 
+    /**
+     * Загружает архив с отчётом о прогрессе.
+     * Вызывать из фонового потока. Обновляет LoadingWindow через volatile-поля.
+     * Возвращает данные карты или пустой массив при ошибке.
+     */
+    public String[][][] loadFile(String filename, LoadingWindow lw) {
+        final int TOTAL = 7;
         resetStore();
 
         try (ZipInputStream zip = new ZipInputStream(new FileInputStream(filename))) {
+            lw.setStep(1, TOTAL, "Открытие архива", 0);
+
             ZipEntry entry;
+            int stepNum = 1;
             while ((entry = zip.getNextEntry()) != null) {
                 byte[] data = readEntry(zip);
-                switch (entry.getName()) {
+                String name = entry.getName();
+                stepNum++;
+                lw.setStep(stepNum, TOTAL, name, stepNum * 100 / TOTAL);
+
+                switch (name) {
                     case "map.bin":
                         pendingMapBin = data;
                         break;
@@ -108,7 +124,6 @@ public class FileManager {
                     case "buildings.json":
                         readBuildings(data);
                         break;
-                    // manifest.json — читается опционально, не критичен
                 }
                 zip.closeEntry();
             }
@@ -119,6 +134,7 @@ public class FileManager {
 
         return buildMapResult();
     }
+
 
     // ═══════════════════════════════════════════════════════════════════════
     // КАРТА — запись
@@ -202,32 +218,26 @@ public class FileManager {
         return JSONValue.toJSONString(list).getBytes(StandardCharsets.UTF_8);
     }
 
+    // Сырые данные NPC/зданий — заполняются в фоновом потоке, объекты создаются на GL-потоке
+    public List<Map<String, Object>> pendingNpcs      = new ArrayList<>();
+    public List<Map<String, Object>> pendingBuildings = new ArrayList<>();
+
     private void readNpcs(byte[] data) {
+        pendingNpcs.clear();
         try {
             Object parsed = new JSONParser().parse(new String(data, StandardCharsets.UTF_8));
             if (!(parsed instanceof List)) return;
-
-            store.creationCount = -1;
             for (Object item : (List<?>) parsed) {
                 if (!(item instanceof Map)) continue;
                 Map<?, ?> m = (Map<?, ?>) item;
-
-                String uuid = (String) m.get("uuid");
-                String name = (String) m.get("name");
-                int x = ((Number) m.get("x")).intValue();
-                int y = ((Number) m.get("y")).intValue();
-
-                store.creationCount++;
-                Creation cr = new Creation();
-                cr.setUUID(uuid);
-                cr.setCell(x, y);
-                cr.setTexture(new com.badlogic.gdx.graphics.Texture("creations/creation.png"));
-                float[] iso = Transform.cartesianToIsometric(
-                    (int)(x * store.tileSizeWidth), (int)(y * store.tileSizeHeight)
-                );
-                cr.setPosition(iso[0], iso[1]);
-                store.creations[store.creationCount] = cr;
-                store.npcs.put(uuid, name);
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("uuid", m.get("uuid"));
+                entry.put("name", m.get("name"));
+                entry.put("x",    ((Number) m.get("x")).intValue());
+                entry.put("y",    ((Number) m.get("y")).intValue());
+                pendingNpcs.add(entry);
+                // имена фиксируем сразу — нет GL-вызовов
+                store.npcs.put((String) entry.get("uuid"), entry.get("name").toString());
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -256,31 +266,20 @@ public class FileManager {
     }
 
     private void readBuildings(byte[] data) {
+        pendingBuildings.clear();
         try {
             Object parsed = new JSONParser().parse(new String(data, StandardCharsets.UTF_8));
             if (!(parsed instanceof List)) return;
-
-            store.buildingCount = -1;
             for (Object item : (List<?>) parsed) {
                 if (!(item instanceof Map)) continue;
                 Map<?, ?> m = (Map<?, ?>) item;
-
-                String uuid = (String) m.get("uuid");
-                String name = (String) m.get("name");
-                int x = ((Number) m.get("x")).intValue();
-                int y = ((Number) m.get("y")).intValue();
-
-                store.buildingCount++;
-                Creation b = new Creation();
-                b.setUUID(uuid);
-                b.setCell(x, y);
-                b.setTexture(new com.badlogic.gdx.graphics.Texture("objects/default_object.png"));
-                float[] iso = Transform.cartesianToIsometric(
-                    (int)(x * store.tileSizeWidth), (int)(y * store.tileSizeHeight)
-                );
-                b.setPosition(iso[0], iso[1]);
-                store.buildings[store.buildingCount] = b;
-                store.buildingNames.put(uuid, name);
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("uuid", m.get("uuid"));
+                entry.put("name", m.get("name"));
+                entry.put("x",    ((Number) m.get("x")).intValue());
+                entry.put("y",    ((Number) m.get("y")).intValue());
+                pendingBuildings.add(entry);
+                store.buildingNames.put((String) entry.get("uuid"), entry.get("name").toString());
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -375,6 +374,8 @@ public class FileManager {
         store.creationCount = -1;
         store.buildingCount = -1;
         pendingMapBin = null;
+        pendingNpcs.clear();
+        pendingBuildings.clear();
         mapWidth  = 0;
         mapHeight = 0;
     }

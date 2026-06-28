@@ -344,6 +344,11 @@ public class Editor extends View{
             return;
         }
 
+        // Карта строится чанками — пропускаем рендер тайлов до готовности
+        if (store.isMapLoading || store.objectedMap == null) {
+            return;
+        }
+
         float[] cursorPoint = transform.cartesianToIsometric(-1,-1);
         int mapI, mapJ;
         float[] point;

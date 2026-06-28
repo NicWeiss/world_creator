@@ -28,6 +28,7 @@ public class Window extends BaseCallBack implements CallBack {
     public boolean isShowWindow = false;
     public int focusOrder = 0;
     private static int globalFocusCounter = 0;
+    protected boolean closeEnabled = true;
     public boolean isDualSectionMode = false;
     protected boolean isWindowActive = true;
     protected boolean isWindowIsDragged = false;
@@ -205,7 +206,7 @@ public class Window extends BaseCallBack implements CallBack {
             int closeButtonX = (int) (window.getX() + window.getWidth() - closeButton.getWidth());
             int closeButtonY = (int) (window.getY() + window.getHeight() - closeButton.getHeight());
 
-            if (closeButton.isTouched){
+            if (closeEnabled && closeButton.isTouched){
                 bo_helper.draw(
                         batch,closeButtonBG, closeButtonX, closeButtonY,
                         (int) closeButton.getWidth(), (int) closeButton.getHeight()
@@ -225,7 +226,7 @@ public class Window extends BaseCallBack implements CallBack {
                 }
             }
 
-            bo_helper.draw(batch, closeButton, closeButtonX, closeButtonY);
+            if (closeEnabled) bo_helper.draw(batch, closeButton, closeButtonX, closeButtonY);
 
             leftSection.render(batch);
             if (isDualSectionMode) {
@@ -249,7 +250,7 @@ public class Window extends BaseCallBack implements CallBack {
         }
         if (isTouchUp && !isDragged) {
 //        Обработка открытия и закрытия
-            if (isShowWindow && closeButton.isTouched) {
+            if (closeEnabled && isShowWindow && closeButton.isTouched) {
                 isShowWindow = false;
                 return true;
             }

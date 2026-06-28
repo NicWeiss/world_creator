@@ -7,6 +7,8 @@ import com.nicweiss.editor.Generic.Store;
 import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.components.windows.DialogEditorWindow;
 import com.nicweiss.editor.components.windows.ItemsEditorWindow;
+import com.nicweiss.editor.components.windows.LoadingWindow;
+import com.nicweiss.editor.utils.Transform;
 import com.nicweiss.editor.components.windows.MapContextMenuWindow;
 import com.nicweiss.editor.components.windows.MapRedirectWindow;
 import com.nicweiss.editor.components.windows.NpcEditorWindow;
@@ -31,6 +33,14 @@ public class UserInterface {
     public NpcEditorWindow npcEditorWindow;
     public ObjectEditorWindow objectEditorWindow;
     public MapRedirectWindow mapRedirectWindow;
+    private LoadingWindow loadingWindow;
+
+    // Состояние построения карты по чанкам
+    private String[][][] pendingMap   = null;
+    private int buildCursor           = 0;
+    private int lightCursor           = 0;
+    private static final int MAP_CHUNK   = 50;  // строк за кадр
+    private static final int LIGHT_CHUNK = 30;  // строк за кадр
 
     Texture openTexture, saveTexture, questsTexture, itemsTexture, npcTexture, objectTexture, white;
 
@@ -59,6 +69,7 @@ public class UserInterface {
         npcEditorWindow = new NpcEditorWindow(dialogEditorWindow);
         objectEditorWindow = new ObjectEditorWindow(dialogEditorWindow);
         mapRedirectWindow = new MapRedirectWindow();
+        loadingWindow     = new LoadingWindow();
 
         openTexture = new Texture("open.png");
         saveTexture = new Texture("save.png");
@@ -81,6 +92,7 @@ public class UserInterface {
         npcEditorWindow.buildWindow();
         objectEditorWindow.buildWindow();
         mapRedirectWindow.buildWindow();
+        loadingWindow.buildWindow();
 
         ui = new BaseObject[6];
 
@@ -171,9 +183,16 @@ public class UserInterface {
         mapContextMenuWindow.render(uiBatch);
         sortWindowsByFocus();
         for (Window w : focusWindows) w.render(uiBatch);
+        if (loadingWindow.isShowWindow) loadingWindow.render(uiBatch);
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp, int button){
+        // Окно загрузки имеет абсолютный приоритет
+        if (loadingWindow.isShowWindow) {
+            loadingWindow.checkTouch(isDragged, isTouchUp);
+            return true;
+        }
+
         // Обрабатываем в обратном порядке фокуса — верхнее окно получает ввод первым
         sortWindowsByFocus();
         for (int i = focusWindows.length - 1; i >= 0; i--) {
@@ -258,48 +277,148 @@ public class UserInterface {
         mapContextMenuWindow.onMouseMoved();
     }
 
-    private void openMap(){
-        int textureId = 0;
-        String uuid, type;
-        String[][][] map =  fileManager.openMap();;
+    private void openMap() {
+        // Шаг 1: выбираем файл на GL-потоке (FileDialog блокирует поток, но без GL)
+        String filename = fileManager.pickFile();
+        if (filename == null) return;
 
-        if (map.length == 0) {
-            return;
-        }
+        // Показываем окно загрузки
+        loadingWindow.startLoading(new java.io.File(filename).getName());
+        loadingWindow.show();
 
-        store.mapHeight = fileManager.mapHeight;
-        store.mapWidth = fileManager.mapWidth;
+        // Шаг 2: читаем ZIP в фоновом потоке
+        final String finalFilename = filename;
+        new Thread(() -> {
+            String[][][] map = fileManager.loadFile(finalFilename, loadingWindow);
 
-        store.objectedMap = new MapObject[store.mapHeight][store.mapWidth];
+            // Шаг 3: возвращаемся на GL-поток для построения карты
+            com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+                if (map.length == 0) {
+                    loadingWindow.hide();
+                    return;
+                }
 
-        lightClass.clearAll();
-        for (int i = 0; i < store.mapWidth; i++){
-            for (int j = 0; j < store.mapHeight; j++){
-                uuid = map[i][j][0];
-                textureId = Integer.parseInt(map[i][j][1]);
-                type = map[i][j][2];
+                store.mapHeight = fileManager.mapHeight;
+                store.mapWidth  = fileManager.mapWidth;
+                store.objectedMap = new MapObject[store.mapHeight][store.mapWidth];
+                store.isMapLoading = true;  // блокируем рендер до окончания построения
+                lightClass.clearAll();
+
+                pendingMap  = map;
+                buildCursor = 0;
+                loadingWindow.setStep(8, 9, "Построение карты", 0);
+                buildMapChunk();
+            });
+        }).start();
+    }
+
+    /** Строит MAP_CHUNK строк за кадр, затем планирует следующий чанк */
+    private void buildMapChunk() {
+        int end = Math.min(buildCursor + MAP_CHUNK, store.mapWidth);
+        for (int i = buildCursor; i < end; i++) {
+            for (int j = 0; j < store.mapHeight; j++) {
+                String uuid      = pendingMap[i][j][0];
+                int textureId    = Integer.parseInt(pendingMap[i][j][1]);
+                String type      = pendingMap[i][j][2];
+
                 MapObject tmp = new MapObject();
                 tmp.setSurfaceTexture(tileTextures[1].texture);
-                tmp.setSurfaceId(1);          // draw() пропускает основной тайл только если surfaceId==textureId
+                tmp.setSurfaceId(1);
                 tmp.setTexture(tileTextures[textureId].texture);
                 tmp.setObjectHeight(tileTextures[textureId].high);
                 tmp.setTextureId(textureId);
-                tmp.xPositionOnMap = i+1;
-                tmp.yPositionOnMap = j+1;
+                tmp.xPositionOnMap = i + 1;
+                tmp.yPositionOnMap = j + 1;
                 tmp.setUUID(uuid);
-
-                if (type == "dialog") {
-                    tmp.isDialogBind = true;
-                }
-
+                if (type == "dialog") tmp.isDialogBind = true;
                 store.objectedMap[i][j] = tmp;
 
-                if (ArrayUtils.checkIntInArray(textureId, lightObjectIds)){
+                if (ArrayUtils.checkIntInArray(textureId, lightObjectIds)) {
                     lightClass.addPoint(i, j);
                 }
             }
         }
-        lightClass.recalcOnMap();
+        buildCursor = end;
+        int pct = buildCursor * 100 / store.mapWidth;
+        loadingWindow.setStep(8, 9, "Построение карты", pct);
+
+        if (buildCursor < store.mapWidth) {
+            com.badlogic.gdx.Gdx.app.postRunnable(this::buildMapChunk);
+        } else {
+            // Карта построена — пересчёт освещения
+            lightCursor = 0;
+            loadingWindow.setStep(9, 9, "Расчёт освещения", 0);
+            com.badlogic.gdx.Gdx.app.postRunnable(this::calcLightChunk);
+        }
+    }
+
+    /** Пересчитывает освещение LIGHT_CHUNK строк за кадр */
+    private void calcLightChunk() {
+        int end = Math.min(lightCursor + LIGHT_CHUNK, store.mapWidth);
+        for (int i = lightCursor; i < end; i++) {
+            for (int j = 0; j < store.mapHeight; j++) {
+                store.objectedMap[i][j].calcLight("global");
+            }
+        }
+        lightCursor = end;
+        int pct = lightCursor * 100 / store.mapWidth;
+        loadingWindow.setStep(9, 9, "Расчёт освещения", pct);
+
+        if (lightCursor < store.mapWidth) {
+            com.badlogic.gdx.Gdx.app.postRunnable(this::calcLightChunk);
+        } else {
+            // Освещение готово — создаём сущности и объекты (GL-поток, нужны Texture)
+            buildEntities();
+            store.isMapLoading = false;  // разблокируем рендер
+            pendingMap = null;
+            loadingWindow.complete();
+        }
+    }
+
+    /** Создаёт Creation-объекты с текстурами на GL-потоке */
+    private void buildEntities() {
+        com.badlogic.gdx.graphics.Texture npcTex      = null;
+        com.badlogic.gdx.graphics.Texture buildingTex = null;
+
+        store.creationCount = -1;
+        for (java.util.Map<String, Object> d : fileManager.pendingNpcs) {
+            String uuid = (String) d.get("uuid");
+            int x = (int) d.get("x");
+            int y = (int) d.get("y");
+
+            if (npcTex == null) npcTex = new com.badlogic.gdx.graphics.Texture("creations/creation.png");
+
+            store.creationCount++;
+            com.nicweiss.editor.creations.Creation cr = new com.nicweiss.editor.creations.Creation();
+            cr.setUUID(uuid);
+            cr.setCell(x, y);
+            cr.setTexture(npcTex);
+            float[] iso = Transform.cartesianToIsometric(
+                (int)(x * store.tileSizeWidth), (int)(y * store.tileSizeHeight)
+            );
+            cr.setPosition(iso[0], iso[1]);
+            store.creations[store.creationCount] = cr;
+        }
+
+        store.buildingCount = -1;
+        for (java.util.Map<String, Object> d : fileManager.pendingBuildings) {
+            String uuid = (String) d.get("uuid");
+            int x = (int) d.get("x");
+            int y = (int) d.get("y");
+
+            if (buildingTex == null) buildingTex = new com.badlogic.gdx.graphics.Texture("objects/default_object.png");
+
+            store.buildingCount++;
+            com.nicweiss.editor.creations.Creation b = new com.nicweiss.editor.creations.Creation();
+            b.setUUID(uuid);
+            b.setCell(x, y);
+            b.setTexture(buildingTex);
+            float[] iso = Transform.cartesianToIsometric(
+                (int)(x * store.tileSizeWidth), (int)(y * store.tileSizeHeight)
+            );
+            b.setPosition(iso[0], iso[1]);
+            store.buildings[store.buildingCount] = b;
+        }
     }
 
     private void saveMap(){
