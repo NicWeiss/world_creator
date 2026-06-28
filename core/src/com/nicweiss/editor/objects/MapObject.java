@@ -123,7 +123,9 @@ public class MapObject  extends BaseObject {
         } else {
             calcPosition();
             countFrom = 1;
-            countTo = store.lightPoints.length;
+            // Ограничиваем до наибольшего реально занятого слота — ключевая оптимизация:
+            // вместо O(10000) проверок → O(activeCount) при каждом calcLight
+            countTo = store.lightPointsHighWaterMark + 1;
         }
 
         for (int i = countFrom; i<countTo; i++) {
@@ -323,6 +325,14 @@ public class MapObject  extends BaseObject {
 
         setWidth(img.getWidth() / store.tileDownScale);
         setHeight(img.getHeight() / store.tileDownScale);
+    }
+
+    /** Быстрый сброс до ambient-освещения без DDA — вызывается из Light.recalcOnMap() */
+    public void resetToAmbient() {
+        staticLightRed   = 0.2f;
+        staticLightGreen = 0.2f;
+        staticLightBlue  = 0.2f;
+        nearestLightDist = 99999;
     }
 
     public void setObjectHeight(int high) {

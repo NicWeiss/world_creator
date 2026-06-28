@@ -21,6 +21,8 @@ public class Store {
 
     public static int lightPointsCount = 10000;
     public static float[][] lightPoints;
+    // Наибольший реально занятый индекс в lightPoints — ограничивает inner-loop в calcLight
+    public static int lightPointsHighWaterMark = 0;
 
     public static int scaledWidth, scaledHeight;
     public static int mouseX, mouseY;
