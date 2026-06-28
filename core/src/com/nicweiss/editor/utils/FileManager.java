@@ -1,139 +1,381 @@
 package com.nicweiss.editor.utils;
 
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
 
+import org.json.simple.JSONValue;
 import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
 
 import java.awt.FileDialog;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
+import java.util.*;
+import java.util.zip.*;
 
+/**
+ * Сохраняет и загружает состояние мира в архив .wcf (ZIP + DEFLATE).
+ *
+ * Структура архива:
+ *   manifest.json  — версия, размер карты
+ *   map.bin        — бинарные данные тайлов (textureId + dialogBound + UUID)
+ *   dialogs.json   — дерево диалогов
+ *   quests.json    — квесты
+ *   items.json     — шаблоны предметов
+ *   npcs.json      — сущности (позиции + имена)
+ *   buildings.json — объекты/здания (позиции + имена)
+ */
 public class FileManager {
     public static Store store;
 
     public int mapHeight = 0;
-    public int mapWidth = 0;
+    public int mapWidth  = 0;
 
-    public void saveMap(MapObject[][] map, int width, int height){
-        FileDialog fd = new FileDialog((java.awt.Frame)null);
+    private byte[] pendingMapBin;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // СОХРАНЕНИЕ
+    // ═══════════════════════════════════════════════════════════════════════
+
+    public void saveMap(MapObject[][] map, int width, int height) {
+        FileDialog fd = new FileDialog((java.awt.Frame) null);
         fd.setMode(FileDialog.SAVE);
-        fd.setFile("*.imf");
+        fd.setFile("*.wcf");
         fd.setVisible(true);
+
+        if (fd.getFile() == null) { fd.dispose(); return; }
+
         String filename = fd.getDirectory() + fd.getFile();
-
-        if (filename != null){
-            System.out.println("You chose " + filename);
-            try (FileOutputStream stream = new FileOutputStream(filename)) {
-                stream.write(String.valueOf(width).getBytes(StandardCharsets.UTF_8));
-                stream.write(";".getBytes(StandardCharsets.UTF_8));
-                stream.write(String.valueOf(height).getBytes(StandardCharsets.UTF_8));
-//                stream.write((byte) height);
-
-                for (int i = 0; i < height; i++) {
-                    for (int j = 0; j < width; j++) {
-                        stream.write(";".getBytes(StandardCharsets.UTF_8));
-                        stream.write(String.valueOf(map[i][j].getUUID()).getBytes(StandardCharsets.UTF_8));
-                        stream.write(",".getBytes(StandardCharsets.UTF_8));
-                        stream.write(String.valueOf(map[i][j].getTextureId()).getBytes(StandardCharsets.UTF_8));
-                    }
-                }
-
-                int dialogSize = store.dialogs.size();
-                stream.write("Ð".getBytes(StandardCharsets.UTF_8));
-                stream.write(String.valueOf(dialogSize).getBytes(StandardCharsets.UTF_8));
-                store.dialogs.forEach((k, v) -> {
-                    try {
-                        stream.write("Ö".getBytes(StandardCharsets.UTF_8));
-                        stream.write(String.valueOf(k).getBytes(StandardCharsets.UTF_8));
-                        stream.write("Ø".getBytes(StandardCharsets.UTF_8));
-                        stream.write(v.toString().getBytes(StandardCharsets.UTF_8));
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-                stream.flush();
-                stream.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
+        if (!filename.endsWith(".wcf")) filename += ".wcf";
         fd.dispose();
+
+        try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(filename))) {
+            zip.setLevel(Deflater.BEST_COMPRESSION);
+
+            putEntry(zip, "manifest.json",  buildManifest(width, height));
+            putEntry(zip, "map.bin",        buildMapBin(map, width, height));
+            putEntry(zip, "dialogs.json",   toJson(store.dialogs));
+            putEntry(zip, "quests.json",    toJson(store.quests));
+            putEntry(zip, "items.json",     toJson(store.itemTemplates));
+            putEntry(zip, "npcs.json",      buildNpcsJson());
+            putEntry(zip, "buildings.json", buildBuildingsJson());
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // ЗАГРУЗКА
+    // ═══════════════════════════════════════════════════════════════════════
+
     public String[][][] openMap() {
-        JSONParser parser = new JSONParser();
-        store.dialogs = new LinkedHashMap();
-        mapWidth = 0;
-        mapHeight = 0;
-
-        String[][][] map = new String[0][0][0];
-
-        FileDialog fd = new FileDialog((java.awt.Frame)null);
+        FileDialog fd = new FileDialog((java.awt.Frame) null);
         fd.setMode(FileDialog.LOAD);
-        fd.setFile("*.imf");
+        fd.setFile("*.wcf");
         fd.setVisible(true);
+
+        if (fd.getFile() == null) { fd.dispose(); return new String[0][0][0]; }
+
         String filename = fd.getDirectory() + fd.getFile();
+        fd.dispose();
 
-        if (fd.getFile() != null){
-            System.out.println("You chose " + filename);
-            try (FileInputStream fs = new FileInputStream(filename)) {
-                byte[] bytesArray = fs.readAllBytes();
-                String data = new String(bytesArray, StandardCharsets.UTF_8);
-                String[] splitedData = data.split("Ð");
-                String[] mapData = splitedData[0].split(";");
-                String[] dialogData = splitedData[1].split("Ö");
+        resetStore();
 
-                int dialogSize = Integer.parseInt(dialogData[0]);
-                String[] dialogUUIDList = new String[dialogSize];
-                mapWidth = Integer.parseInt(mapData[0]);
-                mapHeight = Integer.parseInt(mapData[1]);
-
-                map = new String[mapHeight][mapWidth][3];
-                int k = 2;
-                String uuid, surface, key, value;
-
-                for (int i = 1; i <= dialogSize; i++) {
-                    String[] subSplitedData = dialogData[i].split("Ø");
-                    key = subSplitedData[0];
-                    value = subSplitedData[1];
-
-                    dialogUUIDList[i-1] = key;
-
-                    store.dialogs.put(key, (LinkedHashMap) parser.parse(value));
+        try (ZipInputStream zip = new ZipInputStream(new FileInputStream(filename))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                byte[] data = readEntry(zip);
+                switch (entry.getName()) {
+                    case "map.bin":
+                        pendingMapBin = data;
+                        break;
+                    case "dialogs.json":
+                        store.dialogs.clear();
+                        store.dialogs.putAll(parseJsonMap(data));
+                        break;
+                    case "quests.json":
+                        store.quests.clear();
+                        store.quests.putAll(parseJsonMap(data));
+                        break;
+                    case "items.json":
+                        store.itemTemplates.clear();
+                        store.itemTemplates.putAll(parseJsonMap(data));
+                        break;
+                    case "npcs.json":
+                        readNpcs(data);
+                        break;
+                    case "buildings.json":
+                        readBuildings(data);
+                        break;
+                    // manifest.json — читается опционально, не критичен
                 }
+                zip.closeEntry();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new String[0][0][0];
+        }
 
-                for (int i = 0; i < mapHeight; i++) {
-                    for (int j = 0; j < mapWidth; j++) {
-                        String[] subSplitedData = mapData[k].split(",");
-                        uuid = subSplitedData[0];
-                        surface = subSplitedData[1];
+        return buildMapResult();
+    }
 
-                        map[i][j][0] = uuid;
-                        map[i][j][1] = surface;
-                        map[i][j][2] = "common";
+    // ═══════════════════════════════════════════════════════════════════════
+    // КАРТА — запись
+    // ═══════════════════════════════════════════════════════════════════════
 
-                        if(Arrays.asList(dialogUUIDList).contains(uuid)){
-                            map[i][j][2] = "dialog";
-                        }
-                        k++;
-                    }
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (ParseException e) {
-                throw new RuntimeException(e);
+    private byte[] buildMapBin(MapObject[][] map, int width, int height) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DataOutputStream dos = new DataOutputStream(baos);
+
+        dos.writeInt(width);
+        dos.writeInt(height);
+
+        for (int i = 0; i < height; i++) {
+            for (int j = 0; j < width; j++) {
+                MapObject tile = map[i][j];
+                dos.writeShort(tile.getTextureId());
+                dos.writeBoolean(tile.isDialogBind);
+                byte[] uuid = tile.getUUID().getBytes(StandardCharsets.UTF_8);
+                dos.writeShort(uuid.length);
+                dos.write(uuid);
             }
         }
 
-        fd.dispose();
+        return baos.toByteArray();
+    }
 
-        return map;
+    // ═══════════════════════════════════════════════════════════════════════
+    // КАРТА — чтение
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private String[][][] buildMapResult() {
+        if (pendingMapBin == null) return new String[0][0][0];
+
+        try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(pendingMapBin))) {
+            int width  = dis.readInt();
+            int height = dis.readInt();
+            mapWidth  = width;
+            mapHeight = height;
+
+            String[][][] result = new String[height][width][3];
+
+            for (int i = 0; i < height; i++) {
+                for (int j = 0; j < width; j++) {
+                    int textureId   = dis.readShort() & 0xFFFF;
+                    boolean dialog  = dis.readBoolean();
+                    int uuidLen     = dis.readShort() & 0xFFFF;
+                    byte[] uuidBytes = new byte[uuidLen];
+                    dis.readFully(uuidBytes);
+
+                    result[i][j][0] = new String(uuidBytes, StandardCharsets.UTF_8);
+                    result[i][j][1] = String.valueOf(textureId);
+                    result[i][j][2] = dialog ? "dialog" : "common";
+                }
+            }
+
+            return result;
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return new String[0][0][0];
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // СУЩНОСТИ (NPC)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private byte[] buildNpcsJson() {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (int i = 0; i <= store.creationCount; i++) {
+            Creation cr = store.creations[i];
+            if (cr == null) continue;
+            String uuid = cr.getUUID();
+            Map<String, Object> npc = new LinkedHashMap<>();
+            npc.put("uuid", uuid);
+            npc.put("name", store.npcs.containsKey(uuid) ? store.npcs.get(uuid).toString() : "NPC");
+            npc.put("x", cr.mapCellX);
+            npc.put("y", cr.mapCellY);
+            list.add(npc);
+        }
+        return JSONValue.toJSONString(list).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private void readNpcs(byte[] data) {
+        try {
+            Object parsed = new JSONParser().parse(new String(data, StandardCharsets.UTF_8));
+            if (!(parsed instanceof List)) return;
+
+            store.creationCount = -1;
+            for (Object item : (List<?>) parsed) {
+                if (!(item instanceof Map)) continue;
+                Map<?, ?> m = (Map<?, ?>) item;
+
+                String uuid = (String) m.get("uuid");
+                String name = (String) m.get("name");
+                int x = ((Number) m.get("x")).intValue();
+                int y = ((Number) m.get("y")).intValue();
+
+                store.creationCount++;
+                Creation cr = new Creation();
+                cr.setUUID(uuid);
+                cr.setCell(x, y);
+                cr.setTexture(new com.badlogic.gdx.graphics.Texture("creations/creation.png"));
+                float[] iso = Transform.cartesianToIsometric(
+                    (int)(x * store.tileSizeWidth), (int)(y * store.tileSizeHeight)
+                );
+                cr.setPosition(iso[0], iso[1]);
+                store.creations[store.creationCount] = cr;
+                store.npcs.put(uuid, name);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ОБЪЕКТЫ (здания)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private byte[] buildBuildingsJson() {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (int i = 0; i <= store.buildingCount; i++) {
+            Creation b = store.buildings[i];
+            if (b == null) continue;
+            String uuid = b.getUUID();
+            Map<String, Object> building = new LinkedHashMap<>();
+            building.put("uuid", uuid);
+            building.put("name", store.buildingNames.containsKey(uuid)
+                ? store.buildingNames.get(uuid).toString() : "Объект");
+            building.put("x", b.mapCellX);
+            building.put("y", b.mapCellY);
+            list.add(building);
+        }
+        return JSONValue.toJSONString(list).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private void readBuildings(byte[] data) {
+        try {
+            Object parsed = new JSONParser().parse(new String(data, StandardCharsets.UTF_8));
+            if (!(parsed instanceof List)) return;
+
+            store.buildingCount = -1;
+            for (Object item : (List<?>) parsed) {
+                if (!(item instanceof Map)) continue;
+                Map<?, ?> m = (Map<?, ?>) item;
+
+                String uuid = (String) m.get("uuid");
+                String name = (String) m.get("name");
+                int x = ((Number) m.get("x")).intValue();
+                int y = ((Number) m.get("y")).intValue();
+
+                store.buildingCount++;
+                Creation b = new Creation();
+                b.setUUID(uuid);
+                b.setCell(x, y);
+                b.setTexture(new com.badlogic.gdx.graphics.Texture("objects/default_object.png"));
+                float[] iso = Transform.cartesianToIsometric(
+                    (int)(x * store.tileSizeWidth), (int)(y * store.tileSizeHeight)
+                );
+                b.setPosition(iso[0], iso[1]);
+                store.buildings[store.buildingCount] = b;
+                store.buildingNames.put(uuid, name);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // JSON-утилиты
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private byte[] toJson(LinkedHashMap<String, Object> map) {
+        return JSONValue.toJSONString(map).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private byte[] buildManifest(int width, int height) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("version", 1);
+        m.put("width",  width);
+        m.put("height", height);
+        return JSONValue.toJSONString(m).getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Парсит JSON в LinkedHashMap<String,Object>.
+     * json-simple возвращает Long для целых чисел — fixValue конвертирует их в Integer,
+     * чтобы код UI мог использовать привычные приведения типов.
+     */
+    private LinkedHashMap<String, Object> parseJsonMap(byte[] data) {
+        try {
+            Object parsed = new JSONParser().parse(new String(data, StandardCharsets.UTF_8));
+            if (parsed instanceof Map) return fixNumbers((Map<?, ?>) parsed);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return new LinkedHashMap<>();
+    }
+
+    private LinkedHashMap<String, Object> fixNumbers(Map<?, ?> src) {
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : src.entrySet()) {
+            result.put(e.getKey().toString(), fixValue(e.getValue()));
+        }
+        return result;
+    }
+
+    private Object fixValue(Object val) {
+        if (val instanceof Long)   return ((Long) val).intValue();
+        if (val instanceof Map)    return fixNumbers((Map<?, ?>) val);
+        if (val instanceof List)   return fixList((List<?>) val);
+        return val;
+    }
+
+    private List<Object> fixList(List<?> src) {
+        List<Object> result = new ArrayList<>();
+        for (Object item : src) result.add(fixValue(item));
+        return result;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ZIP-утилиты
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private void putEntry(ZipOutputStream zip, String name, byte[] data) throws IOException {
+        zip.putNextEntry(new ZipEntry(name));
+        zip.write(data);
+        zip.closeEntry();
+    }
+
+    private byte[] readEntry(InputStream is) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = is.read(buf)) != -1) baos.write(buf, 0, n);
+        return baos.toByteArray();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // СБРОС СОСТОЯНИЯ
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Очищает Store перед загрузкой новых данных.
+     * Используем clear() вместо замены объектов, чтобы не сломать ссылки
+     * в уже открытых окнах (questsList = store.quests и т.д.).
+     */
+    private void resetStore() {
+        store.dialogs.clear();
+        store.quests.clear();
+        store.itemTemplates.clear();
+        store.npcs.clear();
+        store.buildingNames.clear();
+        store.creationCount = -1;
+        store.buildingCount = -1;
+        pendingMapBin = null;
+        mapWidth  = 0;
+        mapHeight = 0;
     }
 }

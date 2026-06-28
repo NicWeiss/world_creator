@@ -51,8 +51,9 @@ public class TextInputWindow extends Window{
     }
 
     @Override
-    public  void onHide(){
+    public void onHide(){
         textArea.setBounds(-10, -10, 1, 1);
+        stage.setKeyboardFocus(null); // снимаем фокус — иначе Stage продолжает перехватывать клавиши
     }
 
     public void setText(String text) {

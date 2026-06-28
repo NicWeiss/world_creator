@@ -279,6 +279,8 @@ public class UserInterface {
                 textureId = Integer.parseInt(map[i][j][1]);
                 type = map[i][j][2];
                 MapObject tmp = new MapObject();
+                tmp.setSurfaceTexture(tileTextures[1].texture);
+                tmp.setSurfaceId(1);          // draw() пропускает основной тайл только если surfaceId==textureId
                 tmp.setTexture(tileTextures[textureId].texture);
                 tmp.setObjectHeight(tileTextures[textureId].high);
                 tmp.setTextureId(textureId);
