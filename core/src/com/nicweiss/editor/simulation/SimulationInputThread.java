@@ -3,48 +3,72 @@ package com.nicweiss.editor.simulation;
 import com.nicweiss.editor.Generic.Store;
 
 /**
- * Обрабатывает ввод в режиме симуляции.
- * Читает состояние клавиш из Store (обновляются GL-потоком),
- * применяет плавное движение камеры с velocity и friction.
+ * Плавное пиксельное движение камеры в режиме симуляции.
  *
- * Зум недоступен. Мышь не влияет на карту.
- * Кнопка переключения симуляции работает отдельно через UserInterface.
+ * Источники ввода:
+ *   - Клавиатура: Store.simKey* (обновляются Editor.keyDown/keyUp на GL-потоке)
+ *   - Геймпад левый стик: Store.simStickX/Y (обновляются Editor.render на GL-потоке)
+ *
+ * Движение по пикселям (не по тайлам):
+ *   - velocity накапливается с ускорением
+ *   - friction даёт плавное торможение
+ *   - суб-пиксельный аккумулятор сохраняет дробную часть между тиками
  */
 public class SimulationInputThread implements Runnable {
     public static Store store;
 
-    private static final float ACCELERATION = 8f;   // px добавляемых к velocity за тик
-    private static final float FRICTION      = 0.80f; // затухание velocity каждый тик
-    private static final float STOP_THRESH   = 0.4f;  // ниже — считать скоростью 0
-    private static final long  TICK_MS       = 16L;   // ~60 fps
+    private static final float ACCEL_KEY     = 0.75f;  // ускорение от клавиш, px/тик
+    private static final float ACCEL_STICK   = 1.25f;  // ускорение от стика (аналоговый)
+    private static final float FRICTION      = 0.82f;
+    private static final float STOP_THRESH   = 0.3f;
+    private static final long  TICK_MS       = 16L;
 
-    private float velX = 0f;
-    private float velY = 0f;
+    private float velX = 0f, velY = 0f;
+    // Аккумуляторы суб-пиксельного остатка
+    private float accumX = 0f, accumY = 0f;
 
     @Override
     public void run() {
-        velX = 0f;
-        velY = 0f;
+        velX = velY = accumX = accumY = 0f;
 
         while (!Thread.currentThread().isInterrupted()) {
             try {
-                // Разгон по нажатым клавишам
-                if (store.simKeyLeft)  velX -= ACCELERATION;
-                if (store.simKeyRight) velX += ACCELERATION;
-                if (store.simKeyUp)    velY += ACCELERATION;
-                if (store.simKeyDown)  velY -= ACCELERATION;
+                // ── Ускорение от клавиатуры ───────────────────────────────────
+                if (store.simKeyLeft)  velX -= ACCEL_KEY;
+                if (store.simKeyRight) velX += ACCEL_KEY;
+                if (store.simKeyUp)    velY += ACCEL_KEY;
+                if (store.simKeyDown)  velY -= ACCEL_KEY;
 
-                // Плавное торможение
+                // ── Ускорение от геймпада (аналоговое) ───────────────────────
+                float sx = store.simStickX;
+                float sy = store.simStickY;
+                if (sx != 0f) velX += sx * ACCEL_STICK;
+                if (sy != 0f) velY -= sy * ACCEL_STICK; // Y стика инвертирован
+
+                // ── Трение ───────────────────────────────────────────────────
                 velX *= FRICTION;
                 velY *= FRICTION;
 
-                // Убираем микро-дрейф
                 if (Math.abs(velX) < STOP_THRESH) velX = 0f;
                 if (Math.abs(velY) < STOP_THRESH) velY = 0f;
 
-                // Применяем к позиции камеры
-                if (velX != 0f) store.shiftX -= (int) velX;
-                if (velY != 0f) store.shiftY -= (int) velY;
+                // ── Суб-пиксельный аккумулятор ───────────────────────────────
+                // Хранит дробную часть, чтобы движение было плавным даже
+                // при маленьких скоростях (нет "залипания" на целых пикселях)
+                accumX += velX;
+                accumY += velY;
+
+                int dx = (int) accumX;
+                int dy = (int) accumY;
+                accumX -= dx;
+                accumY -= dy;
+
+                if (dx != 0 || dy != 0) {
+                    // Атомарная запись обоих компонентов в один long:
+                    // старшие 32 бита = dX, младшие 32 = dY.
+                    // GL-поток читает и применяет их синхронно перед кадром.
+                    store.simCamDelta = ((long) dx << 32) | ((long) dy & 0xFFFFFFFFL);
+                }
 
                 Thread.sleep(TICK_MS);
             } catch (InterruptedException e) {
@@ -52,12 +76,9 @@ public class SimulationInputThread implements Runnable {
             }
         }
 
-        // Сбросить состояние при остановке
-        velX = 0f;
-        velY = 0f;
-        store.simKeyUp    = false;
-        store.simKeyDown  = false;
-        store.simKeyLeft  = false;
-        store.simKeyRight = false;
+        // Сброс при остановке
+        velX = velY = accumX = accumY = 0f;
+        store.simKeyUp = store.simKeyDown = store.simKeyLeft = store.simKeyRight = false;
+        store.simStickX = store.simStickY = 0f;
     }
 }

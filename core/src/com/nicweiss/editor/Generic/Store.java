@@ -42,6 +42,13 @@ public class Store {
     public static volatile boolean simKeyDown  = false;
     public static volatile boolean simKeyLeft  = false;
     public static volatile boolean simKeyRight = false;
+    // Левый стик геймпада [-1..1], опрашивается GL-потоком
+    public static volatile float simStickX = 0f;
+    public static volatile float simStickY = 0f;
+    // Атомарный дельта камеры: старшие 32 бита = dX, младшие 32 = dY.
+    // Пишется фоновым потоком, читается и сбрасывается GL-потоком.
+    // volatile long гарантирует атомарность — нет частичных обновлений.
+    public static volatile long simCamDelta = 0L;
     public static boolean isDragged = false;
     public static boolean isTouchUp = false;
 

@@ -1,6 +1,8 @@
 package com.nicweiss.editor.Views;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.controllers.Controller;
+import com.badlogic.gdx.controllers.Controllers;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -378,6 +380,30 @@ public class Editor extends View{
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         Gdx.gl.glClearColor(store.dayCoefficient, store.dayCoefficient, store.dayCoefficient, 1);
 
+
+//        Камера симуляции: применяем атомарный дельта до рендера (нет разрывов)
+        if (store.isSimulationMode) {
+            long delta = store.simCamDelta;
+            if (delta != 0L) {
+                store.shiftX -= (int)(delta >> 32);
+                store.shiftY -= (int)(delta & 0xFFFFFFFFL);
+                store.simCamDelta = 0L;
+            }
+        }
+
+//        Геймпад: опрос левого стика на GL-потоке, результат в Store для SimulationInputThread
+        if (store.isSimulationMode) {
+            store.simStickX = 0f;
+            store.simStickY = 0f;
+            if (!Controllers.getControllers().isEmpty()) {
+                Controller ctrl = Controllers.getControllers().first();
+                float ax = ctrl.getAxis(ctrl.getMapping().axisLeftX);
+                float ay = ctrl.getAxis(ctrl.getMapping().axisLeftY);
+                float dead = 0.12f; // мёртвая зона
+                store.simStickX = Math.abs(ax) > dead ? ax : 0f;
+                store.simStickY = Math.abs(ay) > dead ? ay : 0f;
+            }
+        }
 
 //        Смена времени суток (только в dev-режиме — в симуляции управляют треды)
         if (!store.isSimulationMode) {
