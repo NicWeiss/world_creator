@@ -48,16 +48,16 @@ public class Editor extends View{
         hintDown = new Texture("tile_hint_down.png");
 
         textures = new TextureObject[] {
-            new TextureObject("gp_0.png", 0),
-            new TextureObject("gp_1.png", 0),
-            new TextureObject("gp_2.png", 50),
-            new TextureObject("gp_3.png", 50),
-            new TextureObject("gp_4.png", 20),
-            new TextureObject("gp_5.png", 2),
-            new TextureObject("gp_6.png", 4),
-            new TextureObject("gp_7.png", 10),
-            new TextureObject("gp_8.png", 1),
-            new TextureObject("gp_9.png", 50),
+            new TextureObject("gp_0.png",  0),
+            new TextureObject("gp_1.png",  0),
+            new TextureObject("gp_2.png",  50, true),   // дуб
+            new TextureObject("gp_3.png",  50, true),   // ель
+            new TextureObject("gp_4.png",  20, true),   // осеннее дерево
+            new TextureObject("gp_5.png",  2),
+            new TextureObject("gp_6.png",  4),
+            new TextureObject("gp_7.png",  10),
+            new TextureObject("gp_8.png",  1),
+            new TextureObject("gp_9.png",  50),
             new TextureObject("gp_10.png", 0),
             new TextureObject("gp_11.png", 5),
             new TextureObject("gp_12.png", 0),
@@ -127,6 +127,7 @@ public class Editor extends View{
                 tmp.setSurfaceId(1);
 
                 tmp.setObjectHeight(textures[ts].high);
+                tmp.isTree = textures[ts].isTree;
                 tmp.setTexture(textures[ts].texture);
                 tmp.setTextureId(ts);
 
@@ -206,6 +207,7 @@ public class Editor extends View{
             }
 
             store.objectedMap[arrPointX][arrPointY].setObjectHeight(textures[newTextureId].high);
+            store.objectedMap[arrPointX][arrPointY].isTree = textures[newTextureId].isTree;
             store.objectedMap[arrPointX][arrPointY].setWidth(textures[newTextureId].texture.getWidth() / store.tileDownScale);
             store.objectedMap[arrPointX][arrPointY].setHeight(textures[newTextureId].texture.getHeight() / store.tileDownScale);
 

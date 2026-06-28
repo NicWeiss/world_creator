@@ -29,8 +29,9 @@ import java.util.zip.*;
 public class FileManager {
     public static Store store;
 
-    public int mapHeight = 0;
-    public int mapWidth  = 0;
+    public int mapHeight  = 0;
+    public int mapWidth   = 0;
+    private int mapFormatVersion = 1; // читается из manifest.json
 
     private byte[] pendingMapBin;
 
@@ -103,6 +104,15 @@ public class FileManager {
                 lw.setStep(stepNum, TOTAL, name, stepNum * 100 / TOTAL);
 
                 switch (name) {
+                    case "manifest.json":
+                        try {
+                            Object parsed = new JSONParser().parse(new String(data, StandardCharsets.UTF_8));
+                            if (parsed instanceof Map) {
+                                Object v = ((Map<?,?>) parsed).get("version");
+                                if (v instanceof Number) mapFormatVersion = ((Number) v).intValue();
+                            }
+                        } catch (Exception ignored) {}
+                        break;
                     case "map.bin":
                         pendingMapBin = data;
                         break;
@@ -152,6 +162,7 @@ public class FileManager {
                 MapObject tile = map[i][j];
                 dos.writeShort(tile.getTextureId());
                 dos.writeBoolean(tile.isDialogBind);
+                dos.writeBoolean(tile.isTree);
                 byte[] uuid = tile.getUUID().getBytes(StandardCharsets.UTF_8);
                 dos.writeShort(uuid.length);
                 dos.write(uuid);
@@ -174,19 +185,27 @@ public class FileManager {
             mapWidth  = width;
             mapHeight = height;
 
-            String[][][] result = new String[height][width][3];
+            String[][][] result = new String[height][width][4];
 
             for (int i = 0; i < height; i++) {
                 for (int j = 0; j < width; j++) {
-                    int textureId   = dis.readShort() & 0xFFFF;
-                    boolean dialog  = dis.readBoolean();
-                    int uuidLen     = dis.readShort() & 0xFFFF;
+                    int textureId    = dis.readShort() & 0xFFFF;
+                    boolean dialog   = dis.readBoolean();
+                    boolean isTree;
+                    if (mapFormatVersion >= 2) {
+                        isTree = dis.readBoolean();
+                    } else {
+                        // Старый формат: derive из textureId
+                        isTree = (textureId == 2 || textureId == 3 || textureId == 4);
+                    }
+                    int uuidLen      = dis.readShort() & 0xFFFF;
                     byte[] uuidBytes = new byte[uuidLen];
                     dis.readFully(uuidBytes);
 
                     result[i][j][0] = new String(uuidBytes, StandardCharsets.UTF_8);
                     result[i][j][1] = String.valueOf(textureId);
                     result[i][j][2] = dialog ? "dialog" : "common";
+                    result[i][j][3] = isTree ? "tree" : "notree";
                 }
             }
 
@@ -296,7 +315,7 @@ public class FileManager {
 
     private byte[] buildManifest(int width, int height) {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("version", 1);
+        m.put("version", 2); // v2: добавлен isTree в map.bin
         m.put("width",  width);
         m.put("height", height);
         return JSONValue.toJSONString(m).getBytes(StandardCharsets.UTF_8);
@@ -371,8 +390,9 @@ public class FileManager {
         store.itemTemplates.clear();
         store.npcs.clear();
         store.buildingNames.clear();
-        store.creationCount = -1;
-        store.buildingCount = -1;
+        store.creationCount  = -1;
+        store.buildingCount  = -1;
+        mapFormatVersion     = 1; // default: старый формат, пока не прочитан manifest
         pendingMapBin = null;
         pendingNpcs.clear();
         pendingBuildings.clear();

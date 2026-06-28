@@ -368,6 +368,7 @@ public class UserInterface {
                 String uuid      = pendingMap[i][j][0];
                 int textureId    = Integer.parseInt(pendingMap[i][j][1]);
                 String type      = pendingMap[i][j][2];
+                boolean isTree   = "tree".equals(pendingMap[i][j][3]);
 
                 MapObject tmp = new MapObject();
                 tmp.setSurfaceTexture(tileTextures[1].texture);
@@ -375,10 +376,11 @@ public class UserInterface {
                 tmp.setTexture(tileTextures[textureId].texture);
                 tmp.setObjectHeight(tileTextures[textureId].high);
                 tmp.setTextureId(textureId);
+                tmp.isTree = isTree;
                 tmp.xPositionOnMap = i + 1;
                 tmp.yPositionOnMap = j + 1;
                 tmp.setUUID(uuid);
-                if (type == "dialog") tmp.isDialogBind = true;
+                if (type.equals("dialog")) tmp.isDialogBind = true;
                 store.objectedMap[i][j] = tmp;
 
                 if (ArrayUtils.checkIntInArray(textureId, lightObjectIds)) {

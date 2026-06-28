@@ -12,6 +12,7 @@ public class MapObject  extends BaseObject {
     public int xPositionOnMap = 0, yPositionOnMap = 0;
     public boolean isRenderLighAndNigth = true;
     public int objectHeight;
+    public boolean isTree = false;
     public float additionalDarkCoeff = 1;
     private float nearestLightDist = 999999;
     public boolean isDialogBind = false;
@@ -38,8 +39,71 @@ public class MapObject  extends BaseObject {
             );
         }
 
-        super.draw(batch);
+        if (store.isSimulationMode && isTree) {
+            drawWindSwayed(batch);
+        } else {
+            super.draw(batch);
+        }
     }
+
+    /**
+     * Рисует дерево с процедурным качанием кроны от ветра.
+     * Два верхних вертекса сдвигаются по X — ствол стоит на месте, крона качается.
+     * Фаза уникальна для каждого дерева через хэш позиции.
+     */
+    private void drawWindSwayed(Batch batch) {
+        if (img == null) return;
+
+        // ── Уникальные параметры дерева из хэша позиции ──────────────────────
+        int h = xPositionOnMap * 374761393 + yPositionOnMap * 1073741827;
+        h = (h ^ (h >>> 13)) * 1274126177;
+        h = h ^ (h >>> 16);
+        float phase = (float)((h & 0xFFFF)        / (float)0xFFFF * Math.PI * 2.0);
+        float phase2 = (float)(((h >> 8) & 0xFFFF) / (float)0xFFFF * Math.PI * 2.0);
+        float phase3 = (float)(((h >> 4) & 0xFFFF) / (float)0xFFFF * Math.PI * 2.0);
+
+        // Основная частота качания: 0.6..1.1 рад/с
+        float freq1 = 0.6f + (Math.abs(h & 0xFF) / 255f) * 0.5f;
+        // Вторичная — некратна первой, быстрее, меньше
+        float freq2 = freq1 * (1.9f + (Math.abs((h >> 3) & 0xFF) / 255f) * 0.8f);
+        // Третичная — рябь от листьев
+        float freq3 = freq1 * (4.3f + (Math.abs((h >> 5) & 0xFF) / 255f) * 1.4f);
+
+        float t = store.cloudTime;
+
+        // ── Глобальный порыв ветра: сумма медленных некратных синусоид ────────
+        // Три несоизмеримые частоты → результат никогда не повторяется
+        float gust = 0.55f
+            + 0.28f * (float)Math.sin(t * 0.23f + 0.0f)
+            + 0.17f * (float)Math.sin(t * 0.11f + 1.73f)
+            + 0.12f * (float)Math.sin(t * 0.41f + 3.07f)
+            + 0.08f * (float)Math.sin(t * 0.07f + 5.11f);
+        // Ограничиваем снизу: ветер не затихает полностью
+        if (gust < 0.08f) gust = 0.08f;
+
+        // ── Смещение кроны: три гармоники + глобальный порыв ─────────────────
+        float primary   = (float)Math.sin(t * freq1 + phase);
+        float secondary = 0.38f * (float)Math.sin(t * freq2 + phase2);
+        float rustle    = 0.14f * (float)Math.sin(t * freq3 + phase3);
+
+        float baseAmp = 3.5f + (Math.abs((h >> 12) & 0xFF) / 255f) * 2.5f; // 3.5..6 px
+        float offsetX = baseAmp * gust * (primary + secondary + rustle);
+
+        float w  = width  * x_scale;
+        float h2 = height * y_scale;
+        float c  = batch.getColor().toFloatBits();
+
+        // Вертексы SpriteBatch: BL, TL, TR, BR (x, y, colorBits, u, v)
+        // v=1 → низ изображения (корни), v=0 → верх (крона)
+        windVerts[0]  = x;           windVerts[1]  = y;    windVerts[2]  = c; windVerts[3]  = 0f; windVerts[4]  = 1f;
+        windVerts[5]  = x+offsetX;   windVerts[6]  = y+h2; windVerts[7]  = c; windVerts[8]  = 0f; windVerts[9]  = 0f;
+        windVerts[10] = x+w+offsetX; windVerts[11] = y+h2; windVerts[12] = c; windVerts[13] = 1f; windVerts[14] = 0f;
+        windVerts[15] = x+w;         windVerts[16] = y;    windVerts[17] = c; windVerts[18] = 1f; windVerts[19] = 1f;
+        batch.draw(img, windVerts, 0, 20);
+    }
+
+    // Переиспользуемый буфер для ветровых вертексов — избегаем аллокацию на каждый тайл
+    private final float[] windVerts = new float[20];
 
     public void drawSurface(Batch batch) {
         calcPosition();
