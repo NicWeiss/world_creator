@@ -29,11 +29,14 @@ public class WeatherThread implements Runnable {
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 long elapsed = (System.currentTimeMillis() - startMs) % CYCLE_MS;
-                double phase = (double) elapsed / CYCLE_MS * 2 * Math.PI;
+                float normalizedPhase = (float) elapsed / CYCLE_MS; // 0..1
+
+                double phase = normalizedPhase * 2 * Math.PI;
 
                 // sin [-1..1] → dayCoefficient [-0.10..1.0]
                 float coeff = (float)(Math.sin(phase) * 0.55 + 0.45);
                 store.dayCoefficient = Math.max(-0.10f, Math.min(1f, coeff));
+                store.dayPhase       = normalizedPhase;
 
                 // TODO: осадки, туман, ветер, гроза
 

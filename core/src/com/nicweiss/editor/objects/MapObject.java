@@ -26,29 +26,7 @@ public class MapObject  extends BaseObject {
     public void draw(Batch batch) {
         calcPosition();
         if (isRenderLighAndNigth) {
-            if (store.dayCoefficient < 0.4) {
-                if (store.isSelectedLightObject) {
-                    calcLight("player");
-                } else {
-                    dynamicLightRed = (float) 0.2;
-                    dynamicLightGreen = (float) 0.2;
-                    dynamicLightBlue = (float) 0.2;
-                }
-
-                batch.setColor(
-                        Math.max(staticLightRed, dynamicLightRed) + store.dayCoefficient,
-                        Math.max(staticLightGreen, dynamicLightGreen) + store.dayCoefficient,
-                        Math.max(staticLightBlue, dynamicLightBlue) + store.dayCoefficient,
-                        opacity
-                );
-            } else {
-                batch.setColor(
-                        (float) 0.2 + store.dayCoefficient,
-                        (float) 0.2 + store.dayCoefficient,
-                        (float) 0.2 + store.dayCoefficient,
-                        opacity
-                );
-            }
+            batch.setColor(calcLitColor(opacity));
         }
 
         if (isDialogBind){
@@ -66,29 +44,7 @@ public class MapObject  extends BaseObject {
     public void drawSurface(Batch batch) {
         calcPosition();
         if (isRenderLighAndNigth) {
-            if (store.dayCoefficient < 0.4) {
-                if (store.isSelectedLightObject) {
-                    calcLight("player");
-                } else {
-                    dynamicLightRed = (float) 0.2;
-                    dynamicLightGreen = (float) 0.2;
-                    dynamicLightBlue = (float) 0.2;
-                }
-
-                batch.setColor(
-                    Math.max(staticLightRed, dynamicLightRed) + store.dayCoefficient,
-                    Math.max(staticLightGreen, dynamicLightGreen) + store.dayCoefficient,
-                    Math.max(staticLightBlue, dynamicLightBlue) + store.dayCoefficient,
-                    opacity
-                );
-            } else {
-                batch.setColor(
-                    (float) 0.2 + store.dayCoefficient,
-                    (float) 0.2 + store.dayCoefficient,
-                    (float) 0.2 + store.dayCoefficient,
-                    opacity
-                );
-            }
+            batch.setColor(calcLitColor(opacity));
         }
 
         if (isDialogBind){
@@ -325,6 +281,59 @@ public class MapObject  extends BaseObject {
 
         setWidth(img.getWidth() / store.tileDownScale);
         setHeight(img.getHeight() / store.tileDownScale);
+    }
+
+    /**
+     * Вычисляет итоговый цвет тайла с учётом дневного света и источников.
+     *
+     * Принцип: берём max(дневной_ambient, вклад_источника).
+     * Если клетка уже светлее от дня — источник не меняет её цвет (нет искажений днём).
+     * Если источник ярче дня (ночь, у костра) — применяем свет источника.
+     * Никакого переключателя по порогу — свет работает всегда.
+     */
+    private com.badlogic.gdx.graphics.Color calcLitColor(float a) {
+        // Динамический свет (игрок с факелом)
+        if (store.isSelectedLightObject) {
+            calcLight("player");
+        } else {
+            dynamicLightRed   = 0.2f;
+            dynamicLightGreen = 0.2f;
+            dynamicLightBlue  = 0.2f;
+        }
+
+        // ── Температура цвета по фазе дня ────────────────────────────────────
+        // dayPhase: 0=рассвет, 0.25=полдень, 0.5=закат, 0.75=полночь
+        // warmth = cos²(phase·2π): 1 на рассвете/закате (0, 0.5), 0 в полдень (0.25)
+        // cool   = max(0, sin(phase·2π)): 1 в полдень, 0 ночью и на горизонте
+        double angle  = store.dayPhase * 2.0 * Math.PI;
+        float  cos    = (float) Math.cos(angle);
+        float  warmth = cos * cos;                               // 1→0→1 за дневную дугу
+        float  cool   = Math.max(0f, (float) Math.sin(angle));  // 0→1→0 за дневную дугу
+
+        // Чем ярче день — тем сильнее видна температура
+        float dayBright  = Math.max(0f, store.dayCoefficient);
+        float tR = 1f + (warmth * 0.22f - cool * 0.06f) * dayBright; // тепло: +R, -B
+        float tG = 1f + (-warmth * 0.06f + cool * 0.03f) * dayBright;
+        float tB = 1f + (-warmth * 0.28f + cool * 0.22f) * dayBright; // холод: +B
+
+        // Дневная яркость с температурным окрасом
+        float raw = 0.2f + store.dayCoefficient;
+        float dayR = raw * tR;
+        float dayG = raw * tG;
+        float dayB = raw * tB;
+
+        // Вклад источников света (всегда, без порога)
+        float lr = Math.max(staticLightRed,   dynamicLightRed)   + store.dayCoefficient;
+        float lg = Math.max(staticLightGreen, dynamicLightGreen) + store.dayCoefficient;
+        float lb = Math.max(staticLightBlue,  dynamicLightBlue)  + store.dayCoefficient;
+
+        // Итог: берём то что ярче — тёплый/холодный день или источник рядом
+        return new com.badlogic.gdx.graphics.Color(
+            Math.min(1f, Math.max(dayR, lr)),
+            Math.min(1f, Math.max(dayG, lg)),
+            Math.min(1f, Math.max(dayB, lb)),
+            a
+        );
     }
 
     /** Быстрый сброс до ambient-освещения без DDA — вызывается из Light.recalcOnMap() */
