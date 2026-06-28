@@ -30,7 +30,8 @@ public class Store {
     public static boolean isSelectedLightObject = false;
 
     public static boolean isEditorLoadComplete = false;
-    public static boolean isMapLoading = false;  // true пока карта строится чанками
+    public static boolean isMapLoading     = false;
+    public static boolean isSimulationMode = false;
     public static boolean isDragged = false;
     public static boolean isTouchUp = false;
 

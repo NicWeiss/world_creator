@@ -8,6 +8,10 @@ import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.components.windows.DialogEditorWindow;
 import com.nicweiss.editor.components.windows.ItemsEditorWindow;
 import com.nicweiss.editor.components.windows.LoadingWindow;
+import com.nicweiss.editor.simulation.CreationThread;
+import com.nicweiss.editor.simulation.MagickThread;
+import com.nicweiss.editor.simulation.PhysicThread;
+import com.nicweiss.editor.simulation.WeatherThread;
 import com.nicweiss.editor.utils.Transform;
 import com.nicweiss.editor.components.windows.MapContextMenuWindow;
 import com.nicweiss.editor.components.windows.MapRedirectWindow;
@@ -42,7 +46,13 @@ public class UserInterface {
     private static final int MAP_CHUNK   = 50;  // строк за кадр
     private static final int LIGHT_CHUNK = 30;  // строк за кадр
 
-    Texture openTexture, saveTexture, questsTexture, itemsTexture, npcTexture, objectTexture, white;
+    Texture openTexture, saveTexture, questsTexture, itemsTexture, npcTexture, objectTexture, switchTexture, white;
+
+    // Потоки симуляции
+    private Thread creationThread;
+    private Thread weatherThread;
+    private Thread physicThread;
+    private Thread magickThread;
 
     public static Store store;
     BaseObject[] ui;
@@ -77,6 +87,7 @@ public class UserInterface {
         itemsTexture = new Texture("items_button.png");
         npcTexture = new Texture("npc_button.png");
         objectTexture = new Texture("object_button.png");
+        switchTexture = new Texture("switch.png");
         white = new Texture("white.png");
 
         tileSelectorWindow = new TileSelectorWindow(lightObjectIds);
@@ -94,7 +105,7 @@ public class UserInterface {
         mapRedirectWindow.buildWindow();
         loadingWindow.buildWindow();
 
-        ui = new BaseObject[6];
+        ui = new BaseObject[7];
 
 //        Open button
         ui[0] = bo_helper.constructObject(
@@ -144,6 +155,14 @@ public class UserInterface {
             menuItemSize, menuItemSize, "object", 0
         );
 
+//        Switch (режим симуляции) — всегда у правого края экрана
+        ui[6] = bo_helper.constructObject(
+            switchTexture,
+            (int) (store.uiWidthOriginal - menuItemSize - 10),
+            (int) (store.uiHeightOriginal - menuItemSize - 10),
+            menuItemSize, menuItemSize, "switch", 0
+        );
+
         buttonBG = bo_helper.constructObject(
                 white, 100, 150, 1, 1, "buttonBG", 0
         );
@@ -168,21 +187,35 @@ public class UserInterface {
     }
 
     public void render(SpriteBatch uiBatch) {
-        for (BaseObject baseObject : ui) {
-            if (baseObject.isTouched){
+        for (int idx = 0; idx < ui.length; idx++) {
+            BaseObject baseObject = ui[idx];
+            boolean isSwitchBtn = "switch".equals(baseObject.getObjectId());
+
+            // В режиме симуляции рисуем только кнопку switch (остальное скрыто)
+            if (store.isSimulationMode && !isSwitchBtn) continue;
+
+            if (baseObject.isTouched) {
                 bo_helper.draw(
-                    uiBatch,buttonBG,
+                    uiBatch, buttonBG,
                     (int) baseObject.getX() - 5, (int) (store.uiHeightOriginal - menuItemSize - 15),
-                    (int)baseObject.getWidth() + 10, (int)baseObject.getHeight() + 10
+                    (int) baseObject.getWidth() + 10, (int) baseObject.getHeight() + 10
                 );
             }
+
+            // Switch-кнопка в режиме симуляции подсвечивается зелёным
+            if (isSwitchBtn && store.isSimulationMode) {
+                uiBatch.setColor(0.3f, 1f, 0.4f, 1f);
+            }
             bo_helper.draw(uiBatch, baseObject, (int) baseObject.getX(), (int) (store.uiHeightOriginal - menuItemSize - 10));
+            uiBatch.setColor(1f, 1f, 1f, 1f);
         }
 
-        tileSelectorWindow.render(uiBatch);
-        mapContextMenuWindow.render(uiBatch);
-        sortWindowsByFocus();
-        for (Window w : focusWindows) w.render(uiBatch);
+        if (!store.isSimulationMode) {
+            tileSelectorWindow.render(uiBatch);
+            mapContextMenuWindow.render(uiBatch);
+            sortWindowsByFocus();
+            for (Window w : focusWindows) w.render(uiBatch);
+        }
         if (loadingWindow.isShowWindow) loadingWindow.render(uiBatch);
     }
 
@@ -210,7 +243,15 @@ public class UserInterface {
         }
 
         if (!isTouchUp && !isDragged) {
-//            Обработка событй в объектах интерфейса
+            // Switch-кнопка доступна в любом режиме
+            for (BaseObject baseObject : ui) {
+                if (baseObject.isTouched && baseObject.getObjectId().equals("switch")) {
+                    toggleSimulation();
+                    return true;
+                }
+            }
+//            Остальные кнопки — только в режиме редактора
+            if (store.isSimulationMode) return false;
             for (BaseObject baseObject : ui) {
                 if (baseObject.isTouched) {
                     if (baseObject.getObjectId().equals("open")) {
@@ -433,8 +474,46 @@ public class UserInterface {
         return false;
     }
 
-    public void openQuestsWindow()
-    {
+    public void openQuestsWindow() {
         questsEditorWindow.show();
+    }
+
+    // ── Управление симуляцией ─────────────────────────────────────────────────
+
+    public void toggleSimulation() {
+        if (store.isSimulationMode) {
+            stopSimulation();
+        } else {
+            startSimulation();
+        }
+    }
+
+    private void startSimulation() {
+        store.isSimulationMode = true;
+
+        creationThread = new Thread(new CreationThread(), "CreationThread");
+        weatherThread  = new Thread(new WeatherThread(),  "WeatherThread");
+        physicThread   = new Thread(new PhysicThread(),   "PhysicThread");
+        magickThread   = new Thread(new MagickThread(),   "MagickThread");
+
+        // Daemon — потоки завершатся вместе с JVM
+        creationThread.setDaemon(true);
+        weatherThread.setDaemon(true);
+        physicThread.setDaemon(true);
+        magickThread.setDaemon(true);
+
+        creationThread.start();
+        weatherThread.start();
+        physicThread.start();
+        magickThread.start();
+    }
+
+    private void stopSimulation() {
+        store.isSimulationMode = false;
+
+        if (creationThread != null) creationThread.interrupt();
+        if (weatherThread  != null) weatherThread.interrupt();
+        if (physicThread   != null) physicThread.interrupt();
+        if (magickThread   != null) magickThread.interrupt();
     }
 }

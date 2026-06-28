@@ -358,19 +358,15 @@ public class Editor extends View{
         Gdx.gl.glClearColor(store.dayCoefficient, store.dayCoefficient, store.dayCoefficient, 1);
 
 
-//        Смена времени суток
-        if (!store.isDay) {
-            store.dayCoefficient = store.dayCoefficient - cm;
-
-            if (store.dayCoefficient < -0.10){
-                store.dayCoefficient = (float)-0.10;
+//        Смена времени суток (только в dev-режиме — в симуляции управляют треды)
+        if (!store.isSimulationMode) {
+            if (!store.isDay) {
+                store.dayCoefficient = store.dayCoefficient - cm;
+                if (store.dayCoefficient < -0.10) store.dayCoefficient = (float)-0.10;
             }
-        }
-        if (store.isDay) {
-            store.dayCoefficient = store.dayCoefficient + cm;
-
-            if (store.dayCoefficient > 1) {
-                store.dayCoefficient = 1;
+            if (store.isDay) {
+                store.dayCoefficient = store.dayCoefficient + cm;
+                if (store.dayCoefficient > 1) store.dayCoefficient = 1;
             }
         }
 
