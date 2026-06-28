@@ -37,6 +37,8 @@ public class WeatherThread implements Runnable {
                 float coeff = (float)(Math.sin(phase) * 0.55 + 0.45);
                 store.dayCoefficient = Math.max(-0.10f, Math.min(1f, coeff));
                 store.dayPhase       = normalizedPhase;
+                // Относительное время от старта треда — сохраняет точность float
+                store.cloudTime      = (System.currentTimeMillis() - startMs) / 1000f;
 
                 // TODO: осадки, туман, ветер, гроза
 

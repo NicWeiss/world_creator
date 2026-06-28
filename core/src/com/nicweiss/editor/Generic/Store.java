@@ -33,7 +33,9 @@ public class Store {
     public static boolean isMapLoading     = false;
     public static boolean isSimulationMode = false;
     // Нормализованная фаза цикла дня [0..1]: 0=рассвет, 0.25=полдень, 0.5=закат, 0.75=полночь
-    public static volatile float dayPhase = 0.25f;
+    public static volatile float dayPhase   = 0.25f;
+    // Секунды для смещения облаков (обновляется WeatherThread)
+    public static volatile float cloudTime  = 0f;
 
     // Состояние клавиш движения в симуляции (volatile — читает SimulationInputThread)
     public static volatile boolean simKeyUp    = false;

@@ -291,6 +291,10 @@ public class MapObject  extends BaseObject {
      * Если источник ярче дня (ночь, у костра) — применяем свет источника.
      * Никакого переключателя по порогу — свет работает всегда.
      */
+    // Переиспользуемый объект цвета — избегаем new Color() на каждый тайл
+    private static final com.badlogic.gdx.graphics.Color TMP_COLOR =
+        new com.badlogic.gdx.graphics.Color();
+
     private com.badlogic.gdx.graphics.Color calcLitColor(float a) {
         // Динамический свет (игрок с факелом)
         if (store.isSelectedLightObject) {
@@ -302,38 +306,108 @@ public class MapObject  extends BaseObject {
         }
 
         // ── Температура цвета по фазе дня ────────────────────────────────────
-        // dayPhase: 0=рассвет, 0.25=полдень, 0.5=закат, 0.75=полночь
-        // warmth = cos²(phase·2π): 1 на рассвете/закате (0, 0.5), 0 в полдень (0.25)
-        // cool   = max(0, sin(phase·2π)): 1 в полдень, 0 ночью и на горизонте
         double angle  = store.dayPhase * 2.0 * Math.PI;
-        float  cos    = (float) Math.cos(angle);
-        float  warmth = cos * cos;                               // 1→0→1 за дневную дугу
-        float  cool   = Math.max(0f, (float) Math.sin(angle));  // 0→1→0 за дневную дугу
+        float  cosA   = (float) Math.cos(angle);
+        float  warmth = cosA * cosA;
+        float  cool   = Math.max(0f, (float) Math.sin(angle));
 
-        // Чем ярче день — тем сильнее видна температура
-        float dayBright  = Math.max(0f, store.dayCoefficient);
-        float tR = 1f + (warmth * 0.22f - cool * 0.06f) * dayBright; // тепло: +R, -B
+        float dayBright = Math.max(0f, store.dayCoefficient);
+        float tR = 1f + (warmth * 0.22f - cool * 0.06f) * dayBright;
         float tG = 1f + (-warmth * 0.06f + cool * 0.03f) * dayBright;
-        float tB = 1f + (-warmth * 0.28f + cool * 0.22f) * dayBright; // холод: +B
+        float tB = 1f + (-warmth * 0.28f + cool * 0.22f) * dayBright;
 
-        // Дневная яркость с температурным окрасом
-        float raw = 0.2f + store.dayCoefficient;
+        float raw  = 0.2f + store.dayCoefficient;
         float dayR = raw * tR;
         float dayG = raw * tG;
         float dayB = raw * tB;
 
-        // Вклад источников света (всегда, без порога)
-        float lr = Math.max(staticLightRed,   dynamicLightRed)   + store.dayCoefficient;
-        float lg = Math.max(staticLightGreen, dynamicLightGreen) + store.dayCoefficient;
-        float lb = Math.max(staticLightBlue,  dynamicLightBlue)  + store.dayCoefficient;
+        // Источники света — независимы от солнца (костёр светит под облаком)
+        float lr = Math.max(staticLightRed,   dynamicLightRed);
+        float lg = Math.max(staticLightGreen, dynamicLightGreen);
+        float lb = Math.max(staticLightBlue,  dynamicLightBlue);
 
-        // Итог: берём то что ярче — тёплый/холодный день или источник рядом
-        return new com.badlogic.gdx.graphics.Color(
-            Math.min(1f, Math.max(dayR, lr)),
-            Math.min(1f, Math.max(dayG, lg)),
-            Math.min(1f, Math.max(dayB, lb)),
+        // Облако затеняет ТОЛЬКО дневной свет, не источники
+        float cloud = (store.isSimulationMode && store.dayCoefficient > 0f)
+            ? computeCloudShadow()
+            : 1f;
+
+        float shadedR = dayR * cloud;
+        float shadedG = dayG * cloud;
+        float shadedB = dayB * cloud;
+
+        // Итог: max(затенённый_день, источник_света)
+        TMP_COLOR.set(
+            Math.min(1f, Math.max(shadedR, lr)),
+            Math.min(1f, Math.max(shadedG, lg)),
+            Math.min(1f, Math.max(shadedB, lb)),
             a
         );
+        return TMP_COLOR;
+    }
+
+    // ── Процедурные облака на основе градиентного шума ──────────────────────
+    // Шум сэмплируется в мировых координатах + смещение ветром → облака
+    // привязаны к миру (не к камере) и плавно движутся.
+
+    private static final float WIND_X      = 0.9f;   // тайлов/сек
+    private static final float WIND_Y      = 0.12f;
+    private static final float CLOUD_FREQ  = 0.090f; // масштаб облаков (~11 тайлов)
+    private static final float CLOUD_THOLD = 0.45f;
+    private static final float SHADOW_MAX  = 0.70f;
+
+    private float computeCloudShadow() {
+        float t  = store.cloudTime;
+
+        // Мировая позиция тайла + смещение ветром
+        float wx = (xPositionOnMap + WIND_X * t) * CLOUD_FREQ;
+        float wy = (yPositionOnMap + WIND_Y * t) * CLOUD_FREQ;
+
+        // Многооктавный шум (4 октавы) для облакоподобных форм
+        float noise = cloudFbm(wx, wy, 4);
+
+        // Только значения выше порога дают тень
+        float density = Math.max(0f, noise - CLOUD_THOLD) / (1f - CLOUD_THOLD);
+        // Сглаживаем края облаков
+        density = density * density * (3f - 2f * density);
+
+        float dayScale = Math.min(1f, store.dayCoefficient * 2f);
+        return 1f - density * SHADOW_MAX * dayScale;
+    }
+
+    /** Фрактальный броуновый шум: несколько октав градиентного шума */
+    private static float cloudFbm(float x, float y, int octaves) {
+        float value = 0f, amp = 1f, freq = 1f, max = 0f;
+        for (int o = 0; o < octaves; o++) {
+            value += cloudValueNoise(x * freq, y * freq) * amp;
+            max   += amp;
+            amp   *= 0.5f;
+            freq  *= 2.1f; // чуть > 2 — убирает периодичность
+        }
+        return value / max;
+    }
+
+    /** Градиентный шум на целочисленной сетке */
+    private static float cloudValueNoise(float x, float y) {
+        int ix = (int) Math.floor(x), iy = (int) Math.floor(y);
+        float fx = x - ix, fy = y - iy;
+        // Smoothstep сглаживание
+        float ux = fx * fx * (3f - 2f * fx);
+        float uy = fy * fy * (3f - 2f * fy);
+
+        float v00 = cloudHash(ix,   iy);
+        float v10 = cloudHash(ix+1, iy);
+        float v01 = cloudHash(ix,   iy+1);
+        float v11 = cloudHash(ix+1, iy+1);
+
+        return v00 + ux*(v10-v00) + uy*(v01-v00) + ux*uy*(v00-v10-v01+v11);
+    }
+
+    /** Детерминированный хэш пары целых → [0..1] */
+    private static float cloudHash(int x, int y) {
+        int h = x * 374761393 + y * 1073741827;
+        h = (h ^ (h >>> 13)) * 1274126177;
+        h = h ^ (h >>> 16);
+        return (h & 0xFF) / 255f;
     }
 
     /** Быстрый сброс до ambient-освещения без DDA — вызывается из Light.recalcOnMap() */
