@@ -79,25 +79,53 @@ public class PlayerUI {
         int mjMin = Math.max(0, (int)(playerTY - halfRange));
         int mjMax = Math.min(store.mapWidth  - 1, (int)(playerTY + halfRange));
 
+        // Ambient освещение + минимальный порог видимости на миникарте
+        float rawLight = Math.max(0.27f, 0.2f + store.dayCoefficient);
+        rawLight *= (1f - store.rainIntensity * 0.35f);
+        rawLight  = Math.min(1f, rawLight);
+
+        // Радиус света источника в тайлах (screen radius 120px / tileSize)
+        float lightR = 120f / tileW;
+        int   lightCount = store.lightPointsHighWaterMark;
+
         for (int mi = miMin; mi <= miMax; mi++) {
             for (int mj = mjMax; mj >= mjMin; mj--) {
-                // Дробное смещение от игрока → плавный скролл
                 float di = mi - playerTX;
                 float dj = mj - playerTY;
 
-                // Изометрическая проекция: isoX = di - dj, isoY = (di + dj) / 2
                 float px = cx + (di - dj) * tileW  * scale;
                 float py = cy + (di + dj) * tileH  * scale / 2f;
 
-                // Обрезаем прямоугольник тайла по границам миникарты
                 float dx1 = Math.max(px, mx);
                 float dy1 = Math.max(py, my);
                 float dx2 = Math.min(px + tileMW, mx + MINI_PX);
                 float dy2 = Math.min(py + tileMH, my + MINI_PX);
                 if (dx2 <= dx1 || dy2 <= dy1) continue;
 
+                // Вклад источников света (упрощённая формула из calcLight)
+                float lightBoost = 0f;
+                if (store.lightPoints != null) {
+                    for (int li = 1; li <= lightCount; li++) {
+                        float[] lp = store.lightPoints[li];
+                        if (lp[0] == 0) continue;
+                        float dlx = mi - lp[3];
+                        float dly = mj - lp[4];
+                        // Manhattan quick-reject
+                        if (Math.abs(dlx) > lightR || Math.abs(dly) > lightR) continue;
+                        float dist = (float)Math.sqrt(dlx*dlx + dly*dly);
+                        if (dist < lightR) {
+                            float t    = dist / lightR * 100f;
+                            float dark = Math.max(0.2f, 1.6f - t * 0.008f);
+                            float contrib = Math.max(0f, 1f - (t / (dark*100f + 25f) * 50f) / 500f);
+                            // Учитываем цвет источника (индексы 5,6,7 = r,g,b)
+                            lightBoost = Math.max(lightBoost, contrib);
+                        }
+                    }
+                }
+
+                float lit = Math.max(rawLight, lightBoost);
                 float[] c = tileColor(store.objectedMap[mi][mj].getTextureId());
-                batch.setColor(c[0], c[1], c[2], 1f);
+                batch.setColor(c[0] * lit, c[1] * lit, c[2] * lit, 1f);
                 batch.draw(pixel, dx1, dy1, dx2 - dx1, dy2 - dy1);
             }
         }
