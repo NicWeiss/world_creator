@@ -29,7 +29,7 @@ public class Store {
 
     // ── Погода ────────────────────────────────────────────────────────────────
     // Интенсивность дождя [0..1] — плавно меняется WeatherThread
-    public static volatile float rainIntensity  = 0f;
+    public static volatile float rainIntensity   = 0f;
     // Множитель амплитуды ветра для деревьев [1..3]
     public static volatile float windMultiplier = 1f;
     // Множитель частоты порывов ветра [1..2.5]

@@ -37,6 +37,30 @@ public class BaseObject implements Cloneable {
     public boolean isPlayerInside = false;
     public boolean isEnableRenderLimits = false;
 
+    // ── Влажная поверхность ───────────────────────────────────────────────────
+    public boolean isWet      = false;
+    public float   wetDuration = 0f;   // 0 = перманентно; >0 = секунды до высыхания
+    private float  wetEndTime  = -1f;  // store.cloudTime момента высыхания
+
+    /**
+     * Делает объект влажным.
+     * duration = 0  → перманентно (isWet навсегда, пока не сброшен явно).
+     * duration > 0  → запускает таймер; при каждом повторном вызове — продлевает.
+     */
+    public void setWet(float duration) {
+        isWet      = true;
+        wetDuration = duration;
+        wetEndTime  = (duration > 0f) ? store.cloudTime + duration : -1f;
+    }
+
+    /** Обновляет таймер влажности. Вызывается при рендере объекта. */
+    protected void tickWet() {
+        if (isWet && wetEndTime > 0f && store.cloudTime > wetEndTime) {
+            isWet      = false;
+            wetDuration = 0f;
+        }
+    }
+
     public void draw(Batch batch) {
         if (surfaceImg != null && surfaceId == textureId) {
             return;

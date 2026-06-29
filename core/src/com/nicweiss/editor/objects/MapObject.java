@@ -110,6 +110,7 @@ public class MapObject  extends BaseObject {
     private final float[] windVerts = new float[20];
 
     public void drawSurface(Batch batch) {
+        tickWet(); // обновить таймер высыхания
         calcPosition();
         if (isRenderLighAndNigth) {
             batch.setColor(calcLitColor(opacity));
@@ -121,6 +122,27 @@ public class MapObject  extends BaseObject {
                 0.77f - store.dayCoefficient / 4,
                 0.55f - store.dayCoefficient / 4,
                 opacity
+            );
+        }
+
+        // Эффект мокрой поверхности: темнее + лёгкая десатурация (без синего тинта).
+        // Применяется ко ВСЕМ поверхностям (drawSurface рисует подложку под любым тайлом,
+        // включая деревья). Плавно нарастает с rainIntensity → нет резких переходов,
+        // в том числе для тайлов вне камеры.
+        float rainWet = store.isSimulationMode ? Math.min(1f, store.rainIntensity * 2.5f) : 0f;
+        float manualWet = isWet ? 1f : 0f;
+        float wetStr = Math.max(rainWet, manualWet);
+
+        if (wetStr > 0f) {
+            com.badlogic.gdx.graphics.Color c = batch.getColor();
+            float avg  = (c.r + c.g + c.b) / 3f;
+            float dsat = 0.18f * wetStr;
+            float dark = 1f - 0.18f * wetStr;
+            batch.setColor(
+                (c.r + (avg - c.r) * dsat) * dark,
+                (c.g + (avg - c.g) * dsat) * dark,
+                (c.b + (avg - c.b) * dsat) * dark,
+                c.a
             );
         }
 
