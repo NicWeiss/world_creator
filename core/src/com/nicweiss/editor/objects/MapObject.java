@@ -80,6 +80,7 @@ public class MapObject  extends BaseObject {
             + 0.12f * (float)Math.sin(t * 0.41f * gs + 3.07f)
             + 0.08f * (float)Math.sin(t * 0.07f * gs + 5.11f);
         if (gust < 0.08f) gust = 0.08f;
+        if (gust > 0.88f) gust = 0.88f; // потолок: без этого при windGustSpeed>1 густ может быть 1.2+
 
         // ── Смещение кроны: три гармоники + глобальный порыв ─────────────────
         float primary   = (float)Math.sin(t * freq1 + phase);
@@ -469,7 +470,7 @@ public class MapObject  extends BaseObject {
     // Шум сэмплируется в мировых координатах + смещение ветром → облака
     // привязаны к миру (не к камере) и плавно движутся.
 
-    private static final float WIND_SPEED  = 0.8f;   // базовая скорость облаков (тайлов/сек)
+    private static final float WIND_SPEED  = 0.65f;  // базовая скорость облаков (тайлов/сек)
     private static final float CLOUD_FREQ  = 0.090f; // масштаб облаков (~11 тайлов)
     private static final float CLOUD_THOLD = 0.45f;
     private static final float SHADOW_MAX  = 0.70f;
@@ -477,8 +478,15 @@ public class MapObject  extends BaseObject {
     private float computeCloudShadow() {
         float t  = store.cloudTime;
 
-        // Направление ветра в изо → декартовые координаты для сэмплирования шума
-        float speed  = WIND_SPEED * (0.8f + store.windMultiplier * 0.15f);
+        // Компенсация визуального восприятия:
+        // Во время дождя сплошная пелена скрывает края — движение незаметно → ускоряем.
+        // После дождя края снова видны → замедляем чтобы не было ощущения "быстрых" облаков.
+        // rain=0 → speed=WIND_SPEED*0.55;  rain=1 → speed=WIND_SPEED*1.30
+        float cloudRain = store.rainIntensity;
+        // Скорость растёт во время дождя (компенсация: пелена скрывает края → надо быстрее)
+        // и падает в ясную погоду (края видны → медленные облака выглядят правильно).
+        // rain=0: WIND_SPEED*0.35 (медленно); rain=1: WIND_SPEED*1.85 (быстро)
+        float speed     = WIND_SPEED * (0.492f + cloudRain * 1.385f); // ясно: 0.32; дождь: ~1.22
         float cwX    = (store.windDirX + 2f * store.windDirY) / 2f; // iso→cart X
         float cwY    = (2f * store.windDirY - store.windDirX) / 2f; // iso→cart Y
         // Минус: сдвиг сэмпла против ветра → паттерн движется по ветру (как листья)
@@ -489,9 +497,8 @@ public class MapObject  extends BaseObject {
 
         // Во время дождя опускаем порог (почти сплошная облачность) и
         // увеличиваем максимальную тень (тяжёлые грозовые тучи).
-        float rain      = store.rainIntensity;
-        float threshold = CLOUD_THOLD * (1f - rain * 0.88f); // 0.45 → 0.054 при rain=1
-        float shadowMax = SHADOW_MAX  + rain * 0.08f;         // 0.70 → 0.78 при rain=1
+        float threshold = CLOUD_THOLD * (1f - cloudRain * 0.88f); // 0.45 → 0.054 при rain=1
+        float shadowMax = SHADOW_MAX  + cloudRain * 0.08f;         // 0.70 → 0.78 при rain=1
 
         float density = Math.max(0f, noise - threshold) / (1f - threshold);
         density = density * density * (3f - 2f * density);

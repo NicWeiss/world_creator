@@ -32,14 +32,92 @@ public class SystemUI {
     private int menuFocus = 0;
 
     // ── Размеры ───────────────────────────────────────────────────────────────
-    private static final float PANEL_W  = 620f;
-    private static final float PANEL_H  = 440f;
+    private static final float PANEL_W  = 560f;
+    private static final float PANEL_H  = 800f;
     private static final float TAB_H    = 44f;
     private static final float BTN_W    = 240f;
     private static final float BTN_H    = 44f;
     private static final float BTN_GAP  = 12f;
 
+    // ── Инвентарь ────────────────────────────────────────────────────────────
+    private static final int CELL     = 47;   // пикселей на ячейку (+30% от 36)
+    private static final int GAP      = 16;   // зазор между группами слотов
+    private static final int INV_COLS = 10;
+    private static final int INV_ROWS = 5;
+    private static final int INV_GAP  = 40;  // отступ от снаряжения до инвентаря
+    private static final int PAD      = 18;  // внутренний отступ панели
+
+    /**
+     * Слоты снаряжения в пиксельных координатах: {xPx, yPx, wCells, hCells}.
+     * xPx, yPx — позиция от верхнего-левого угла области снаряжения (↓, →).
+     * Все зазоры = GAP=16px.
+     *
+     * Раскладка (CELL=36, GAP=16):
+     *  Левая сторона  (x=0):
+     *    Оружие    y=0,   h=4 → низ=144
+     *    Перчатки  y=160  (144+16)
+     *
+     *  Центр (x=88 = 72+16):
+     *    Шлем      x=88,  y=0,   w=2,h=2 → низ=72
+     *    Амулет    x=176  (88+72+16), y=0
+     *    Броня     x=88,  y=88   (72+16)
+     *    Пояс      x=88,  y=248  (88+144+16)
+     *    Артефакты x=88,140,192,244,296  y=300 (248+36+16), шаг=52(36+16)
+     *
+     *  Правая сторона (x=348 = 296+36+16):
+     *    Щит       y=0,   h=4 → низ=144
+     *    Сапоги    y=160
+     *
+     * Итог: ширина=420px (348+72), высота=336px (300+36)
+     */
+    /**
+     * Размеры области снаряжения (CELL=47, GAP=16, SIDE_Y_OFFSET=70=1.5*CELL):
+     *
+     * Горизонталь:
+     *   Weapon(2*47=94) + GAP(16) + artifacts_span(5*47+4*16=299) + GAP(16) + Shield(94) = 519 → 520
+     *   Центр = 260; Helm x=260-47=213; Amulet x=213+94+16=323; Artifacts start=260-149=111
+     *
+     * Вертикаль (центр-группа):
+     *   Helm(94) + GAP(16) = Armor y=110; Armor(188) + GAP(16) = Belt y=314; Belt(47) + GAP(16) = Art y=377
+     *   EQ_TOTAL_H = 377+47 = 424
+     *
+     * Вертикаль (боковые, +70px сдвиг):
+     *   Weapon y=70; Gloves y=70+188+16=274; Gloves bottom=274+94=368 < 424 ✓
+     */
+    private static final int EQ_TOTAL_W = 520;
+    private static final int EQ_TOTAL_H = 424;
+
+    private static final int[][] EQ_SLOTS = {
+        // {xPx, yPx, wCells, hCells}   CELL=47, GAP=16
+
+        // Левая сторона (сдвиг вниз 70px; x=50: gap_панель≈gap_до_брони ≈70px)
+        { 50,  70, 2, 4},  //  0  Оружие       x=50, y=70
+        { 50, 274, 2, 2},  //  1  Перчатки      y=274
+
+        // Центр (x=213=260-47; y без сдвига)
+        {213,   0, 2, 2},  //  2  Шлем           x=213, y=0
+        {323,   0, 1, 1},  //  3  Амулет          x=213+94+16=323
+        {213, 110, 2, 4},  //  4  Броня           y=94+16=110
+        {213, 314, 2, 1},  //  5  Пояс            y=110+188+16=314
+        {111, 377, 1, 1},  //  6  Арт. 1          y=314+47+16=377; x=260-149=111
+        {174, 377, 1, 1},  //  7  Арт. 2          x=111+63
+        {237, 377, 1, 1},  //  8  Арт. 3
+        {300, 377, 1, 1},  //  9  Арт. 4
+        {363, 377, 1, 1},  // 10  Арт. 5          x=363, right=410; shield=426 gap=16 ✓
+
+        // Правая сторона (сдвиг вниз 70px; x=376=520-94-50: симметрично оружию)
+        {376,  70, 2, 4},  // 11  Щит             x=376
+        {376, 274, 2, 2},  // 12  Сапоги
+    };
+    private static final String[] EQ_NAMES = {
+        "Оружие","Перчатки","Шлем","Амулет","Броня",
+        "Пояс","","","","","",
+        "Щит","Сапоги"
+    };
+
     // ── Цвета ─────────────────────────────────────────────────────────────────
+    private static final Color C_SLOT_BG   = new Color(0.04f, 0.05f, 0.07f, 1f);
+    private static final Color C_SLOT_LINE = new Color(0.22f, 0.27f, 0.35f, 1f);
     private static final Color C_BG        = new Color(0.06f, 0.07f, 0.10f, 0.94f);
     private static final Color C_TAB_ACT   = new Color(0.18f, 0.22f, 0.30f, 1f);
     private static final Color C_TAB_IDLE  = new Color(0.09f, 0.10f, 0.14f, 1f);
@@ -205,7 +283,7 @@ public class SystemUI {
 
         switch (activeTab) {
             case QUESTS:    renderPlaceholder(batch, px, py, cH, "Активных заданий нет."); break;
-            case INVENTORY: renderPlaceholder(batch, px, py, cH, "Инвентарь пуст.");       break;
+            case INVENTORY: renderInventory(batch, px, py, cH);                            break;
             case SKILLS:    renderPlaceholder(batch, px, py, cH, "Навыки не изучены.");    break;
             case MENU:      renderMenu(batch, px, py, cH);                                  break;
         }
@@ -240,6 +318,67 @@ public class SystemUI {
             font.draw(batch, MENU_ITEMS[i],
                 cx + (BTN_W - layout.width) / 2f,
                 by + (BTN_H + layout.height) / 2f);
+        }
+    }
+
+    // ── Инвентарь ─────────────────────────────────────────────────────────────
+
+    /**
+     * Рисует вкладку инвентаря: сверху сетка снаряжения, снизу главный инвентарь.
+     * В Y-up libGDX: строка 0 снаряжения находится ВВЕРХУ (большой Y).
+     */
+    private void renderInventory(SpriteBatch batch, float px, float py, float cH) {
+        // Центрируем оборудование и инвентарь по ширине панели
+        float gridX = px + (PANEL_W - EQ_TOTAL_W) / 2f;
+        float eqTop = py + cH - PAD; // верх области снаряжения (Y-up)
+
+        // ── Слоты снаряжения ─────────────────────────────────────────────────
+        for (int i = 0; i < EQ_SLOTS.length; i++) {
+            int[] s = EQ_SLOTS[i]; // {xPx, yPx, wCells, hCells}
+            drawSlotPx(batch, gridX, eqTop, s[0], s[1], s[2], s[3], EQ_NAMES[i]);
+        }
+
+        float invGridX = px + (PANEL_W - (float)(INV_COLS * CELL)) / 2f;
+        float invTop   = eqTop - EQ_TOTAL_H - INV_GAP;
+
+        font.setColor(C_TEXT_DIM);
+        layout.setText(font, "Инвентарь");
+        font.draw(batch, "Инвентарь", invGridX, invTop + layout.height + 3);
+
+        for (int row = 0; row < INV_ROWS; row++) {
+            for (int col = 0; col < INV_COLS; col++) {
+                drawSlotPx(batch, invGridX, invTop, col * CELL, row * CELL, 1, 1, null);
+            }
+        }
+    }
+
+    /**
+     * Рисует слот по абсолютным пиксельным координатам от origin.
+     * xPx, yPx — пиксельные смещения вправо и вниз от gridOrigin.
+     * В libGDX (Y-up): screenY = gridTop - yPx - hPx.
+     */
+    private void drawSlotPx(SpriteBatch batch, float originX, float originTop,
+                             int xPx, int yPx, int wCells, int hCells, String name) {
+        float x  = originX + xPx;
+        float y  = originTop - yPx - hCells * CELL;  // Y-up
+        float sw = wCells * CELL;
+        float sh = hCells * CELL;
+
+        col(batch, C_SLOT_BG);
+        batch.draw(pixel, x + 1, y + 1, sw - 2, sh - 2);
+
+        col(batch, C_SLOT_LINE);
+        for (int ci = 0; ci <= wCells; ci++) batch.draw(pixel, x + ci * CELL, y, 1, sh);
+        for (int ri = 0; ri <= hCells; ri++) batch.draw(pixel, x, y + ri * CELL, sw, 1);
+
+        if (name != null && !name.isEmpty()) {
+            layout.setText(font, name);
+            if (layout.width < sw - 4) {
+                font.setColor(C_TEXT_DIM);
+                font.draw(batch, name,
+                    x + (sw - layout.width) / 2f,
+                    y + (sh + layout.height) / 2f);
+            }
         }
     }
 

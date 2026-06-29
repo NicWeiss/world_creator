@@ -24,7 +24,7 @@ public class WeatherThread implements Runnable {
     private static final long TICK_MS  = 16L;
 
     // ── Дождь ─────────────────────────────────────────────────────────────────
-    private static final float RAIN_CHANCE        = 0.20f;       // 20% вероятность
+    private static final float RAIN_CHANCE        = 0.10f;       // 10% вероятность
     private static final long  RAIN_CHECK_MS      = 30_000L;     // проверка каждые 30с
     private static final long  RAIN_MIN_MS        = 60_000L;     // мин. длительность 1 мин
     private static final long  RAIN_MAX_MS        = 180_000L;    // макс. 3 мин
@@ -61,7 +61,6 @@ public class WeatherThread implements Runnable {
         long startMs = System.currentTimeMillis() - initElapsed;
 
         nextCheckMs = System.currentTimeMillis();
-        startRain(System.currentTimeMillis()); // DEBUG: немедленный старт для отладки
 
         while (!Thread.currentThread().isInterrupted()) {
             try {
@@ -79,7 +78,8 @@ public class WeatherThread implements Runnable {
                 // ── Направление ветра: плавно меняется раз в 12-30 секунд ───────
                 if (now >= nextWindShift) {
                     nextWindShift = now + 30_000L + (long)(rng.nextFloat() * 90_000L); // 30с..2мин
-                    windAngleVel  = (rng.nextFloat() - 0.5f) * 0.08f; // -0.04..+0.04 рад/с
+                    // ±0.06 рад/с: за 30с до 1.8 рад (~100°), за 120с до 7.2 рад → разворот возможен
+                    windAngleVel  = (rng.nextFloat() - 0.5f) * 0.12f; // -0.06..+0.06 рад/с
                 }
                 windAngle += windAngleVel * TICK_MS / 1000f;
                 store.windDirX = (float)Math.cos(windAngle);
@@ -139,6 +139,9 @@ public class WeatherThread implements Runnable {
                 if (now >= cooldownEndMs && store.rainIntensity <= 0f) {
                     rainState   = RainState.CLEAR;
                     nextCheckMs = now + RAIN_CHECK_MS;
+                    // Явный сброс ветра — не полагаемся только на плавное угасание
+                    store.windMultiplier = 1f;
+                    store.windGustSpeed  = 1f;
                 }
                 break;
         }
@@ -149,13 +152,15 @@ public class WeatherThread implements Runnable {
         long duration = RAIN_MIN_MS + (long)(rng.nextFloat() * (RAIN_MAX_MS - RAIN_MIN_MS));
         rainEndMs = now + duration;
         scheduleLightning(now);
+        // Сбрасываем накопленную угловую скорость ветра при каждом новом дожде
+        windAngleVel = (rng.nextFloat() - 0.5f) * 0.10f;
     }
 
     /** windMultiplier и windGustSpeed плавно следуют за rainIntensity */
     private void updateWindFromIntensity() {
         float i = store.rainIntensity;
-        store.windMultiplier = 1f + i * 2f;          // 1..3
-        store.windGustSpeed  = 1f + i * 1.5f;        // 1..2.5
+        store.windMultiplier = 1f + i * 1.2f;  // 1..2.2  (было 1..3)
+        store.windGustSpeed  = 1f + i * 0.7f;  // 1..1.7  (было 1..2.5)
     }
 
     // ── Молнии ────────────────────────────────────────────────────────────────
