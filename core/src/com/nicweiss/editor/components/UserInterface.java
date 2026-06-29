@@ -59,7 +59,10 @@ public class UserInterface {
 
     // Фиксированный scaleTotal для игрового режима (сильное приближение)
     private static final int SIM_ZOOM_TARGET = -900;
-    private int editorScaleTotal = 0; // сохранённый зум редактора
+    private int editorScaleTotal = 0;
+    private int editorShiftX     = 0;
+    private int editorShiftY     = 0;
+    private volatile boolean isTransitioning = false; // зум-анимация в процессе
 
     public static Store store;
     BaseObject[] ui;
@@ -490,6 +493,7 @@ public class UserInterface {
     // ── Управление симуляцией ─────────────────────────────────────────────────
 
     public void toggleSimulation() {
+        if (isTransitioning) return; // блокируем на время зум-анимации
         if (store.isSimulationMode) {
             stopSimulation();
         } else {
@@ -498,7 +502,9 @@ public class UserInterface {
     }
 
     private void startSimulation() {
-        editorScaleTotal = store.scaleTotal; // запоминаем зум редактора
+        editorScaleTotal = store.scaleTotal;
+        editorShiftX     = store.shiftX;   // запоминаем позицию камеры редактора
+        editorShiftY     = store.shiftY;
         store.isSimulationMode = true;
 
         // Player и WeatherRenderer создаются на GL-потоке (Texture требует GL-контекста)
@@ -537,24 +543,57 @@ public class UserInterface {
         if (magickThread   != null) magickThread.interrupt();
         if (inputThread    != null) inputThread.interrupt();
 
-        animateZoom(editorScaleTotal); // плавно возвращаем зум редактора
+        // При выходе интерполируем камеру обратно к сохранённой позиции редактора
+        animateZoom(editorScaleTotal, editorShiftX, editorShiftY);
     }
 
-    /** Плавно анимирует scaleTotal к targetScaleTotal через CameraSettings */
+    /**
+     * Плавно анимирует scaleTotal к targetScaleTotal.
+     * Если переданы finalShiftX/Y — параллельно интерполирует shiftX/Y к ним,
+     * снэппит их точно в конце. Используется при выходе из симуляции.
+     */
     private void animateZoom(int targetScaleTotal) {
+        animateZoom(targetScaleTotal, Integer.MIN_VALUE, Integer.MIN_VALUE);
+    }
+
+    private void animateZoom(int targetScaleTotal, int finalShiftX, int finalShiftY) {
+        boolean restoreShift = finalShiftX != Integer.MIN_VALUE;
+        int startShiftX = store.shiftX;
+        int startShiftY = store.shiftY;
+        int startScale  = store.scaleTotal;
+        int totalDelta  = Math.abs(targetScaleTotal - startScale);
+
+        isTransitioning = true;
+
         new Thread(() -> {
             boolean zoomIn = targetScaleTotal < store.scaleTotal;
             while (!Thread.currentThread().isInterrupted()) {
                 int diff = targetScaleTotal - store.scaleTotal;
                 if (Math.abs(diff) < 100) {
-                    // Финальный snap до точного значения
                     store.scaleTotal = targetScaleTotal;
                     store.isNeedToChangeScale = true;
+                    if (restoreShift) {
+                        store.shiftX = finalShiftX;
+                        store.shiftY = finalShiftY;
+                    }
+                    isTransitioning = false; // анимация завершена — кнопка разблокирована
                     break;
                 }
                 if (zoomIn) CameraSettings.upScale();
                 else        CameraSettings.downScale();
-                try { Thread.sleep(35); } catch (InterruptedException e) { break; }
+
+                if (restoreShift && totalDelta > 0) {
+                    int remaining = Math.abs(targetScaleTotal - store.scaleTotal);
+                    float progress = 1f - (float) remaining / totalDelta;
+                    store.shiftX = startShiftX + (int)(progress * (finalShiftX - startShiftX));
+                    store.shiftY = startShiftY + (int)(progress * (finalShiftY - startShiftY));
+                }
+
+                try { Thread.sleep(35); } catch (InterruptedException e) {
+                    isTransitioning = false; // снимаем блокировку и при прерывании
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
         }, "ZoomAnim").start();
     }

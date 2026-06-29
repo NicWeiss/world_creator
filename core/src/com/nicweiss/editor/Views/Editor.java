@@ -385,8 +385,7 @@ public class Editor extends View{
 
 //        Симуляция: PhysicThread двигает player; здесь только центрируем камеру
         if (store.isSimulationMode && store.player != null && store.player.isInitialized()) {
-            float[] isoPos = Transform.cartesianToIsometric(
-                (int) store.player.worldX, (int) store.player.worldY);
+            float[] isoPos = Transform.cartesianToIsometric(store.player.worldX, store.player.worldY);
             store.shiftX = (int)(store.display.get("width")  / 2 - isoPos[0]);
             store.shiftY = (int)(store.display.get("height") / 2 - isoPos[1]);
         }

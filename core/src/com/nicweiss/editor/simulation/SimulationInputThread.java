@@ -17,8 +17,12 @@ import com.nicweiss.editor.Generic.Store;
 public class SimulationInputThread implements Runnable {
     public static Store store;
 
-    private static final float ACCEL_KEY     = 0.75f;  // ускорение от клавиш, px/тик
+    private static final float ACCEL_KEY     = 0.75f;  // ускорение X (влево/вправо)
     private static final float ACCEL_STICK   = 1.25f;  // ускорение от стика (аналоговый)
+    // Изометрическая коррекция: 1 px screen-Y = v√2 мировых единиц,
+    // тогда как 1 px screen-X = v/√2. Отношение 2:1 → делим velY на 2,
+    // чтобы мировая скорость вверх/вниз совпала с влево/вправо.
+    private static final float ACCEL_KEY_Y   = ACCEL_KEY * 0.5f;
     private static final float FRICTION      = 0.82f;
     private static final float STOP_THRESH   = 0.3f;
     private static final long  TICK_MS       = 16L;
@@ -36,14 +40,14 @@ public class SimulationInputThread implements Runnable {
                 // ── Ускорение от клавиатуры ───────────────────────────────────
                 if (store.simKeyLeft)  velX -= ACCEL_KEY;
                 if (store.simKeyRight) velX += ACCEL_KEY;
-                if (store.simKeyUp)    velY += ACCEL_KEY;
-                if (store.simKeyDown)  velY -= ACCEL_KEY;
+                if (store.simKeyUp)    velY += ACCEL_KEY_Y;
+                if (store.simKeyDown)  velY -= ACCEL_KEY_Y;
 
                 // ── Ускорение от геймпада (аналоговое) ───────────────────────
                 float sx = store.simStickX;
                 float sy = store.simStickY;
                 if (sx != 0f) velX += sx * ACCEL_STICK;
-                if (sy != 0f) velY -= sy * ACCEL_STICK; // Y стика инвертирован
+                if (sy != 0f) velY -= sy * ACCEL_STICK * 0.5f; // Y стика инвертирован + изо-коррекция
 
                 // ── Трение ───────────────────────────────────────────────────
                 velX *= FRICTION;
