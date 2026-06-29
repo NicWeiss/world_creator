@@ -292,6 +292,14 @@ public class MapObject  extends BaseObject {
             gp = ((float) 1 - (lp / ((dark * 100) + 15) * 50) / 500) / additionalDarkCoeff;
             bp = ((float) 1 - (lp / ((dark * 100) + 5) * 50) / 500) / additionalDarkCoeff;
 
+            // Применяем цвет источника (индексы 5,6,7 = r,g,b; 0 = слот игрока без цвета)
+            if (i > 0) {
+                float[] lp_arr = store.lightPoints[i];
+                rp *= lp_arr[5];
+                gp *= lp_arr[6];
+                bp *= lp_arr[7];
+            }
+
 
             if (rp > highestRp) {
                 highestRp = rp;
@@ -392,6 +400,26 @@ public class MapObject  extends BaseObject {
         float lr = Math.max(staticLightRed,   dynamicLightRed);
         float lg = Math.max(staticLightGreen, dynamicLightGreen);
         float lb = Math.max(staticLightBlue,  dynamicLightBlue);
+
+        // Динамический свет вспышки молнии: пересчитывается каждый кадр, не хранится в тайле.
+        // Работает как факел игрока — исчезновение происходит автоматически при bright=0,
+        // без пересчёта/сброса статического освещения соседних источников.
+        if (store.lightningFlashBright > 0f) {
+            float ldx  = (x - store.shiftX + (float)width / 2f) - store.lightningFlashIsoX;
+            float ldy  = ((y - store.shiftY - height * 0.1f) - store.lightningFlashIsoY) * 1.45f;
+            float dist = (float)Math.sqrt(ldx * ldx + ldy * ldy);
+            if (dist < 360f) {
+                float lp   = dist / 360f * 100f;
+                float dark = Math.max(0.2f, 1.6f - lp / 100f * 0.8f);
+                float b    = store.lightningFlashBright * 1.3f;
+                float rp   = Math.max(0f, (1f - (lp / (dark*100 + 35) * 50) / 500f) * b * 0.65f);
+                float gp   = 0f; // нет зелёного — фиолетовый свет
+                float bp   = Math.max(0f, (1f - (lp / (dark*100 + 5)  * 50) / 500f) * b * 1.0f);
+                lr = Math.max(lr, rp);
+                // lg = max(lg, gp) — не нужно, gp=0
+                lb = Math.max(lb, bp);
+            }
+        }
 
         // Облако затеняет ТОЛЬКО дневной свет, не источники
         float cloud = (store.isSimulationMode && store.dayCoefficient > 0f)

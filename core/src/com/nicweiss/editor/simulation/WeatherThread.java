@@ -159,6 +159,28 @@ public class WeatherThread implements Runnable {
             return;
         }
 
+        // Выбираем случайный тайл-цель в видимой области для разряда молнии
+        // Цель: случайная точка в поле видимости, НО на удалении от игрока (центра экрана).
+        // Используем полярные координаты: дистанция [min..max] от центра экрана.
+        float W       = store.display.get("width");
+        float H       = store.display.get("height");
+        float minDist = Math.min(W, H) * 0.50f; // ×2 от игрока
+        float maxDist = Math.min(W, H) * 0.528f; // +10%
+        float angle   = rng.nextFloat() * 2f * (float)Math.PI;
+        float dist    = minDist + rng.nextFloat() * (maxDist - minDist);
+        // Экранные координаты относительно центра
+        float tScrX = W / 2f + (float)Math.cos(angle) * dist;
+        float tScrY = H / 2f + (float)Math.sin(angle) * dist;
+        // Зажимаем в границах экрана с отступом
+        tScrX = Math.max(40, Math.min(W - 40, tScrX));
+        tScrY = Math.max(40, Math.min(H - 40, tScrY));
+        // Конвертируем экранные → мировые декартовые координаты
+        float isoX = tScrX - store.shiftX;
+        float isoY = tScrY - store.shiftY;
+        store.lightningTargetWX = (isoX + 2f * isoY) / 2f;
+        store.lightningTargetWY = (2f * isoY - isoX) / 2f;
+        store.lightningBoltNew  = true;
+
         // Первая вспышка: 1.5 = запускает предвспышечное затемнение в Editor
         store.lightningFlash = 1.2f + rng.nextFloat() * 0.4f; // 1.2..1.6
 

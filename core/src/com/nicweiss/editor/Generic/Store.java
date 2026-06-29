@@ -36,6 +36,18 @@ public class Store {
     public static volatile float windGustSpeed  = 1f;
     // Яркость вспышки молнии [0..1+], затухает GL-потоком (Editor)
     public static volatile float lightningFlash = 0f;
+    // Точка удара молнии в декартовых мировых координатах
+    public static volatile float lightningTargetWX = 0f;
+    public static volatile float lightningTargetWY = 0f;
+    // Сигнал для WeatherRenderer сгенерировать новый разряд
+    public static volatile boolean lightningBoltNew = false;
+
+    // Динамический свет вспышки молнии (пересчитывается каждый кадр как факел, без addPoint/removePoint).
+    // isoX/Y — позиция источника в изометрических мировых координатах (без shift).
+    // bright = 0 означает «вспышки нет», тайлы пересчитывать не нужно.
+    public static volatile float lightningFlashIsoX  = 0f;
+    public static volatile float lightningFlashIsoY  = 0f;
+    public static volatile float lightningFlashBright = 0f;
 
     public static int lightPointsCount = 10000;
     public static float[][] lightPoints;

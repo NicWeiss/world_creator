@@ -510,7 +510,7 @@ public class UserInterface {
         // Player и WeatherRenderer создаются на GL-потоке (Texture требует GL-контекста)
         com.badlogic.gdx.Gdx.app.postRunnable(() -> {
             store.player          = new com.nicweiss.editor.simulation.Player();
-            store.weatherRenderer = new com.nicweiss.editor.simulation.WeatherRenderer();
+            store.weatherRenderer = new com.nicweiss.editor.simulation.WeatherRenderer(lightClass);
         });
 
         creationThread = newDaemon(new CreationThread(),        "CreationThread");
@@ -543,8 +543,8 @@ public class UserInterface {
         if (magickThread   != null) magickThread.interrupt();
         if (inputThread    != null) inputThread.interrupt();
 
-        // При выходе интерполируем камеру обратно к сохранённой позиции редактора
-        animateZoom(editorScaleTotal, editorShiftX, editorShiftY);
+        // При выходе — просто отдаляем камеру от текущего положения, без возврата к точке входа
+        animateZoom(editorScaleTotal);
     }
 
     /**
@@ -552,8 +552,41 @@ public class UserInterface {
      * Если переданы finalShiftX/Y — параллельно интерполирует shiftX/Y к ним,
      * снэппит их точно в конце. Используется при выходе из симуляции.
      */
+    /**
+     * Zoom без восстановления позиции, но с коррекцией shiftX/Y на каждом шаге:
+     * при zoom-out каждый шаг увеличивает вьюпорт на 100px по X и 100*ar по Y,
+     * поэтому сдвигаем shift на +50 / +50*ar чтобы центр экрана остался на том же тайле.
+     */
     private void animateZoom(int targetScaleTotal) {
-        animateZoom(targetScaleTotal, Integer.MIN_VALUE, Integer.MIN_VALUE);
+        isTransitioning = true;
+        float ar = store.uiWidthOriginal > 0
+            ? (float) store.uiHeightOriginal / store.uiWidthOriginal : 1f;
+
+        new Thread(() -> {
+            boolean zoomIn = targetScaleTotal < store.scaleTotal;
+            while (!Thread.currentThread().isInterrupted()) {
+                int diff = targetScaleTotal - store.scaleTotal;
+                if (Math.abs(diff) < 100) {
+                    store.scaleTotal = targetScaleTotal;
+                    store.isNeedToChangeScale = true;
+                    isTransitioning = false;
+                    break;
+                }
+                if (zoomIn) {
+                    CameraSettings.upScale();
+                } else {
+                    CameraSettings.downScale();
+                    // Вьюпорт вырос на 100×(100*ar) → центрируем смещая shift на +50/(+50*ar)
+                    store.shiftX += 50;
+                    store.shiftY += (int)(50 * ar);
+                }
+                try { Thread.sleep(35); } catch (InterruptedException e) {
+                    isTransitioning = false;
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }, "ZoomAnim").start();
     }
 
     private void animateZoom(int targetScaleTotal, int finalShiftX, int finalShiftY) {

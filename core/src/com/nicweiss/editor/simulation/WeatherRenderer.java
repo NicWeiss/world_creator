@@ -5,6 +5,7 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.utils.Light;
 
 /**
  * Отвечает за визуальный рендер погоды в режиме симуляции.
@@ -38,12 +39,33 @@ public class WeatherRenderer {
     private float   lastShiftX = Float.NaN;
     private float   lastShiftY = Float.NaN;
 
+    // ── Молния ────────────────────────────────────────────────────────────────
+    private static final int   MAX_SEGS   = 180;  // сегменты молнии (ствол + ветки)
+    private static final float BOLT_LIFE  = 0.40f; // секунды видимости разряда (×2)
+
+    private final float[] segRX1  = new float[MAX_SEGS]; // X1 относительно цели (iso)
+    private final float[] segRY1  = new float[MAX_SEGS]; // Y1
+    private final float[] segRX2  = new float[MAX_SEGS]; // X2
+    private final float[] segRY2  = new float[MAX_SEGS]; // Y2
+    private final float[] segAlph = new float[MAX_SEGS]; // непрозрачность (ветки тусклее)
+    private int     segCount  = 0;
+    private float   boltAge   = 0f;      // убывает до 0 → разряд исчезает
+    private float   boltTWX   = 0f;      // целевой декарт. X в мире
+    private float   boltTWY   = 0f;
+
+    private final java.util.Random boltRng = new java.util.Random();
+
+    private boolean flashFade_wasActive = false;
+
+    private final Light light; // ссылка на систему освещения
+
     // ── Текстуры ──────────────────────────────────────────────────────────────
     private final Texture dropTex;
     private final Texture splashTex;
     private final Texture flashTex;
 
-    public WeatherRenderer() {
+    public WeatherRenderer(Light light) {
+        this.light = light;
         // Текстура капли: 2×14, альфа 0.35→1.0
         Pixmap dp = new Pixmap(2, 14, Pixmap.Format.RGBA8888);
         dp.setColor(0, 0, 0, 0); dp.fill();
@@ -76,8 +98,14 @@ public class WeatherRenderer {
 
     /** Вызывается GL-потоком каждый кадр после рендера карты. */
     public void render(SpriteBatch batch) {
+        // Генерируем новый разряд молнии если пришёл сигнал от WeatherThread
+        if (store.lightningBoltNew) {
+            store.lightningBoltNew = false;
+            generateBolt(store.lightningTargetWX, store.lightningTargetWY);
+        }
         renderRain(batch);
         renderSplash(batch);
+        renderBolt(batch);
         renderLightningFlash(batch);
     }
 
@@ -244,12 +272,189 @@ public class WeatherRenderer {
             batch.draw(flashTex, 0, 0, W, H);
             store.lightningFlash = lf - dt * 11f;
         } else {
-            batch.setColor(0.45f, 0.05f, 0.85f, lf * 0.15f);
+            batch.setColor(0.45f, 0.05f, 0.85f, lf * 0.075f); // ÷2
             batch.draw(flashTex, 0, 0, W, H);
-            batch.setColor(1f, 0.97f, 1f, lf * 0.10f);
+            batch.setColor(1f, 0.97f, 1f,    lf * 0.050f); // ÷2
             batch.draw(flashTex, 0, 0, W, H);
             store.lightningFlash = Math.max(0f, lf - dt * 4.5f);
         }
         batch.setColor(1, 1, 1, 1);
+    }
+
+    // ── Разряд молнии ─────────────────────────────────────────────────────────
+
+    /**
+     * Генерирует разряд молнии к целевому тайлу.
+     * Точки хранятся в изометрических экранных координатах ОТНОСИТЕЛЬНО цели,
+     * поэтому разряд движется вместе с картой при движении игрока.
+     *
+     * (0, 0) = цель. Старт выше экрана: (±rand, +H+extra).
+     * Алгоритм: итеративное смещение средней точки с убывающей амплитудой.
+     * Ветки: от промежуточных точек уходят в сторону и не достигают земли.
+     */
+    private void generateBolt(float tWX, float tWY) {
+        boltTWX  = tWX;
+        boltTWY  = tWY;
+        segCount = 0;
+        boltAge  = BOLT_LIFE;
+        flashFade_wasActive = false;
+
+        float H = store.display.get("height");
+
+        // Стартовая точка: случайно выше экрана
+        float startX = (boltRng.nextFloat() - 0.5f) * 180f; // ±90 px от цели по X
+        float startY = H + 60f + boltRng.nextFloat() * 120f;
+
+        // Опорные точки основного ствола (zig-zag через смещение средних точек)
+        float[] ptX = new float[256];
+        float[] ptY = new float[256];
+        ptX[0] = startX; ptY[0] = startY;
+        ptX[1] = 0f;     ptY[1] = 0f;
+        int ptCount = 2;
+
+        // 5 итераций деления — каждая вдвое уменьшает амплитуду отклонения
+        float amplitude = 55f;
+        for (int iter = 0; iter < 5 && ptCount < 200; iter++) {
+            int newCount = ptCount * 2 - 1;
+            float[] nx = new float[newCount];
+            float[] ny = new float[newCount];
+            for (int i = 0; i < ptCount - 1; i++) {
+                nx[i * 2]     = ptX[i];
+                ny[i * 2]     = ptY[i];
+                float mx = (ptX[i] + ptX[i+1]) / 2f;
+                float my = (ptY[i] + ptY[i+1]) / 2f;
+                // Горизонтальный зигзаг — молния типично ломается по X, не по Y
+                nx[i * 2 + 1] = mx + (boltRng.nextFloat() - 0.5f) * amplitude;
+                ny[i * 2 + 1] = my;
+            }
+            nx[newCount - 1] = ptX[ptCount - 1];
+            ny[newCount - 1] = ptY[ptCount - 1];
+            System.arraycopy(nx, 0, ptX, 0, newCount);
+            System.arraycopy(ny, 0, ptY, 0, newCount);
+            ptCount   = newCount;
+            amplitude *= 0.52f; // быстро убываем для острых углов
+        }
+
+        // Сохраняем сегменты ствола
+        for (int i = 0; i < ptCount - 1 && segCount < MAX_SEGS - 1; i++) {
+            segRX1[segCount] = ptX[i];   segRY1[segCount] = ptY[i];
+            segRX2[segCount] = ptX[i+1]; segRY2[segCount] = ptY[i+1];
+            segAlph[segCount] = 1f;
+            segCount++;
+        }
+
+        // Ветки: от случайных промежуточных точек, уходят в сторону и НЕ достигают земли
+        for (int i = 2; i < ptCount - 3 && segCount < MAX_SEGS - 8; i++) {
+            if (boltRng.nextFloat() > 0.22f) continue; // 22% вероятность ветки
+            float bx = ptX[i], by = ptY[i];
+            // Ветка идёт в сторону, немного вниз, и быстро затухает
+            float dirX = (boltRng.nextFloat() - 0.5f) * 80f;
+            float dirY = -(boltRng.nextFloat() * 50f + 20f); // вверх от цели (к небу)
+            float brAlpha = 0.75f;
+            for (int s = 0; s < 4 && segCount < MAX_SEGS - 1; s++) {
+                float ex = bx + dirX;
+                float ey = by + dirY;
+                segRX1[segCount] = bx; segRY1[segCount] = by;
+                segRX2[segCount] = ex; segRY2[segCount] = ey;
+                segAlph[segCount] = brAlpha;
+                segCount++;
+                bx = ex; by = ey;
+                // Ветка сужается и загибается
+                dirX *= 0.55f;
+                dirY *= 0.65f;
+                brAlpha *= 0.6f;
+            }
+        }
+    }
+
+    /**
+     * Рисует активный разряд молнии: толстая фиолетовая обводка + тонкое белое ядро.
+     * Координаты вычисляются каждый кадр из мировой позиции цели + shiftX/Y.
+     */
+    private void renderBolt(SpriteBatch batch) {
+        if (boltAge <= 0f || segCount == 0) return;
+
+        float dt   = Gdx.graphics.getDeltaTime();
+        // fade вычисляем ДО уменьшения → первый кадр всегда fade=1.0 (резкое появление)
+        float fade = boltAge / BOLT_LIFE;
+        boltAge    = Math.max(0f, boltAge - dt);
+
+        // Экранная позиция цели (движется с картой)
+        float tScrX = boltTWX - boltTWY + store.shiftX;
+        float tScrY = (boltTWX + boltTWY) / 2f + store.shiftY;
+
+        // Рисуем сегменты молнии
+        for (int i = 0; i < segCount; i++) {
+            float x1 = tScrX + segRX1[i];
+            float y1 = tScrY + segRY1[i];
+            float x2 = tScrX + segRX2[i];
+            float y2 = tScrY + segRY2[i];
+            float a  = segAlph[i] * fade;
+
+            // Яркая фиолетовая обводка
+            batch.setColor(0.65f, 0.05f, 1.0f, a * 0.85f);
+            drawSeg(batch, flashTex, x1, y1, x2, y2, 5f);
+            // Тонкое белое ядро
+            batch.setColor(1f, 1f, 1f, a);
+            drawSeg(batch, flashTex, x1, y1, x2, y2, 0.8f);
+        }
+
+        // Вспышка на тайле: исчезает за первые 30% жизни разряда
+        float flashFade = Math.max(0f, fade * 3.3f - 2.3f); // активна при fade > 0.697
+        flashFade = Math.min(1f, flashFade);
+
+        // Динамический свет: просто выставляем значения в Store → calcLitColor читает каждый кадр.
+        // Не нужно addPoint/removePoint — освещение исчезает само когда bright=0.
+        if (flashFade > 0f) {
+            // Формат совпадает с lightPoints[i][1/2] из addPoint: isoX/Y + tileSizeWidth/Height
+            store.lightningFlashIsoX   = boltTWX - boltTWY + store.tileSizeWidth;
+            store.lightningFlashIsoY   = (boltTWX + boltTWY) / 2f + store.tileSizeHeight;
+            store.lightningFlashBright = flashFade;
+        } else {
+            store.lightningFlashBright = 0f;
+        }
+
+        if (flashFade > 0f) {
+            // Внутренний яркий центр (исходный размер)
+            float fw = 28f * flashFade;
+            float fh = 12f * flashFade;
+            batch.setColor(1f, 0.8f, 1f, flashFade);
+            batch.draw(flashTex, tScrX - fw / 2f, tScrY - fh / 2f, fw, fh);
+
+            // Фиолетовый ореол (исходный размер)
+            float gw = 70f * flashFade;
+            float gh = 30f * flashFade;
+            batch.setColor(0.55f, 0.05f, 0.9f, flashFade * 0.55f);
+            batch.draw(flashTex, tScrX - gw / 2f, tScrY - gh / 2f, gw, gh);
+
+            // Мягкое широкое свечение (исходный размер)
+            float gw2 = 130f * flashFade;
+            float gh2 = 55f  * flashFade;
+            batch.setColor(0.4f, 0f, 0.7f, flashFade * 0.22f);
+            batch.draw(flashTex, tScrX - gw2 / 2f, tScrY - gh2 / 2f, gw2, gh2);
+        }
+
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    /**
+     * Рисует отрезок как повёрнутый прямоугольник через SpriteBatch.
+     * angle = atan2(-dx, dy) — поворот CCW от оси +Y.
+     */
+    private void drawSeg(SpriteBatch batch, Texture tex,
+                         float x1, float y1, float x2, float y2, float thick) {
+        float dx  = x2 - x1, dy = y2 - y1;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len < 0.5f) return;
+        float angle   = (float) Math.toDegrees(Math.atan2(-dx, dy));
+        float halfT   = thick / 2f;
+        batch.draw(tex,
+            x1 - halfT, y1,          // позиция
+            halfT, 0f,                // ось вращения — начало отрезка по центру толщины
+            thick, len,               // размер
+            1f, 1f,                   // масштаб
+            angle,                    // поворот (CCW)
+            0, 0, 1, 1,               // текстурный регион (1×1)
+            false, false);
     }
 }
