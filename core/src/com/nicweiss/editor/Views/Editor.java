@@ -545,6 +545,9 @@ public class Editor extends View{
     @Override
     public void renderUI(SpriteBatch uiBatch) {
         userInterface.render(uiBatch);
+        if (store.isSimulationMode && store.playerUI != null) {
+            store.playerUI.render(uiBatch);
+        }
     }
 
     public void renderCreations(SpriteBatch batch, int mapI, int mapJ, boolean filterByHeight) {

@@ -510,6 +510,7 @@ public class UserInterface {
         // Player и WeatherRenderer создаются на GL-потоке (Texture требует GL-контекста)
         com.badlogic.gdx.Gdx.app.postRunnable(() -> {
             store.player          = new com.nicweiss.editor.simulation.Player();
+            store.playerUI        = new com.nicweiss.editor.simulation.PlayerUI();
             store.weatherRenderer = new com.nicweiss.editor.simulation.WeatherRenderer(lightClass);
         });
 
@@ -531,6 +532,7 @@ public class UserInterface {
     private void stopSimulation() {
         store.isSimulationMode  = false;
         store.player            = null;
+        store.playerUI          = null;
         store.weatherRenderer   = null;
         store.rainIntensity  = 0f;
         store.windMultiplier = 1f;

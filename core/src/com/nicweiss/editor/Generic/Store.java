@@ -3,6 +3,7 @@ package com.nicweiss.editor.Generic;
 import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
 import com.nicweiss.editor.simulation.Player;
+import com.nicweiss.editor.simulation.PlayerUI;
 import com.nicweiss.editor.simulation.WeatherRenderer;
 
 import java.util.HashMap;
@@ -22,7 +23,9 @@ public class Store {
     public static float dayCoefficient = 1f;
 
     // Игрок — единственный экземпляр, создаётся при запуске симуляции
-    public static Player player = null;
+    public static Player   player   = null;
+    // Интерфейс игрока (HUD)
+    public static PlayerUI playerUI = null;
 
     // Рендер погоды — создаётся на GL-потоке при запуске симуляции
     public static WeatherRenderer weatherRenderer = null;
