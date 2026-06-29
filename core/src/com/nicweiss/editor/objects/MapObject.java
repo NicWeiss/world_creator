@@ -453,20 +453,22 @@ public class MapObject  extends BaseObject {
     private float computeCloudShadow() {
         float t  = store.cloudTime;
 
-        // Мировая позиция тайла + смещение ветром
         float wx = (xPositionOnMap + WIND_X * t) * CLOUD_FREQ;
         float wy = (yPositionOnMap + WIND_Y * t) * CLOUD_FREQ;
 
-        // Многооктавный шум (4 октавы) для облакоподобных форм
         float noise = cloudFbm(wx, wy, 4);
 
-        // Только значения выше порога дают тень
-        float density = Math.max(0f, noise - CLOUD_THOLD) / (1f - CLOUD_THOLD);
-        // Сглаживаем края облаков
+        // Во время дождя опускаем порог (почти сплошная облачность) и
+        // увеличиваем максимальную тень (тяжёлые грозовые тучи).
+        float rain      = store.rainIntensity;
+        float threshold = CLOUD_THOLD * (1f - rain * 0.88f); // 0.45 → 0.054 при rain=1
+        float shadowMax = SHADOW_MAX  + rain * 0.08f;         // 0.70 → 0.78 при rain=1
+
+        float density = Math.max(0f, noise - threshold) / (1f - threshold);
         density = density * density * (3f - 2f * density);
 
         float dayScale = Math.min(1f, store.dayCoefficient * 2f);
-        return 1f - density * SHADOW_MAX * dayScale;
+        return 1f - density * shadowMax * dayScale;
     }
 
     /** Фрактальный броуновый шум: несколько октав градиентного шума */
