@@ -23,6 +23,16 @@ public class Store {
     // Игрок — единственный экземпляр, создаётся при запуске симуляции
     public static Player player = null;
 
+    // ── Погода ────────────────────────────────────────────────────────────────
+    // Интенсивность дождя [0..1] — плавно меняется WeatherThread
+    public static volatile float rainIntensity  = 0f;
+    // Множитель амплитуды ветра для деревьев [1..3]
+    public static volatile float windMultiplier = 1f;
+    // Множитель частоты порывов ветра [1..2.5]
+    public static volatile float windGustSpeed  = 1f;
+    // Яркость вспышки молнии [0..1+], затухает GL-потоком (Editor)
+    public static volatile float lightningFlash = 0f;
+
     public static int lightPointsCount = 10000;
     public static float[][] lightPoints;
     // Наибольший реально занятый индекс в lightPoints — ограничивает inner-loop в calcLight

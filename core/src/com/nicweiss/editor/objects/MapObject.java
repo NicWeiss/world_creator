@@ -72,13 +72,13 @@ public class MapObject  extends BaseObject {
         float t = store.cloudTime;
 
         // ── Глобальный порыв ветра: сумма медленных некратных синусоид ────────
-        // Три несоизмеримые частоты → результат никогда не повторяется
+        // windGustSpeed ускоряет частоты → порывы чаще во время дождя
+        float gs = store.windGustSpeed;
         float gust = 0.55f
-            + 0.28f * (float)Math.sin(t * 0.23f + 0.0f)
-            + 0.17f * (float)Math.sin(t * 0.11f + 1.73f)
-            + 0.12f * (float)Math.sin(t * 0.41f + 3.07f)
-            + 0.08f * (float)Math.sin(t * 0.07f + 5.11f);
-        // Ограничиваем снизу: ветер не затихает полностью
+            + 0.28f * (float)Math.sin(t * 0.23f * gs + 0.0f)
+            + 0.17f * (float)Math.sin(t * 0.11f * gs + 1.73f)
+            + 0.12f * (float)Math.sin(t * 0.41f * gs + 3.07f)
+            + 0.08f * (float)Math.sin(t * 0.07f * gs + 5.11f);
         if (gust < 0.08f) gust = 0.08f;
 
         // ── Смещение кроны: три гармоники + глобальный порыв ─────────────────
@@ -86,7 +86,8 @@ public class MapObject  extends BaseObject {
         float secondary = 0.38f * (float)Math.sin(t * freq2 + phase2);
         float rustle    = 0.14f * (float)Math.sin(t * freq3 + phase3);
 
-        float baseAmp = 3.5f + (Math.abs((h >> 12) & 0xFF) / 255f) * 2.5f; // 3.5..6 px
+        float baseAmp = (3.5f + (Math.abs((h >> 12) & 0xFF) / 255f) * 2.5f) // 3.5..6 px
+                        * store.windMultiplier;                               // x1..x3 в дождь
         float offsetX = baseAmp * gust * (primary + secondary + rustle);
 
         float w  = width  * x_scale;
@@ -380,7 +381,9 @@ public class MapObject  extends BaseObject {
         float tG = 1f + (-warmth * 0.06f + cool * 0.03f) * dayBright;
         float tB = 1f + (-warmth * 0.28f + cool * 0.22f) * dayBright;
 
-        float raw  = 0.2f + store.dayCoefficient;
+        // Дождь затемняет небо пропорционально интенсивности
+        float raw  = (0.2f + store.dayCoefficient) * (1f - store.rainIntensity * 0.45f);
+        raw = Math.max(0.05f, raw);
         float dayR = raw * tR;
         float dayG = raw * tG;
         float dayB = raw * tB;

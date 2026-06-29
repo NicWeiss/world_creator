@@ -521,7 +521,11 @@ public class UserInterface {
 
     private void stopSimulation() {
         store.isSimulationMode = false;
-        store.player = null;
+        store.player         = null;
+        store.rainIntensity  = 0f;
+        store.windMultiplier = 1f;
+        store.windGustSpeed  = 1f;
+        store.lightningFlash = 0f;
 
         if (creationThread != null) creationThread.interrupt();
         if (weatherThread  != null) weatherThread.interrupt();
