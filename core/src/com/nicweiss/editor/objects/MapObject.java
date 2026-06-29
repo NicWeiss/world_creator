@@ -86,9 +86,12 @@ public class MapObject  extends BaseObject {
         float secondary = 0.38f * (float)Math.sin(t * freq2 + phase2);
         float rustle    = 0.14f * (float)Math.sin(t * freq3 + phase3);
 
-        float baseAmp = (3.5f + (Math.abs((h >> 12) & 0xFF) / 255f) * 2.5f) // 3.5..6 px
-                        * store.windMultiplier;                               // x1..x3 в дождь
-        float offsetX = baseAmp * gust * (primary + secondary + rustle);
+        float baseAmp = (3.5f + (Math.abs((h >> 12) & 0xFF) / 255f) * 2.5f)
+                        * store.windMultiplier;
+        float offset  = baseAmp * gust * (primary + secondary + rustle);
+        // Смещение кроны по направлению ветра в экранном пространстве
+        float offsetX = offset * store.windDirX;
+        float offsetY = offset * store.windDirY;
 
         float w  = width  * x_scale;
         float h2 = height * y_scale;
@@ -96,9 +99,9 @@ public class MapObject  extends BaseObject {
 
         // Вертексы SpriteBatch: BL, TL, TR, BR (x, y, colorBits, u, v)
         // v=1 → низ изображения (корни), v=0 → верх (крона)
-        windVerts[0]  = x;           windVerts[1]  = y;    windVerts[2]  = c; windVerts[3]  = 0f; windVerts[4]  = 1f;
-        windVerts[5]  = x+offsetX;   windVerts[6]  = y+h2; windVerts[7]  = c; windVerts[8]  = 0f; windVerts[9]  = 0f;
-        windVerts[10] = x+w+offsetX; windVerts[11] = y+h2; windVerts[12] = c; windVerts[13] = 1f; windVerts[14] = 0f;
+        windVerts[0]  = x;             windVerts[1]  = y;          windVerts[2]  = c; windVerts[3]  = 0f; windVerts[4]  = 1f;
+        windVerts[5]  = x+offsetX;     windVerts[6]  = y+h2+offsetY; windVerts[7]  = c; windVerts[8]  = 0f; windVerts[9]  = 0f;
+        windVerts[10] = x+w+offsetX;   windVerts[11] = y+h2+offsetY; windVerts[12] = c; windVerts[13] = 1f; windVerts[14] = 0f;
         windVerts[15] = x+w;         windVerts[16] = y;    windVerts[17] = c; windVerts[18] = 1f; windVerts[19] = 1f;
         batch.draw(img, windVerts, 0, 20);
     }
@@ -444,8 +447,7 @@ public class MapObject  extends BaseObject {
     // Шум сэмплируется в мировых координатах + смещение ветром → облака
     // привязаны к миру (не к камере) и плавно движутся.
 
-    private static final float WIND_X      = 0.9f;   // тайлов/сек
-    private static final float WIND_Y      = 0.12f;
+    private static final float WIND_SPEED  = 0.8f;   // базовая скорость облаков (тайлов/сек)
     private static final float CLOUD_FREQ  = 0.090f; // масштаб облаков (~11 тайлов)
     private static final float CLOUD_THOLD = 0.45f;
     private static final float SHADOW_MAX  = 0.70f;
@@ -453,8 +455,13 @@ public class MapObject  extends BaseObject {
     private float computeCloudShadow() {
         float t  = store.cloudTime;
 
-        float wx = (xPositionOnMap + WIND_X * t) * CLOUD_FREQ;
-        float wy = (yPositionOnMap + WIND_Y * t) * CLOUD_FREQ;
+        // Направление ветра в изо → декартовые координаты для сэмплирования шума
+        float speed  = WIND_SPEED * (0.8f + store.windMultiplier * 0.15f);
+        float cwX    = (store.windDirX + 2f * store.windDirY) / 2f; // iso→cart X
+        float cwY    = (2f * store.windDirY - store.windDirX) / 2f; // iso→cart Y
+        // Минус: сдвиг сэмпла против ветра → паттерн движется по ветру (как листья)
+        float wx = (xPositionOnMap - cwX * speed * t) * CLOUD_FREQ;
+        float wy = (yPositionOnMap - cwY * speed * t) * CLOUD_FREQ;
 
         float noise = cloudFbm(wx, wy, 4);
 

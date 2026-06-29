@@ -40,6 +40,11 @@ public class WeatherThread implements Runnable {
 
     private final Random rng = new Random();
     private RainState rainState   = RainState.CLEAR;
+
+    // ── Направление ветра ─────────────────────────────────────────────────────
+    private float windAngle     = 0f;       // текущий угол (рад), 0 = вправо
+    private float windAngleVel  = 0.02f;    // скорость вращения (рад/с)
+    private long  nextWindShift = 0L;
     private long      rainEndMs   = 0;
     private long      cooldownEndMs = 0;
     private long      nextCheckMs   = 0;
@@ -70,6 +75,15 @@ public class WeatherThread implements Runnable {
                 store.dayCoefficient = Math.max(-0.10f, Math.min(1f, coeff));
                 store.dayPhase       = normalizedPhase;
                 store.cloudTime      = (now - startMs) / 1000f;
+
+                // ── Направление ветра: плавно меняется раз в 12-30 секунд ───────
+                if (now >= nextWindShift) {
+                    nextWindShift = now + 30_000L + (long)(rng.nextFloat() * 90_000L); // 30с..2мин
+                    windAngleVel  = (rng.nextFloat() - 0.5f) * 0.08f; // -0.04..+0.04 рад/с
+                }
+                windAngle += windAngleVel * TICK_MS / 1000f;
+                store.windDirX = (float)Math.cos(windAngle);
+                store.windDirY = (float)Math.sin(windAngle);
 
                 // ── Стейт-машина дождя ────────────────────────────────────────
                 tickRain(now);

@@ -18,10 +18,12 @@ public class WeatherRenderer {
     public static Store store;
 
     // ── Константы ─────────────────────────────────────────────────────────────
-    private static final int   N_DROPS         = 600;
+    private static final int   N_DROPS         = 300; // максимум; активно 50-300 динамически
     private static final float LIGHT_RADIUS    = 160f;
     private static final float SPLASH_DURATION = 0.22f;
     private static final int   N_SPLASHES      = 200;
+    private static final int   N_LEAVES        = 80;
+    private static final float LEAF_LIFE       = 4.5f; // секунды жизни листа
 
     // ── Капли ─────────────────────────────────────────────────────────────────
     private final float[] dropWX  = new float[N_DROPS]; // мировой декарт. X точки приземления
@@ -38,6 +40,17 @@ public class WeatherRenderer {
     private boolean dropsReady = false;
     private float   lastShiftX = Float.NaN;
     private float   lastShiftY = Float.NaN;
+
+    // ── Листья ────────────────────────────────────────────────────────────────
+    // Хранятся в изометрических мировых координатах (без shiftX/Y).
+    // Спавнятся с isTree-тайлов в видимой области при усилении ветра.
+    private final float[] leafIsoX = new float[N_LEAVES]; // мировой iso X
+    private final float[] leafIsoY = new float[N_LEAVES]; // мировой iso Y
+    private final float[] leafVX   = new float[N_LEAVES]; // скорость iso X (px/s)
+    private final float[] leafVY   = new float[N_LEAVES]; // скорость iso Y (px/s)
+    private final float[] leafAge  = new float[N_LEAVES]; // 1→0; 0 = неактивен
+    private final float[] leafPhase= new float[N_LEAVES]; // фаза флаттера (трепетания)
+    private float leafSpawnTimer = 0f;
 
     // ── Молния ────────────────────────────────────────────────────────────────
     private static final int   MAX_SEGS   = 180;  // сегменты молнии (ствол + ветки)
@@ -63,6 +76,7 @@ public class WeatherRenderer {
     private final Texture dropTex;
     private final Texture splashTex;
     private final Texture flashTex;
+    private final Texture leafTex; // маленький овальный листок 4×3
 
     public WeatherRenderer(Light light) {
         this.light = light;
@@ -94,6 +108,16 @@ public class WeatherRenderer {
         fp.setColor(1f, 1f, 1f, 1f); fp.fill();
         flashTex = new Texture(fp);
         fp.dispose();
+
+        // Текстура листа: маленький овал 4×3
+        Pixmap lp = new Pixmap(4, 3, Pixmap.Format.RGBA8888);
+        lp.setColor(0, 0, 0, 0); lp.fill();
+        lp.setColor(1f, 1f, 1f, 1f);
+        lp.drawPixel(1,0); lp.drawPixel(2,0);
+        lp.drawPixel(0,1); lp.drawPixel(1,1); lp.drawPixel(2,1); lp.drawPixel(3,1);
+        lp.drawPixel(1,2); lp.drawPixel(2,2);
+        leafTex = new Texture(lp);
+        lp.dispose();
     }
 
     /** Вызывается GL-потоком каждый кадр после рендера карты. */
@@ -105,6 +129,7 @@ public class WeatherRenderer {
         }
         renderRain(batch);
         renderSplash(batch);
+        renderLeaves(batch);
         renderBolt(batch);
         renderLightningFlash(batch);
     }
@@ -156,16 +181,28 @@ public class WeatherRenderer {
         float dt         = Gdx.graphics.getDeltaTime();
         float compX      = -camDX / 2f - camDY;
         float compY      =  camDX / 2f - camDY;
-        float isoXDrift  = (store.windMultiplier - 1f) * 55f * dt;
-        float horizSpeed = (store.windMultiplier - 1f) * 55f;
+        float windSpeed  = (store.windMultiplier - 1f) * 55f;
+        // Дрейф в направлении ветра: iso-скорость → декартовые дельты
+        float isoXDrift  = windSpeed * store.windDirX * dt;
+        float isoYDrift  = windSpeed * store.windDirY * dt;
+        float dCartXDrift = (isoXDrift + 2f * isoYDrift) / 2f;
+        float dCartYDrift = (2f * isoYDrift - isoXDrift) / 2f;
+        float horizSpeed = windSpeed * store.windDirX; // экранный X для расчёта наклона
         float lit        = Math.max(0.15f, store.dayCoefficient);
         float alpha      = intensity;
         float tileW      = store.tileSizeWidth;
         float tileH      = store.tileSizeHeight;
 
-        for (int k = 0; k < N_DROPS; k++) {
-            dropWX[k]  += compX + isoXDrift / 2f;
-            dropWY[k]  += compY - isoXDrift / 2f;
+        // Динамическое количество капель: 50-300, медленно нарастает и спадает
+        float t0 = store.cloudTime;
+        float dropFrac = 0.5f + 0.3f * (float)Math.sin(t0 * 0.09f)
+                               + 0.2f * (float)Math.sin(t0 * 0.14f); // 0..1
+        int activeDrops = (int)(50 + dropFrac * 250); // 50..300
+        activeDrops = Math.max(50, Math.min(N_DROPS, activeDrops));
+
+        for (int k = 0; k < activeDrops; k++) {
+            dropWX[k]  += compX + dCartXDrift;
+            dropWY[k]  += compY + dCartYDrift;
             dropAlt[k] -= dropSpd[k] * dt;
 
             float scrX = dropWX[k] - dropWY[k] + store.shiftX;
@@ -180,8 +217,9 @@ public class WeatherRenderer {
                     int mj = (int)(dropWY[k] / tileH) - 1;
                     if (mi >= 0 && mi < store.mapHeight && mj >= 0 && mj < store.mapWidth
                             && store.objectedMap[mi][mj].objectHeight < 20) {
-                        splashX[splashNext]   = gsx;
-                        splashY[splashNext]   = gsy;
+                        // Храним в мировых iso координатах (без shift) → не едут с камерой
+                        splashX[splashNext]   = gsx - store.shiftX;
+                        splashY[splashNext]   = gsy - store.shiftY;
                         splashAge[splashNext] = 1f;
                         splashNext = (splashNext + 1) % N_SPLASHES;
                     }
@@ -215,7 +253,8 @@ public class WeatherRenderer {
                 Math.min(1f, dropBright * 1.15f - warmth * 0.15f),
                 alpha);
 
-            float leanAngle = (float)Math.toDegrees(Math.atan2(horizSpeed, dropSpd[k]));
+            // ×4 — усиливаем наклон для видимости; физически скорость дождя >>ветра
+            float leanAngle = (float)Math.toDegrees(Math.atan2(horizSpeed * 4f, dropSpd[k]));
             batch.draw(dropTex,
                 scrX, scrY,
                 1f, 7f, 2, 14, 1f, 1f,
@@ -243,9 +282,12 @@ public class WeatherRenderer {
             float a     = splashAge[k] * intensity * 0.25f;
             float w     = 5f * scale;
             float h     = 2.5f * scale;
+            // Переводим мировые iso координаты в экранные
+            float scrX  = splashX[k] + store.shiftX;
+            float scrY  = splashY[k] + store.shiftY;
             batch.setColor(0.82f * lit, 0.9f * lit, lit, a);
             batch.draw(splashTex,
-                splashX[k] - w / 2f, splashY[k] - h / 2f,
+                scrX - w / 2f, scrY - h / 2f,
                 w, h);
         }
         batch.setColor(1, 1, 1, 1);
@@ -279,6 +321,117 @@ public class WeatherRenderer {
             store.lightningFlash = Math.max(0f, lf - dt * 4.5f);
         }
         batch.setColor(1, 1, 1, 1);
+    }
+
+    // ── Листья ────────────────────────────────────────────────────────────────
+
+    /**
+     * Спавним и рисуем листья, срываемые ветром с деревьев во время дождя.
+     *
+     * Листья хранятся в мировых iso-координатах (без shift) — следуют за камерой.
+     * Спавн: случайная позиция в видимой области → проверяем isTree тайла.
+     * Скорость усиливается с windMultiplier; жизнь листа = LEAF_LIFE секунд.
+     */
+    private void renderLeaves(SpriteBatch batch) {
+        float wind = store.windMultiplier;
+        if (wind < 1.4f) return; // листья срываются только при ощутимом ветре
+
+        float dt = Gdx.graphics.getDeltaTime();
+        float W  = store.display.get("width");
+        float H  = store.display.get("height");
+
+        // ── Спавн новых листьев ───────────────────────────────────────────────
+        // Частота зависит от силы ветра; интервал уменьшается при сильном ветре
+        float spawnInterval = 0.18f / (wind - 1f); // при wind=2: 0.18s, wind=3: 0.09s
+        leafSpawnTimer += dt;
+        if (leafSpawnTimer >= spawnInterval) {
+            leafSpawnTimer = 0f;
+            trySpawnLeaf(W, H, wind);
+        }
+
+        // ── Обновление и рендер ───────────────────────────────────────────────
+        float windIsoX = (wind - 1f) * 55f; // скорость ветра в iso X px/s
+
+        for (int k = 0; k < N_LEAVES; k++) {
+            if (leafAge[k] <= 0f) continue;
+
+            leafAge[k] -= dt / LEAF_LIFE;
+            if (leafAge[k] <= 0f) { leafAge[k] = 0f; continue; }
+
+            // Плавно тянем скорость листа к текущему направлению ветра
+            float windTarget = (store.windMultiplier - 1f) * 32f * store.windDirX;
+            leafVX[k] += (windTarget - leafVX[k]) * dt * 1.8f;
+
+            // Физика: ветер + трепетание + гравитация
+            float flutter   = (float)Math.sin(leafPhase[k] + store.cloudTime * (5f + k * 0.07f)) * 18f;
+            float vxEff     = leafVX[k] + flutter;
+            leafIsoX[k]    += vxEff * dt;
+            leafIsoY[k]    += leafVY[k] * dt;
+            leafVY[k]      -= 28f * dt; // гравитация (iso Y вниз)
+
+            // Экранная позиция
+            float scrX = leafIsoX[k] + store.shiftX;
+            float scrY = leafIsoY[k] + store.shiftY;
+            if (scrX < -20 || scrX > W + 20 || scrY < -20 || scrY > H + 20) continue;
+
+            float t     = leafAge[k]; // 1→0
+            float alpha = t * Math.min(1f, t * 3f); // быстро появляется, плавно гаснет
+
+            // Свежие — тёмно-зелёные как хвоя; старые — коричневые как опавшая хвоя
+            float lit = Math.max(0.15f, store.dayCoefficient); // затенение по освещению мира
+            float r = (0.14f + (1f - t) * 0.46f) * lit;
+            float g = (0.38f - (1f - t) * 0.20f) * lit;
+            float b = (0.10f - (1f - t) * 0.07f) * lit;
+
+            float angle = (float)Math.toDegrees(Math.atan2(vxEff, -leafVY[k]));
+            batch.setColor(r, g, b, alpha);
+            batch.draw(leafTex,
+                scrX, scrY,
+                2f, 1.5f,             // origin (центр листа)
+                4, 3, 1f, 1f,
+                angle,
+                0, 0, 4, 3, false, false);
+        }
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    /**
+     * Пытается заспавнить лист с isTree-тайла в случайной позиции видимой области.
+     * Не гарантирует спавн — если попали не в дерево, пропускаем.
+     */
+    private void trySpawnLeaf(float W, float H, float wind) {
+        if (store.objectedMap == null) return;
+
+        // Находим свободный слот
+        int slot = -1;
+        for (int k = 0; k < N_LEAVES; k++) {
+            if (leafAge[k] <= 0f) { slot = k; break; }
+        }
+        if (slot < 0) return; // все слоты заняты
+
+        // Случайная позиция на экране → тайловые координаты
+        float scrX = boltRng.nextFloat() * W;
+        float scrY = boltRng.nextFloat() * H;
+        float isoX = scrX - store.shiftX;
+        float isoY = scrY - store.shiftY;
+        float cartX = (isoX + 2f * isoY) / 2f;
+        float cartY = (2f * isoY - isoX) / 2f;
+        int mi = (int)(cartX / store.tileSizeWidth) - 1;
+        int mj = (int)(cartY / store.tileSizeHeight) - 1;
+
+        if (mi < 0 || mi >= store.mapHeight || mj < 0 || mj >= store.mapWidth) return;
+        if (!store.objectedMap[mi][mj].isTree) return;
+
+        // Спавним лист в верхней части спрайта дерева
+        float tileH   = store.tileSizeHeight;
+        float spawnOY = tileH * (0.5f + boltRng.nextFloat() * 0.4f); // верхняя половина кроны
+        leafIsoX[slot]  = isoX + (boltRng.nextFloat() - 0.5f) * store.tileSizeWidth * 0.6f;
+        leafIsoY[slot]  = isoY + spawnOY;
+        float leafSpd   = (wind - 1f) * 40f * (0.6f + boltRng.nextFloat() * 0.8f);
+        leafVX[slot]    = leafSpd * store.windDirX;
+        leafVY[slot]    = 15f + boltRng.nextFloat() * 25f + leafSpd * store.windDirY;
+        leafAge[slot]   = 1f;
+        leafPhase[slot] = boltRng.nextFloat() * (float)(Math.PI * 2);
     }
 
     // ── Разряд молнии ─────────────────────────────────────────────────────────

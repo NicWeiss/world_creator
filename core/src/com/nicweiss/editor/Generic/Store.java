@@ -34,6 +34,10 @@ public class Store {
     public static volatile float windMultiplier = 1f;
     // Множитель частоты порывов ветра [1..2.5]
     public static volatile float windGustSpeed  = 1f;
+    // Направление ветра в изометрических экранных координатах (единичный вектор).
+    // windDirX=1,windDirY=0 = вправо по экрану; меняется WeatherThread плавно.
+    public static volatile float windDirX = 1f;
+    public static volatile float windDirY = 0f;
     // Яркость вспышки молнии [0..1+], затухает GL-потоком (Editor)
     public static volatile float lightningFlash = 0f;
     // Точка удара молнии в декартовых мировых координатах
