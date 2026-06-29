@@ -501,8 +501,11 @@ public class UserInterface {
         editorScaleTotal = store.scaleTotal; // запоминаем зум редактора
         store.isSimulationMode = true;
 
-        // Player создаётся на GL-потоке (Texture требует GL-контекста)
-        com.badlogic.gdx.Gdx.app.postRunnable(() -> store.player = new com.nicweiss.editor.simulation.Player());
+        // Player и WeatherRenderer создаются на GL-потоке (Texture требует GL-контекста)
+        com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+            store.player          = new com.nicweiss.editor.simulation.Player();
+            store.weatherRenderer = new com.nicweiss.editor.simulation.WeatherRenderer();
+        });
 
         creationThread = newDaemon(new CreationThread(),        "CreationThread");
         weatherThread  = newDaemon(new WeatherThread(),         "WeatherThread");
@@ -520,8 +523,9 @@ public class UserInterface {
     }
 
     private void stopSimulation() {
-        store.isSimulationMode = false;
-        store.player         = null;
+        store.isSimulationMode  = false;
+        store.player            = null;
+        store.weatherRenderer   = null;
         store.rainIntensity  = 0f;
         store.windMultiplier = 1f;
         store.windGustSpeed  = 1f;

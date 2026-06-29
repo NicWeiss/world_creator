@@ -3,6 +3,7 @@ package com.nicweiss.editor.Generic;
 import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
 import com.nicweiss.editor.simulation.Player;
+import com.nicweiss.editor.simulation.WeatherRenderer;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -22,6 +23,9 @@ public class Store {
 
     // Игрок — единственный экземпляр, создаётся при запуске симуляции
     public static Player player = null;
+
+    // Рендер погоды — создаётся на GL-потоке при запуске симуляции
+    public static WeatherRenderer weatherRenderer = null;
 
     // ── Погода ────────────────────────────────────────────────────────────────
     // Интенсивность дождя [0..1] — плавно меняется WeatherThread
