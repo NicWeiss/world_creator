@@ -4,6 +4,8 @@ import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
 import com.nicweiss.editor.simulation.Player;
 import com.nicweiss.editor.simulation.PlayerUI;
+import com.nicweiss.editor.simulation.SimulationInputThread;
+import com.nicweiss.editor.simulation.SystemUI;
 import com.nicweiss.editor.simulation.WeatherRenderer;
 
 import java.util.HashMap;
@@ -25,7 +27,13 @@ public class Store {
     // Игрок — единственный экземпляр, создаётся при запуске симуляции
     public static Player   player   = null;
     // Интерфейс игрока (HUD)
-    public static PlayerUI playerUI = null;
+    public static PlayerUI  playerUI  = null;
+    // Системный интерфейс (меню / инвентарь / навыки / задания)
+    public static SystemUI       systemUI       = null;
+    // Обработчик ввода в симуляции (он же фоновый поток движения)
+    public static SimulationInputThread simulationInput = null;
+    // Действие выхода из симуляции — устанавливает UserInterface, вызывает SystemUI
+    public static Runnable stopSimulationAction = null;
 
     // Рендер погоды — создаётся на GL-потоке при запуске симуляции
     public static WeatherRenderer weatherRenderer = null;

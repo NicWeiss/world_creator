@@ -505,20 +505,25 @@ public class UserInterface {
         editorScaleTotal = store.scaleTotal;
         editorShiftX     = store.shiftX;   // запоминаем позицию камеры редактора
         editorShiftY     = store.shiftY;
-        store.isSimulationMode = true;
+        store.isSimulationMode      = true;
+        store.stopSimulationAction  = () -> com.badlogic.gdx.Gdx.app.postRunnable(this::toggleSimulation);
 
-        // Player и WeatherRenderer создаются на GL-потоке (Texture требует GL-контекста)
+        // Player, PlayerUI, SystemUI и WeatherRenderer создаются на GL-потоке
         com.badlogic.gdx.Gdx.app.postRunnable(() -> {
             store.player          = new com.nicweiss.editor.simulation.Player();
             store.playerUI        = new com.nicweiss.editor.simulation.PlayerUI();
+            store.systemUI        = new com.nicweiss.editor.simulation.SystemUI();
             store.weatherRenderer = new com.nicweiss.editor.simulation.WeatherRenderer(lightClass);
         });
 
-        creationThread = newDaemon(new CreationThread(),        "CreationThread");
-        weatherThread  = newDaemon(new WeatherThread(),         "WeatherThread");
-        physicThread   = newDaemon(new PhysicThread(),          "PhysicThread");
-        magickThread   = newDaemon(new MagickThread(),          "MagickThread");
-        inputThread    = newDaemon(new SimulationInputThread(), "SimulationInputThread");
+        creationThread = newDaemon(new CreationThread(), "CreationThread");
+        weatherThread  = newDaemon(new WeatherThread(),  "WeatherThread");
+        physicThread   = newDaemon(new PhysicThread(),   "PhysicThread");
+        magickThread   = newDaemon(new MagickThread(),   "MagickThread");
+
+        // SimulationInputThread — и фоновый поток движения, и обработчик ввода
+        store.simulationInput = new SimulationInputThread();
+        inputThread           = newDaemon(store.simulationInput, "SimulationInputThread");
 
         creationThread.start();
         weatherThread.start();
@@ -533,7 +538,10 @@ public class UserInterface {
         store.isSimulationMode  = false;
         store.player            = null;
         store.playerUI          = null;
-        store.weatherRenderer   = null;
+        store.systemUI          = null;
+        store.simulationInput      = null;
+        store.stopSimulationAction = null;
+        store.weatherRenderer      = null;
         store.rainIntensity  = 0f;
         store.windMultiplier = 1f;
         store.windGustSpeed  = 1f;

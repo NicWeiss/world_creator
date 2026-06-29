@@ -1,8 +1,6 @@
 package com.nicweiss.editor.Views;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.controllers.Controller;
-import com.badlogic.gdx.controllers.Controllers;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -154,6 +152,12 @@ public class Editor extends View{
         int arrPointY = selectedTileY-1;
 
 
+        if (store.isSimulationMode && store.simulationInput != null && button == 0) {
+            if (store.simulationInput.touchDown(store.mouseX, store.mouseY)) {
+                return false;
+            }
+        }
+
         if(!isDragged){
             isUiTouched = userInterface.checkTouch(false, false, button);
         }
@@ -279,13 +283,8 @@ public class Editor extends View{
 
     @Override
     public boolean keyDown(int keyCode){
-        // В симуляции — только обновляем флаги для SimulationInputThread
-        if (store.isSimulationMode) {
-            if (keyCode == 19 || keyCode == 51) store.simKeyUp    = true; // UP / W
-            if (keyCode == 20 || keyCode == 47) store.simKeyDown  = true; // DOWN / S
-            if (keyCode == 21 || keyCode == 29) store.simKeyLeft  = true; // LEFT / A
-            if (keyCode == 22 || keyCode == 32) store.simKeyRight = true; // RIGHT / D
-            return true;
+        if (store.isSimulationMode && store.simulationInput != null) {
+            return store.simulationInput.keyDown(keyCode);
         }
 
         if(userInterface.checkKey(keyCode)){
@@ -341,12 +340,8 @@ public class Editor extends View{
 
     @Override
     public boolean keyUp(int keyCode) {
-        if (store.isSimulationMode) {
-            if (keyCode == 19 || keyCode == 51) store.simKeyUp    = false;
-            if (keyCode == 20 || keyCode == 47) store.simKeyDown  = false;
-            if (keyCode == 21 || keyCode == 29) store.simKeyLeft  = false;
-            if (keyCode == 22 || keyCode == 32) store.simKeyRight = false;
-            return true;
+        if (store.isSimulationMode && store.simulationInput != null) {
+            return store.simulationInput.keyUp(keyCode);
         }
         return super.keyUp(keyCode);
     }
@@ -391,17 +386,8 @@ public class Editor extends View{
         }
 
 //        Геймпад: опрос левого стика на GL-потоке, результат в Store для SimulationInputThread
-        if (store.isSimulationMode) {
-            store.simStickX = 0f;
-            store.simStickY = 0f;
-            if (!Controllers.getControllers().isEmpty()) {
-                Controller ctrl = Controllers.getControllers().first();
-                float ax = ctrl.getAxis(ctrl.getMapping().axisLeftX);
-                float ay = ctrl.getAxis(ctrl.getMapping().axisLeftY);
-                float dead = 0.12f; // мёртвая зона
-                store.simStickX = Math.abs(ax) > dead ? ax : 0f;
-                store.simStickY = Math.abs(ay) > dead ? ay : 0f;
-            }
+        if (store.isSimulationMode && store.simulationInput != null) {
+            store.simulationInput.pollFrame();
         }
 
 //        Смена времени суток (только в dev-режиме — в симуляции управляют треды)
@@ -547,6 +533,9 @@ public class Editor extends View{
         userInterface.render(uiBatch);
         if (store.isSimulationMode && store.playerUI != null) {
             store.playerUI.render(uiBatch);
+        }
+        if (store.isSimulationMode && store.systemUI != null) {
+            store.systemUI.render(uiBatch, store.uiWidthOriginal, store.uiHeightOriginal);
         }
     }
 
