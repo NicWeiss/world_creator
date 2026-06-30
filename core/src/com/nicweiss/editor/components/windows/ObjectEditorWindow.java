@@ -417,6 +417,15 @@ public class ObjectEditorWindow extends Window implements CallBack {
 
     @Override
     public boolean checkKey(int keyCode) {
+        // Модальные попапы (см. checkTouch выше) — глушим скролл/клавиши карты, пока открыты.
+        if (mapRedirectWindow.isShowWindow) {
+            mapRedirectWindow.checkKey(keyCode);
+            return true;
+        }
+        if (assetPicker.isShowWindow) {
+            assetPicker.checkKey(keyCode);
+            return true;
+        }
         if (tiw.checkKey(keyCode)) return true;
         return super.checkKey(keyCode);
     }

@@ -1,10 +1,12 @@
 package com.nicweiss.editor.utils;
 
+import com.badlogic.gdx.Gdx;
 import com.nicweiss.editor.utils.ItemModifierCatalog.ModifierDef;
 import com.nicweiss.editor.utils.ItemModifierCatalog.RarityDef;
 import com.nicweiss.editor.utils.ItemModifierCatalog.School;
 import com.nicweiss.editor.utils.ItemModifierCatalog.TypeDef;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -51,6 +53,8 @@ public class ItemGenerator {
             template.remove("__itemClass__");
         }
 
+        applyDefaultImage(template, type, classKey);
+
         rollLevelAndRarity(template);
         rollModifiers(template);
     }
@@ -62,7 +66,11 @@ public class ItemGenerator {
         template.put("__rarity__", rarityKey);
     }
 
-    /** Меняет размер предмета; для классов, определяемых размером (чармы), пересчитывает класс. */
+    /**
+     * Меняет размер предмета; для классов, определяемых размером (чармы), пересчитывает класс.
+     * Если класс при этом реально меняется (другой размер чарма) — пул модификаторов меняется
+     * полностью, поэтому старые статы могли стать невалидными и роллятся заново.
+     */
     public static void setSize(LinkedHashMap template, int w, int h) {
         template.put("__width__", w);
         template.put("__height__", h);
@@ -70,13 +78,39 @@ public class ItemGenerator {
         TypeDef type = currentType(template);
         if (type != null && type.classDerivedFromSize) {
             String classKey = type.classForSize(w, h);
-            if (classKey != null) template.put("__itemClass__", classKey);
+            String prevClass = (String) template.get("__itemClass__");
+            if (classKey != null && !classKey.equals(prevClass)) {
+                template.put("__itemClass__", classKey);
+                applyDefaultImage(template, type, classKey);
+                rollModifiers(template);
+            }
         }
     }
 
-    /** Ручная смена класса — не трогает уже накатанные модификаторы (для этого есть rollModifiers). */
+    /**
+     * Ручная смена класса. Пул допустимых модификаторов класс-специфичен (см. ModifierDef.classKey),
+     * поэтому уже накатанные статы могли стать невалидными для нового класса — рероллим их заново.
+     * Картинка по умолчанию тоже переключается на соответствующую новому классу (если для него есть папка).
+     */
     public static void setClass(LinkedHashMap template, String classKey) {
         template.put("__itemClass__", classKey);
+        applyDefaultImage(template, currentType(template), classKey);
+        rollModifiers(template);
+    }
+
+    /**
+     * Подставляет картинку по умолчанию (assets/items/&lt;папка&gt;/default.png) для типа/класса,
+     * если для них задана папка в каталоге и файл реально существует. Не трогает картинку, если
+     * подходящей папки/файла нет — оставляет то, что было (или ничего).
+     */
+    public static void applyDefaultImage(LinkedHashMap template, TypeDef type, String classKey) {
+        String folder = ItemModifierCatalog.resolveImageFolder(type, classKey);
+        if (folder == null) return;
+
+        File file = Gdx.files.internal("assets/items/" + folder + "/default.png").file();
+        if (file.exists()) {
+            template.put("__image__", file.getAbsolutePath());
+        }
     }
 
     public static void setRarity(LinkedHashMap template, String rarityKey) {

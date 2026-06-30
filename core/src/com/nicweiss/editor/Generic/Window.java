@@ -106,6 +106,12 @@ public class Window extends BaseCallBack implements CallBack {
         }
     }
 
+    // Доля обычной ширины rightSection (0..1). По умолчанию 1.0 — поведение не меняется.
+    // Окна, которым нужно зарезервировать место справа под доп. контент (например, превью
+    // картинки), могут сузить rightSection, выставив значение меньше 1 — место и скролл-бар
+    // пересчитаются корректно, без ручных манипуляций с шириной после рендера.
+    protected double rightSectionWidthFraction = 1.0;
+
     private void updateSectionSizes(){
         int sectionWidth = width;
         int secondSectionWidth = sectionWidth;
@@ -116,7 +122,7 @@ public class Window extends BaseCallBack implements CallBack {
 
         if (isDualSectionMode) {
             sectionWidth = width / 3;
-            secondSectionWidth = width -sectionWidth;
+            secondSectionWidth = (int) ((width - sectionWidth) * rightSectionWidthFraction);
         }
 
         leftSection.setSize(

@@ -414,6 +414,11 @@ public class NpcEditorWindow extends Window implements CallBack {
 
     @Override
     public boolean checkKey(int keyCode) {
+        // Пикер ассетов модален (см. checkTouch выше) — глушим скролл/клавиши карты, пока открыт.
+        if (assetPicker.isShowWindow) {
+            assetPicker.checkKey(keyCode);
+            return true;
+        }
         if (tiw.checkKey(keyCode)) return true;
         return super.checkKey(keyCode);
     }

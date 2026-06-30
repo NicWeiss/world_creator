@@ -18,6 +18,7 @@ public class ItemModifierCatalog {
         public final String key;
         public final String label;
         public final int[] size; // не null только для классов, определяемых размером (чармы)
+        public String imageFolder; // папка в assets/items/, переопределяет TypeDef.imageFolder для этого класса
 
         public Subtype(String key, String label) {
             this(key, label, null);
@@ -129,6 +130,7 @@ public class ItemModifierCatalog {
         public final List<ModifierDef> modifiers = new ArrayList<>();
         public boolean classDerivedFromSize = false;
         public Integer maxModifiers = null; // жёсткий потолок количества модов вне зависимости от редкости
+        public String imageFolder; // папка в assets/items/ по умолчанию для типа (если класс не переопределяет)
 
         public TypeDef(String key, String label) {
             this.key = key;
@@ -186,6 +188,17 @@ public class ItemModifierCatalog {
         if (def.minRarity != null && rarityRank(rarityKey) < rarityRank(def.minRarity)) return false;
         if (def.requiresHighLevel && itemLevel < HIGH_LEVEL_THRESHOLD) return false;
         return true;
+    }
+
+    /** Папка в assets/items/ для картинки по умолчанию: класс переопределяет тип, если задан. */
+    public static String resolveImageFolder(TypeDef type, String classKey) {
+        if (type == null) return null;
+        if (classKey != null) {
+            for (Subtype s : type.subtypes) {
+                if (s.key.equals(classKey) && s.imageFolder != null) return s.imageFolder;
+            }
+        }
+        return type.imageFolder;
     }
 
     /**
@@ -248,6 +261,12 @@ public class ItemModifierCatalog {
         t.subtypes.add(new Subtype(key, label));
     }
 
+    private static void sub(TypeDef t, String key, String label, String imageFolder) {
+        Subtype s = new Subtype(key, label);
+        s.imageFolder = imageFolder;
+        t.subtypes.add(s);
+    }
+
     private static void subSized(TypeDef t, String key, String label, int w, int h) {
         t.subtypes.add(new Subtype(key, label, new int[]{w, h}));
     }
@@ -297,8 +316,8 @@ public class ItemModifierCatalog {
     static {
         // ───────────────────────── ОРУЖИЕ ─────────────────────────
         TypeDef weapon = type("weapon", "Оружие", new int[][]{{1,2},{1,3},{1,4},{2,3},{2,4}});
-        sub(weapon, "melee", "Ближний бой");
-        sub(weapon, "caster", "Магический бой");
+        sub(weapon, "melee", "Ближний бой", "sword");
+        sub(weapon, "caster", "Магический бой", "staff");
         mod(weapon, "weapon_ed", "Повышенный урон", 10, 400, "%", PHYSICAL);
         mod(weapon, "weapon_ias", "Скорость атаки", 1, 40, "%", "melee", PHYSICAL);
         mod(weapon, "weapon_fcr", "Скорость каста", 1, 40, "%", "caster", MAGIC);
@@ -319,8 +338,8 @@ public class ItemModifierCatalog {
 
         // ───────────────────────── ЩИТ ─────────────────────────
         TypeDef shield = type("shield", "Щит", new int[][]{{2,2},{2,4}});
-        sub(shield, "shield", "Щит");
-        sub(shield, "grimoire", "Гримуар");
+        sub(shield, "shield", "Щит", "shield");
+        sub(shield, "grimoire", "Гримуар", "grimuare");
         mod(shield, "shield_ed_def", "Повышенная защита", 10, 200, "%", PHYSICAL);
         mod(shield, "shield_flat_def", "Плоская защита", 1, 40, "", PHYSICAL);
         mod(shield, "shield_block_chance", "Шанс блока", 1, 30, "%", PHYSICAL);
@@ -338,8 +357,8 @@ public class ItemModifierCatalog {
 
         // ───────────────────────── ШЛЕМ ─────────────────────────
         TypeDef helmet = type("helmet", "Шлем", new int[][]{{2,2}});
-        sub(helmet, "helmet", "Шлем");
-        sub(helmet, "tiara", "Тиара");
+        sub(helmet, "helmet", "Шлем", "helmet");
+        sub(helmet, "tiara", "Тиара", "tiara");
         mod(helmet, "helmet_all_skills", "Все навыки", 1, 2, "", MAGIC).gated("rare");
         mod(helmet, "helmet_single_skill", "Навыки ветки", 1, 3, "", MAGIC).gated("rare");
         mod(helmet, "helmet_fcr", "Скорость каста", 1, 20, "%", "tiara", MAGIC);
@@ -358,8 +377,8 @@ public class ItemModifierCatalog {
 
         // ───────────────────────── БРОНЯ ─────────────────────────
         TypeDef armor = type("armor", "Броня", new int[][]{{2,4}});
-        sub(armor, "armor", "Броня");
-        sub(armor, "robe", "Мантия");
+        sub(armor, "armor", "Броня", "armor");
+        sub(armor, "robe", "Мантия", "robe");
         mod(armor, "armor_def_plate", "Защита", 10, 300, "%", "armor", PHYSICAL);
         mod(armor, "armor_def_robe", "Защита", 5, 50, "%", "robe", MAGIC);
         mod(armor, "armor_health", "Здоровье", 1, 60, "", "armor", NEUTRAL);
@@ -377,6 +396,7 @@ public class ItemModifierCatalog {
 
         // ───────────────────────── ПЕРЧАТКИ ─────────────────────────
         TypeDef gloves = type("gloves", "Перчатки", new int[][]{{2,2}});
+        gloves.imageFolder = "glove";
         mod(gloves, "gloves_ias", "Скорость атаки", 1, 20, "%", PHYSICAL);
         mod(gloves, "gloves_all_skills", "Все навыки", 1, 2, "", MAGIC).gated("rare");
         mod(gloves, "gloves_single_skill", "Конкретный навык", 1, 3, "", MAGIC).gated("rare");
@@ -390,6 +410,7 @@ public class ItemModifierCatalog {
 
         // ───────────────────────── САПОГИ ─────────────────────────
         TypeDef boots = type("boots", "Сапоги", new int[][]{{2,2}});
+        boots.imageFolder = "boots";
         mod(boots, "boots_frw", "Скорость бега", 1, 30, "%", PHYSICAL);
         mod(boots, "boots_resist", "Сопротивления к", 1, 40, "%", MAGIC);
         mod(boots, "boots_magick", "Магия", 1, 9, "", PHYSICAL);
@@ -404,6 +425,7 @@ public class ItemModifierCatalog {
 
         // ───────────────────────── ПОЯС ─────────────────────────
         TypeDef belt = type("belt", "Пояс", new int[][]{{1,2}});
+        belt.imageFolder = "belt";
         mod(belt, "belt_health", "Здоровье", 1, 60, "", NEUTRAL);
         mod(belt, "belt_strength", "Сила", 1, 30, "", PHYSICAL);
         mod(belt, "belt_mana", "Мана", 1, 30, "", MAGIC);
@@ -418,6 +440,7 @@ public class ItemModifierCatalog {
 
         // ───────────────────────── АМУЛЕТ ─────────────────────────
         TypeDef amulet = type("amulet", "Амулет", new int[][]{{1,1}});
+        amulet.imageFolder = "amulet";
         mod(amulet, "amulet_all_skills", "Все навыки", 1, 2, "", MAGIC);
         mod(amulet, "amulet_elem_branch", "Навыки стихийной ветки", 1, 3, "", MAGIC);
         mod(amulet, "amulet_fcr", "Скорость каста (FCR)", 1, 10, "%", MAGIC);
@@ -439,6 +462,7 @@ public class ItemModifierCatalog {
         // ───────────────────────── АРТЕФАКТ ─────────────────────────
         TypeDef artifact = type("artifact", "Артефакт", new int[][]{{1,1}});
         artifact.maxModifiers = 5; // "на артефактах не более 5 модификаторов вне зависимости от редкости"
+        artifact.imageFolder = "artifact";
         mod(artifact, "artifact_light_radius", "Радиус света", 1, 10, "", NEUTRAL).gated("unique");
         mod(artifact, "artifact_fcr", "Скорость каста", 1, 10, "%", MAGIC);
         mod(artifact, "artifact_ar", "Рейтинг атаки", 10, 120, "", PHYSICAL);
@@ -464,6 +488,7 @@ public class ItemModifierCatalog {
         TypeDef charm = type("charm", "Чарм", new int[][]{{1,1},{1,2},{1,3}});
         charm.classDerivedFromSize = true;
         charm.maxModifiers = 3;
+        charm.imageFolder = "charm";
         subSized(charm, "small", "Малый чарм", 1, 1);
         subSized(charm, "large", "Крупный чарм", 1, 2);
         subSized(charm, "grand", "Огромный чарм", 1, 3);

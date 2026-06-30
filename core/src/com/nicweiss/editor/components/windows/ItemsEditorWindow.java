@@ -22,6 +22,7 @@ public class ItemsEditorWindow extends Window implements CallBack {
 
     TextInputWindow tiw = new TextInputWindow();
     ActionConfirnWindow acw = new ActionConfirnWindow();
+    AssetPickerWindow imagePicker = new AssetPickerWindow();
     LinkedHashMap itemTemplates;
 
     Texture buttonBG, buttonBGHover, plusIcon, itemIcon, trashIcon, nameIcon, descriptionIcon, statIcon;
@@ -31,6 +32,12 @@ public class ItemsEditorWindow extends Window implements CallBack {
     // Хранит имя редактируемого числового поля предмета между открытием TextInputWindow и коллбэком
     private String pendingItemNumericField;
 
+    // Большая плитка-превью картинки выбранного предмета (справа) — кешируется по пути,
+    // чтобы не пересоздавать Texture на каждый ререндер карточки.
+    private Texture currentItemImage;
+    private String currentItemImagePath;
+    private static final int IMAGE_PREVIEW_SIZE = 200;
+
     // Размеры по умолчанию для предметов без выбранного типа
     private static final int[][] DEFAULT_SIZES = {{1,1},{1,2},{1,3},{1,4},{2,1},{2,2},{2,3},{2,4}};
 
@@ -38,6 +45,9 @@ public class ItemsEditorWindow extends Window implements CallBack {
         super();
         itemTemplates = store.itemTemplates;
         windowName = "Предметы";
+        // 0.7 даёт превью-секции вдвое меньшую ширину, чем при 0.5 (см. расчёт в render(),
+        // где windowWidth урезается ровно на освободившиеся пиксели — окно физически уже).
+        rightSectionWidthFraction = 0.7;
 
         buttonBG = new Texture("Buttons/btn_background.png");
         buttonBGHover = new Texture("Buttons/btn_background_hover.png");
@@ -54,6 +64,7 @@ public class ItemsEditorWindow extends Window implements CallBack {
         super.buildWindow();
         tiw.buildWindow();
         acw.buildWindow();
+        imagePicker.buildWindow();
         menuObjectSpace = 7;
         itemWidth = 20;
         itemHeight = 20;
@@ -139,6 +150,25 @@ public class ItemsEditorWindow extends Window implements CallBack {
         if (pendingItemNumericField.equals("__mainStat__") || pendingItemNumericField.equals("__itemLevel__")) {
             ItemGenerator.recomputeRequirements(template);
         }
+        prepareSelectedItemView(uuid);
+    }
+
+    // ---- Изображение предмета ----
+
+    public void openImagePicker(String uuid) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        TypeDef type = currentType(template);
+        String classKey = (String) template.get("__itemClass__");
+        String folder = ItemModifierCatalog.resolveImageFolder(type, classKey);
+        imagePicker.populate(folder != null ? "items/" + folder : "items", this, "setItemImage", uuid);
+        imagePicker.setX(x + width + 10);
+        imagePicker.setY(y);
+        imagePicker.show();
+    }
+
+    public void setItemImage(String uuid, String filePath) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        template.put("__image__", filePath);
         prepareSelectedItemView(uuid);
     }
 
@@ -468,6 +498,19 @@ public class ItemsEditorWindow extends Window implements CallBack {
         }
 
         if (type != null) {
+            updateImagePreview((String) template.get("__image__"));
+
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(itemIcon);
+            button.setText(font, "Изображение (см. превью справа)");
+            button.registerCallBack(this, "openImagePicker", new String[]{uuid});
+            itemDetails[i++] = button;
+        } else {
+            updateImagePreview(null);
+        }
+
+        if (type != null) {
             int itemLevel = template.containsKey("__itemLevel__") ? (int) template.get("__itemLevel__") : 1;
             RarityDef rarity = ItemGenerator.currentRarity(template);
 
@@ -636,15 +679,53 @@ public class ItemsEditorWindow extends Window implements CallBack {
         return header;
     }
 
+    // Перезагружает текстуру превью только если путь реально изменился — иначе пересоздавать
+    // Texture на каждый ререндер карточки накладно и течёт памятью.
+    private void updateImagePreview(String imagePath) {
+        if (imagePath == null) {
+            currentItemImage = null;
+            currentItemImagePath = null;
+            return;
+        }
+        if (imagePath.equals(currentItemImagePath)) return;
+
+        try {
+            currentItemImage = new Texture(com.badlogic.gdx.Gdx.files.absolute(imagePath));
+            currentItemImagePath = imagePath;
+        } catch (Exception e) {
+            currentItemImage = null;
+            currentItemImagePath = null;
+        }
+    }
+
     // ---- Рендер и ввод ----
 
     @Override
     public void render(SpriteBatch batch) {
+        // Урезаем общую ширину окна ровно настолько, насколько превью-секция уже своей
+        // "естественной" ширины (которая была бы при rightSectionWidthFraction = 0.5) —
+        // окно физически сужается, а не просто перераспределяет то же место.
+        int baseWidth = Math.max((int) store.uiWidthOriginal - 200, 350);
+        windowWidth = baseWidth * 5 / 6;
+
         super.render(batch);
 
         if (isShowWindow) {
             renderItemsList(batch, items, false);
             rightSection.renderItemsList(batch, itemDetails, false);
+
+            // Превью картинки — в свободной полосе справа от характеристик.
+            if (currentItemImage != null) {
+                int areaX = rightSection.getSectionX() + rightSection.getSectionWidth();
+                int areaY = rightSection.getSectionY();
+                int areaW = (x + width) - areaX;
+                int areaH = rightSection.getSectionHeight();
+
+                int size = Math.min(Math.min(areaW, areaH) - 30, IMAGE_PREVIEW_SIZE);
+                int px = areaX + (areaW - size) / 2;
+                int py = areaY + areaH - size - 15;
+                batch.draw(currentItemImage, px, py, size, size);
+            }
         }
 
         if (tiw.isShowWindow) {
@@ -657,11 +738,25 @@ public class ItemsEditorWindow extends Window implements CallBack {
         } else {
             isWindowActive = true;
         }
+        if (imagePicker.isShowWindow) {
+            imagePicker.render(batch);
+            isWindowActive = false;
+        }
     }
 
     @Override
     public boolean checkTouch(boolean isDragged, boolean isTouchUp) {
         if (!isShowWindow) return false;
+
+        if (imagePicker.isShowWindow) {
+            if (imagePicker.isTouchInsideBounds()) {
+                imagePicker.checkTouch(isDragged, isTouchUp);
+            } else if (!isDragged && isTouchUp) {
+                imagePicker.hide();
+            }
+            return true;
+        }
+
         if (tiw.isShowWindow && tiw.checkTouch(isDragged, isTouchUp)) return true;
         if (acw.isShowWindow && acw.checkTouch(isDragged, isTouchUp)) return true;
         return super.checkTouch(isDragged, isTouchUp);
@@ -669,6 +764,11 @@ public class ItemsEditorWindow extends Window implements CallBack {
 
     @Override
     public boolean checkKey(int keyCode) {
+        // Пикер изображений модален (см. checkTouch выше) — глушим скролл/клавиши карты, пока открыт.
+        if (imagePicker.isShowWindow) {
+            imagePicker.checkKey(keyCode);
+            return true;
+        }
         if (tiw.checkKey(keyCode)) return true;
         return super.checkKey(keyCode);
     }

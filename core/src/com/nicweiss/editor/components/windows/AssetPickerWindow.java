@@ -93,8 +93,9 @@ public class AssetPickerWindow extends Window implements CallBack {
         if (i == 0) {
             ButtonCommon btn = new ButtonCommon();
             btn.setBackgrounds(buttonBGHover, buttonBGHover);
-            btn.setText(font, "Нет ассетов");
-            btn.setWidth(itemWidth);
+            // Показываем реальный искомый путь — чтобы сразу было видно, опечатка это или папки просто нет.
+            btn.setText(font, "Нет ассетов\n(" + dir.getAbsolutePath() + ")");
+            btn.setWidth(itemWidth * 4);
             items[i++] = btn;
         }
 
