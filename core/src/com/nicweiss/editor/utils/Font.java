@@ -41,4 +41,12 @@ public class Font {
         GlyphLayout layout = new GlyphLayout(font, text);
         font.draw(batch, text, x, y + layout.height);
     }
+
+    /**
+     * Меняет цвет глифов шрифта. ВАЖНО: BitmapFont.draw() печёт цвет вершин из этого поля
+     * в момент вызова — текущий batch.setColor(...) на сам текст НЕ влияет (только на фон/спрайты).
+     */
+    public void setColor(Color color) {
+        font.setColor(color);
+    }
 }

@@ -34,6 +34,14 @@ public class ItemGenerator {
      * Это "первый ролл" нового предмета — см. rollLevelAndRarity.
      */
     public static void applyType(LinkedHashMap template, String typeKey) {
+        applyType(template, typeKey, 99);
+    }
+
+    /**
+     * То же самое, но уровень предмета ограничен сверху maxLevel (1..maxLevel) — используется
+     * рантайм-дропом, где уровень предмета не может превышать уровень убитого врага/сундука.
+     */
+    public static void applyType(LinkedHashMap template, String typeKey, int maxLevel) {
         template.put("__type__", typeKey);
 
         TypeDef type = ItemModifierCatalog.TYPES.get(typeKey);
@@ -55,12 +63,17 @@ public class ItemGenerator {
 
         applyDefaultImage(template, type, classKey);
 
-        rollLevelAndRarity(template);
+        rollLevelAndRarity(template, maxLevel);
         rollModifiers(template);
     }
 
     public static void rollLevelAndRarity(LinkedHashMap template) {
-        template.put("__itemLevel__", 1 + RANDOM.nextInt(99));
+        rollLevelAndRarity(template, 99);
+    }
+
+    public static void rollLevelAndRarity(LinkedHashMap template, int maxLevel) {
+        maxLevel = clamp(maxLevel, 1, 99);
+        template.put("__itemLevel__", 1 + RANDOM.nextInt(maxLevel));
         int roll = RANDOM.nextInt(100);
         String rarityKey = roll < 60 ? "common" : roll < 90 ? "rare" : "unique";
         template.put("__rarity__", rarityKey);
@@ -212,7 +225,21 @@ public class ItemGenerator {
         }
 
         template.put("__stats__", stats);
+        rollMainStat(template);
         recomputeRequirements(template);
+    }
+
+    /**
+     * Роллит "основную характеристику" (урон/защита — смысл зависит от типа предмета) от уровня
+     * предмета и качества (редкость+уровень): чем выше оба — тем выше показатель.
+     */
+    public static void rollMainStat(LinkedHashMap template) {
+        if (currentType(template) == null) return;
+        int itemLevel = currentItemLevel(template);
+        double quality = currentQuality(template);
+        int base = 4 + Math.round(itemLevel * 1.5f);
+        int value = Math.round(base * (0.6f + (float) quality * 0.8f));
+        template.put("__mainStat__", clamp(value, 1, 500));
     }
 
     public static LinkedHashMap rolledStat(ModifierDef def, double quality, String rarityKey) {

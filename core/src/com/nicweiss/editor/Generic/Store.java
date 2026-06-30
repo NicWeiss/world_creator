@@ -2,6 +2,7 @@ package com.nicweiss.editor.Generic;
 
 import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
+import com.nicweiss.editor.simulation.Drop;
 import com.nicweiss.editor.simulation.Player;
 import com.nicweiss.editor.simulation.PlayerUI;
 import com.nicweiss.editor.simulation.SimulationInputThread;
@@ -123,4 +124,11 @@ public class Store {
 
     public static Creation[] creations = new Creation[100];
     public static int creationCount = -1;
+
+    // Предметы/золото, лежащие на земле в симуляции (см. DropManager) — отдельный список
+    // объектов карты, с которыми можно взаимодействовать (подобрать).
+    public static Drop[] drops = new Drop[500];
+    public static int dropCount = -1;
+    // Alt (клавиатура) или левый бампер (геймпад) — показывает подписи всех дропов в камере.
+    public static volatile boolean revealAllDropLabels = false;
 }

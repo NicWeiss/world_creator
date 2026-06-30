@@ -504,6 +504,7 @@ public class Editor extends View{
 //                Рисуем существ и здания на карте
                 renderCreations(batch, mapI, mapJ, false);
                 renderBuildings(batch, mapI, mapJ, false);
+                renderDrops(batch, mapI, mapJ, false);
 
 //                Рисуем игрока в его тайловой позиции (как creations)
                 if (store.isSimulationMode && store.player != null && store.player.isInitialized()) {
@@ -519,7 +520,14 @@ public class Editor extends View{
                 renderCreations(batch, mapI+1, mapJ, true);
                 renderBuildings(batch, mapI, mapJ+1, true);
                 renderBuildings(batch, mapI+1, mapJ, true);
+                renderDrops(batch, mapI, mapJ+1, true);
+                renderDrops(batch, mapI+1, mapJ, true);
             }
+        }
+
+        // ── Подписи дропов: единый проход поверх карты (без перекрытий, с фокусом) ──
+        if (store.isSimulationMode) {
+            com.nicweiss.editor.simulation.DropManager.renderLabels(batch);
         }
 
         // ── Дождь и молния ────────────────────────────────────────────────────
@@ -564,6 +572,20 @@ public class Editor extends View{
                     if (el.getHeight() != 0) { continue; }
                 }
                 b.draw(batch);
+            }
+        }
+    }
+
+    public void renderDrops(SpriteBatch batch, int mapI, int mapJ, boolean filterByHeight) {
+        for (int i = 0; i <= store.dropCount; i++) {
+            com.nicweiss.editor.simulation.Drop drop = store.drops[i];
+            if (drop != null) {
+                if (drop.mapCellX != (mapI+1) || drop.mapCellY != (mapJ+1)) { continue; }
+                if (filterByHeight) {
+                    MapObject el = store.objectedMap[mapI][mapJ];
+                    if (el.getHeight() != 0) { continue; }
+                }
+                drop.draw(batch);
             }
         }
     }

@@ -532,6 +532,29 @@ public class UserInterface {
         inputThread.start();
 
         animateZoom(SIM_ZOOM_TARGET); // плавно до фиксированного игрового зума
+
+        newDaemon(this::debugSpawnDrops, "DropDebugThread").start();
+    }
+
+    // ── Отладка дропа ────────────────────────────────────────────────────────
+    // TODO: убрать, когда появятся реальные точки вызова (смерть врага / открытие сундука) —
+    // DropManager.dropLoot должен вызываться оттуда, а не отсюда.
+    private void debugSpawnDrops() {
+        // Ждём, пока PhysicThread проинициализирует позицию игрока (нужна для точки спавна).
+        for (int waited = 0; waited < 50 && (store.player == null || !store.player.isInitialized()); waited++) {
+            try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
+        }
+        if (store.player == null || !store.player.isInitialized()) return;
+
+        int playerTileX = (int) (store.player.worldX / store.tileSizeWidth)  - 1;
+        int playerTileY = (int) (store.player.worldY / store.tileSizeHeight) - 1;
+
+        for (int i = 0; i < 10; i++) {
+            if (!store.isSimulationMode) return;
+            int enemyLevel = 1 + (int) (Math.random() * 49);
+            com.nicweiss.editor.simulation.DropManager.dropLoot(enemyLevel, playerTileX, playerTileY);
+            try { Thread.sleep(300); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
+        }
     }
 
     private void stopSimulation() {

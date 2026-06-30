@@ -11,10 +11,20 @@ public class CreationThread implements Runnable {
 
     @Override
     public void run() {
+        long lastTime = System.nanoTime();
+
         while (!Thread.currentThread().isInterrupted()) {
             try {
+                long now = System.nanoTime();
+                float dt = (now - lastTime) / 1_000_000_000f;
+                lastTime = now;
+
+                if (store.drops != null) {
+                    DropManager.update(dt);
+                }
+
                 // TODO: NPC AI — передвижение, реакции, патрули
-                Thread.sleep(100);
+                Thread.sleep(16);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

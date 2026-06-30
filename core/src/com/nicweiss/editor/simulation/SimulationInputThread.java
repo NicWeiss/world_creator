@@ -131,10 +131,19 @@ public class SimulationInputThread implements Runnable {
     public void pollFrame() {
         store.simStickX = 0f;
         store.simStickY = 0f;
-        if (Controllers.getControllers().isEmpty()) return;
+
+        // Alt (клавиатура) или LB (геймпад) — показать подписи всех дропов в камере.
+        boolean revealLabels = com.badlogic.gdx.Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.ALT_LEFT)
+            || com.badlogic.gdx.Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.ALT_RIGHT);
+
+        if (Controllers.getControllers().isEmpty()) {
+            store.revealAllDropLabels = revealLabels;
+            return;
+        }
 
         Controller ctrl = Controllers.getControllers().first();
         ControllerMapping m = ctrl.getMapping();
+        store.revealAllDropLabels = revealLabels || safeButton(ctrl, m.buttonL1);
 
         float ax   = ctrl.getAxis(m.axisLeftX);
         float ay   = ctrl.getAxis(m.axisLeftY);

@@ -5,6 +5,7 @@ import com.nicweiss.editor.Generic.BaseObject;
 
 public class Creation extends BaseObject {
     public int mapCellX, mapCellY;
+    public int level = 1; // уровень существа — используется DropManager.dropLoot при его смерти
     private float positionX, positionY;
 
     public void setPosition(float _x, float _y) {

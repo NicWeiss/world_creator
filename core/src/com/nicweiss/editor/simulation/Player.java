@@ -22,6 +22,11 @@ public class Player extends BaseObject {
     public float maxHealth = 100f;
     public float health    = 100f;
     public float speed     = 1.0f;   // множитель скорости (1 = стандарт)
+    public int level       = 1;
+    // Поиск предметов/золота — проценты сверх базы (Magic Find / Gold Find), влияют на дроп (см. DropManager).
+    public float magicFind = 0f;
+    public float goldFind  = 0f;
+    public int gold = 0; // накопленное золото — подбирается при наступании на кучку (см. DropManager.checkPickups)
 
     // ── Анимация ───────────────────────────────────────────────────────────────
     public Direction direction = Direction.DOWN;
