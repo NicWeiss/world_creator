@@ -25,6 +25,29 @@ public class ItemsEditorWindow extends Window implements CallBack {
     // Хранит имя редактируемого поля стата между открытием TextInputWindow и коллбэком
     private String pendingStatField;
 
+    // Хранит имя редактируемого числового поля предмета между открытием TextInputWindow и коллбэком
+    private String pendingItemNumericField;
+
+    // Ключи типов предметов — используются в __type__ и в игровой логике.
+    // Названия для отображения хранятся отдельно (ITEM_TYPE_LABELS), чтобы переименование
+    // в UI не ломало сохранённые данные и зависящую от типа логику.
+    private static final String[] ITEM_TYPE_KEYS = {
+        "weapon", "shield", "helmet", "armor", "gloves", "boots", "belt", "amulet", "artifact"
+    };
+
+    private static final LinkedHashMap<String, String> ITEM_TYPE_LABELS = new LinkedHashMap<>();
+    static {
+        ITEM_TYPE_LABELS.put("weapon", "Оружие");
+        ITEM_TYPE_LABELS.put("shield", "Щит");
+        ITEM_TYPE_LABELS.put("helmet", "Шлем");
+        ITEM_TYPE_LABELS.put("armor", "Броня");
+        ITEM_TYPE_LABELS.put("gloves", "Перчатки");
+        ITEM_TYPE_LABELS.put("boots", "Сапоги");
+        ITEM_TYPE_LABELS.put("belt", "Пояс");
+        ITEM_TYPE_LABELS.put("amulet", "Амулет");
+        ITEM_TYPE_LABELS.put("artifact", "Артефакт");
+    }
+
     public ItemsEditorWindow() {
         super();
         itemTemplates = store.itemTemplates;
@@ -229,8 +252,8 @@ public class ItemsEditorWindow extends Window implements CallBack {
             itemDetails[i++] = button;
         }
 
-        // ──────── РАЗМЕР ────────
-        itemDetails[i++] = makeSectionHeader("── РАЗМЕР ──");
+        // ──────── ОСНОВНЫЕ ПАРАМЕТРЫ ────────
+        itemDetails[i++] = makeSectionHeader("── ОСНОВНЫЕ ПАРАМЕТРЫ ──");
 
         int selW = template.containsKey("__width__")  ? (int) template.get("__width__")  : 1;
         int selH = template.containsKey("__height__") ? (int) template.get("__height__") : 1;
@@ -240,6 +263,50 @@ public class ItemsEditorWindow extends Window implements CallBack {
         button.setIcon(statIcon);
         button.setText(font, "Размер: " + selW + "x" + selH + "\n" + makeSizeGrid(selW, selH));
         button.registerCallBack(this, "prepareSizePickerView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        String selTypeKey = template.containsKey("__type__") ? (String) template.get("__type__") : null;
+        String selTypeLabel = selTypeKey != null ? ITEM_TYPE_LABELS.get(selTypeKey) : "Не выбран";
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(itemIcon);
+        button.setText(font, "Тип: " + selTypeLabel);
+        button.registerCallBack(this, "prepareTypePickerView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        // ──────── ТРЕБОВАНИЯ И ОСНОВНАЯ ХАРАКТЕРИСТИКА ────────
+        int mainStat = template.containsKey("__mainStat__") ? (int) template.get("__mainStat__") : 0;
+        int reqLevel = template.containsKey("__reqLevel__") ? (int) template.get("__reqLevel__") : 0;
+        int reqStrength = template.containsKey("__reqStrength__") ? (int) template.get("__reqStrength__") : 0;
+        int reqMagic = template.containsKey("__reqMagic__") ? (int) template.get("__reqMagic__") : 0;
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(statIcon);
+        button.setText(font, "Основная характеристика: " + mainStat);
+        button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__mainStat__"});
+        itemDetails[i++] = button;
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(statIcon);
+        button.setText(font, "Требуемый уровень: " + reqLevel);
+        button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__reqLevel__"});
+        itemDetails[i++] = button;
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(statIcon);
+        button.setText(font, "Требуемая сила: " + reqStrength);
+        button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__reqStrength__"});
+        itemDetails[i++] = button;
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(statIcon);
+        button.setText(font, "Требуемая магия: " + reqMagic);
+        button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__reqMagic__"});
         itemDetails[i++] = button;
 
         // ──────── ХАРАКТЕРИСТИКИ ────────
@@ -360,6 +427,59 @@ public class ItemsEditorWindow extends Window implements CallBack {
         LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
         template.put("__width__", Integer.parseInt(widthStr));
         template.put("__height__", Integer.parseInt(heightStr));
+        prepareSelectedItemView(uuid);
+    }
+
+    // ---- Тип предмета ----
+
+    public void prepareTypePickerView(String uuid) {
+        itemDetails = new ButtonCommon[1000];
+        int i = 0;
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        String selTypeKey = template.containsKey("__type__") ? (String) template.get("__type__") : "";
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "prepareSelectedItemView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        for (String typeKey : ITEM_TYPE_KEYS) {
+            boolean selected = typeKey.equals(selTypeKey);
+            button = new ButtonCommon();
+            button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
+            button.setIcon(itemIcon);
+            button.setText(font, ITEM_TYPE_LABELS.get(typeKey) + (selected ? "  <" : ""));
+            button.registerCallBack(this, "setItemType", new String[]{uuid, typeKey});
+            itemDetails[i++] = button;
+        }
+
+        itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
+    }
+
+    public void setItemType(String uuid, String typeKey) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        template.put("__type__", typeKey);
+        prepareSelectedItemView(uuid);
+    }
+
+    // ---- Числовые поля предмета (характеристика, требования) ----
+
+    public void editItemNumericField(String uuid, String fieldName) {
+        if (tiw.isShowWindow || !isWindowActive) return;
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        pendingItemNumericField = fieldName;
+        Object raw = template.get(fieldName);
+        tiw.registerCallBack(this, "editItemNumericFieldDone", new String[]{uuid, ""});
+        tiw.setText(raw != null ? raw.toString() : "0");
+        tiw.show();
+    }
+
+    public void editItemNumericFieldDone(String uuid, String value) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        value = value.replaceAll("[^0-9\\-]", "");
+        if (value.isEmpty()) value = "0";
+        template.put(pendingItemNumericField, Integer.parseInt(value));
         prepareSelectedItemView(uuid);
     }
 
