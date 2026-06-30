@@ -92,12 +92,14 @@ public class TextInputWindow extends Window{
 
         super.checkTouch(isDragged, isTouchUp);
 
+        // Поглощаем тач полностью, раз окно было открыто на момент клика — даже если этим же
+        // кликом (например, кнопкой Save/Cancel) окно само себя скрыло. Иначе тот же клик
+        // проваливается в окно снизу (баг с "перехватом" клика фоновыми элементами).
         if (isShowWindow) {
             stage.setKeyboardFocus(textArea);
-            return true;
         }
 
-        return false;
+        return true;
     }
 
     @Override

@@ -294,6 +294,13 @@ public class QuestsEditorWindow extends Window implements CallBack {
 
     @Override
     public boolean checkKey(int keyCode){
+        // Карточка предмета модальна (см. checkTouch выше) — глушим скролл/клавиши карты,
+        // пока она открыта, иначе колёсико мыши проваливается в карту и зумит её.
+        if (itemCard.isShowWindow) {
+            itemCard.checkKey(keyCode);
+            return true;
+        }
+
         if (tiw.checkKey(keyCode)){
             return true;
         }

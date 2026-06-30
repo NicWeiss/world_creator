@@ -81,8 +81,10 @@ public class MapRedirectWindow extends Window implements CallBack {
     @Override
     public boolean checkTouch(boolean isDragged, boolean isTouchUp) {
         if (!isShowWindow) return false;
+        // Поглощаем тач полностью, раз окно было открыто на момент клика — даже если этим же
+        // кликом окно само себя скрыло. Иначе тот же клик проваливается в окно снизу.
         super.checkTouch(isDragged, isTouchUp);
-        return isShowWindow;
+        return true;
     }
 
     @Override

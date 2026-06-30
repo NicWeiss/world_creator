@@ -72,13 +72,10 @@ public class ActionConfirnWindow extends Window{
             return false;
         }
 
+        // Поглощаем тач полностью, раз окно было открыто на момент клика — даже если этим же
+        // кликом (Confirm/Cancel) окно само себя скрыло. Иначе тот же клик проваливается в окно снизу.
         super.checkTouch(isDragged, isTouchUp);
-
-        if (isShowWindow) {
-            return true;
-        }
-
-        return false;
+        return true;
     }
 
 }

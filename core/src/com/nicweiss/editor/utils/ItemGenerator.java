@@ -98,12 +98,17 @@ public class ItemGenerator {
         return template.containsKey("__itemLevel__") ? (int) template.get("__itemLevel__") : 1;
     }
 
-    // "Качество" роллов 0..0.9: чем выше уровень предмета и реже редкость — тем ближе значения к максимуму диапазона.
+    // "Качество" — центр (0..0.9) распределения ролла значения внутри диапазона модификатора.
+    // Чем выше уровень предмета и реже редкость — тем выше центр и тем ближе значения к максимуму.
+    // На 1 уровне у Common-редкости quality ~0 — ролл должен кучковаться у минимума, а не быть равномерным.
     public static double currentQuality(LinkedHashMap template) {
         RarityDef rarity = currentRarity(template);
         double levelFraction = Math.min(1.0, currentItemLevel(template) / 99.0);
         return Math.min(0.9, rarity.qualityBonus + levelFraction * 0.5);
     }
+
+    // Насколько широко значение может отклониться от quality в обе стороны (после clamp в [0,1]).
+    private static final double ROLL_SPREAD = 0.3;
 
     // ---- Модификаторы ----
 
@@ -180,7 +185,10 @@ public class ItemGenerator {
         int effectiveMax = def.effectiveMax(rarityKey);
         int value = def.min;
         if (effectiveMax > def.min) {
-            double roll = quality + RANDOM.nextDouble() * (1 - quality);
+            // roll кучкуется ВОКРУГ quality (а не "не ниже quality") — на низком уровне/редкости
+            // значения должны тянуться к минимуму диапазона, а не быть равномерно случайными.
+            double roll = quality + (RANDOM.nextDouble() - 0.5) * ROLL_SPREAD;
+            roll = Math.max(0.0, Math.min(1.0, roll));
             value = def.min + (int) Math.round((effectiveMax - def.min) * roll);
             value = clamp(value, def.min, effectiveMax);
         }
