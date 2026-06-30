@@ -116,7 +116,6 @@ public class ItemCardWindow extends Window implements CallBack {
     @Override
     public boolean checkTouch(boolean isDragged, boolean isTouchUp) {
         if (!isShowWindow) return false;
-        super.checkTouch(isDragged, isTouchUp);
-        return isShowWindow;
+        return super.checkTouch(isDragged, isTouchUp);
     }
 }

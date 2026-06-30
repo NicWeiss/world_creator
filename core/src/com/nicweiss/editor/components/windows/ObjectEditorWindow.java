@@ -412,8 +412,7 @@ public class ObjectEditorWindow extends Window implements CallBack {
 
         if (tiw.isShowWindow && tiw.checkTouch(isDragged, isTouchUp)) return true;
         if (acw.isShowWindow && acw.checkTouch(isDragged, isTouchUp)) return true;
-        super.checkTouch(isDragged, isTouchUp);
-        return isShowWindow;
+        return super.checkTouch(isDragged, isTouchUp);
     }
 
     @Override

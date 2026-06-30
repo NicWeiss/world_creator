@@ -283,12 +283,7 @@ public class QuestsEditorWindow extends Window implements CallBack {
             return true;
         }
 
-        super.checkTouch(isDragged, isTouchUp);
-        if (isShowWindow) {
-            return true;
-        }
-
-        return false;
+        return super.checkTouch(isDragged, isTouchUp);
     }
 
 

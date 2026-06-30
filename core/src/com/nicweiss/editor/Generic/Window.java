@@ -244,6 +244,26 @@ public class Window extends BaseCallBack implements CallBack {
     }
 
     public boolean checkTouch(boolean isDragged, boolean isTouchUp){
+        boolean handled = processTouch(isDragged, isTouchUp);
+        // Любой клик, реально обработанный этим окном (а не пропущенный мимо него),
+        // поднимает его на передний план — чтобы оно получило фокус ввода.
+        if (handled) {
+            bringToFront();
+        }
+        return handled;
+    }
+
+    protected void bringToFront() {
+        focusOrder = ++globalFocusCounter;
+    }
+
+    // Прямоугольник окна целиком (включая шапку и панель с control-кнопками снизу, если есть).
+    protected boolean isTouchInsideBounds() {
+        return store.mouseX >= x && store.mouseX <= x + width
+            && store.mouseY >= y - additionalHeight && store.mouseY <= y + height;
+    }
+
+    private boolean processTouch(boolean isDragged, boolean isTouchUp){
         float diffx, diffy;
         if (!isWindowActive || !isShowWindow){
             return false;
@@ -301,7 +321,10 @@ public class Window extends BaseCallBack implements CallBack {
             }
         }
 
-        if (isShowWindow) {
+        // Клик внутри прямоугольника окна, не попавший ни в одну конкретную кнопку/секцию
+        // (пустая область) — поглощаем, чтобы не проваливался на карту/окна позади.
+        // Клик СНАРУЖИ окна не поглощаем — пусть достанется окну под ним или тулбару.
+        if (isShowWindow && isTouchInsideBounds()) {
             return true;
         }
 

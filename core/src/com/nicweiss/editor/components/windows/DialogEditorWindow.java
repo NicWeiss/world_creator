@@ -173,17 +173,11 @@ public class DialogEditorWindow extends Window implements CallBack {
             return false;
         }
 
-        if (tiw.checkTouch(isDragged, isTouchUp) || tiw.isShowWindow){
+        if (tiw.isShowWindow && tiw.checkTouch(isDragged, isTouchUp)){
             return true;
         }
 
-        super.checkTouch(isDragged, isTouchUp);
-
-        if (isShowWindow) {
-            return true;
-        }
-
-        return false;
+        return super.checkTouch(isDragged, isTouchUp);
     }
 
     /**
