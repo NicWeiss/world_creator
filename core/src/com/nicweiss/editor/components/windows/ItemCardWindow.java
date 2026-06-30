@@ -7,6 +7,9 @@ import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.Interfaces.BaseCallBack.CallBack;
 import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.utils.Font;
+import com.nicweiss.editor.utils.ItemGenerator;
+import com.nicweiss.editor.utils.ItemModifierCatalog;
+import com.nicweiss.editor.utils.ItemModifierCatalog.ModifierDef;
 
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -69,15 +72,19 @@ public class ItemCardWindow extends Window implements CallBack {
 
         // Характеристики
         if (template.containsKey("__stats__")) {
+            String typeKey = (String) template.get("__type__");
+            String rarityKey = ItemGenerator.currentRarity(template).key;
             LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
             for (Object statKey : stats.keySet()) {
                 LinkedHashMap stat = (LinkedHashMap) stats.get(statKey.toString());
                 int val = (int) stat.get("__value__");
-                int min = (int) stat.get("__min__");
-                int max = (int) stat.get("__max__");
+                ModifierDef def = typeKey != null ? ItemModifierCatalog.findModifier(typeKey, statKey.toString()) : null;
+                String label = def != null
+                    ? def.name + ": " + val + def.unit + "  [" + def.min + ".." + def.effectiveMax(rarityKey) + "]"
+                    : statKey + ": " + val;
                 btn = new ButtonCommon();
                 btn.setBackgrounds(buttonBG, buttonBGHover);
-                btn.setText(font, stat.get("__name__") + ": " + val + "  [" + min + ".." + max + "]");
+                btn.setText(font, label);
                 infoItems[i++] = btn;
             }
         }

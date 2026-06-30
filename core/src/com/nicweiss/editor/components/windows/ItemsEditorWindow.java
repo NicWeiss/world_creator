@@ -6,6 +6,12 @@ import com.nicweiss.editor.Generic.Store;
 import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.Interfaces.BaseCallBack.CallBack;
 import com.nicweiss.editor.components.ButtonCommon;
+import com.nicweiss.editor.utils.ItemGenerator;
+import com.nicweiss.editor.utils.ItemModifierCatalog;
+import com.nicweiss.editor.utils.ItemModifierCatalog.ModifierDef;
+import com.nicweiss.editor.utils.ItemModifierCatalog.RarityDef;
+import com.nicweiss.editor.utils.ItemModifierCatalog.Subtype;
+import com.nicweiss.editor.utils.ItemModifierCatalog.TypeDef;
 import com.nicweiss.editor.utils.Uuid;
 
 import java.util.Arrays;
@@ -22,31 +28,11 @@ public class ItemsEditorWindow extends Window implements CallBack {
     ButtonCommon[] items, itemDetails;
     ButtonCommon button;
 
-    // Хранит имя редактируемого поля стата между открытием TextInputWindow и коллбэком
-    private String pendingStatField;
-
     // Хранит имя редактируемого числового поля предмета между открытием TextInputWindow и коллбэком
     private String pendingItemNumericField;
 
-    // Ключи типов предметов — используются в __type__ и в игровой логике.
-    // Названия для отображения хранятся отдельно (ITEM_TYPE_LABELS), чтобы переименование
-    // в UI не ломало сохранённые данные и зависящую от типа логику.
-    private static final String[] ITEM_TYPE_KEYS = {
-        "weapon", "shield", "helmet", "armor", "gloves", "boots", "belt", "amulet", "artifact"
-    };
-
-    private static final LinkedHashMap<String, String> ITEM_TYPE_LABELS = new LinkedHashMap<>();
-    static {
-        ITEM_TYPE_LABELS.put("weapon", "Оружие");
-        ITEM_TYPE_LABELS.put("shield", "Щит");
-        ITEM_TYPE_LABELS.put("helmet", "Шлем");
-        ITEM_TYPE_LABELS.put("armor", "Броня");
-        ITEM_TYPE_LABELS.put("gloves", "Перчатки");
-        ITEM_TYPE_LABELS.put("boots", "Сапоги");
-        ITEM_TYPE_LABELS.put("belt", "Пояс");
-        ITEM_TYPE_LABELS.put("amulet", "Амулет");
-        ITEM_TYPE_LABELS.put("artifact", "Артефакт");
-    }
+    // Размеры по умолчанию для предметов без выбранного типа
+    private static final int[][] DEFAULT_SIZES = {{1,1},{1,2},{1,3},{1,4},{2,1},{2,2},{2,3},{2,4}};
 
     public ItemsEditorWindow() {
         super();
@@ -127,72 +113,270 @@ public class ItemsEditorWindow extends Window implements CallBack {
         prepareSelectedItemView(uuid);
     }
 
-    // ---- Характеристики (статы) ----
+    // ---- Числовые поля предмета (характеристика, требования) ----
 
-    public void addStatCallback(String itemUuid) {
+    public void editItemNumericField(String uuid, String fieldName) {
         if (tiw.isShowWindow || !isWindowActive) return;
-        tiw.registerCallBack(this, "addStatNameDone", new String[]{itemUuid, ""});
-        tiw.setText("");
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        pendingItemNumericField = fieldName;
+        Object raw = template.get(fieldName);
+        tiw.registerCallBack(this, "editItemNumericFieldDone", new String[]{uuid, ""});
+        tiw.setText(raw != null ? raw.toString() : "0");
         tiw.show();
     }
 
-    // params[1] = имя стата, введённое пользователем
-    public void addStatNameDone(String itemUuid, String statName) {
-        if (statName.isEmpty()) return;
-        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(itemUuid);
-        LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
-
-        String statUuid = "stat_" + Uuid.generate();
-        LinkedHashMap stat = new LinkedHashMap();
-        stat.put("__uuid__", statUuid);
-        stat.put("__name__", statName);
-        stat.put("__value__", 0);
-        stat.put("__min__", 0);
-        stat.put("__max__", 0);
-        stats.put(statUuid, stat);
-
-        prepareStatView(itemUuid, statUuid);
-    }
-
-    // fieldName передаётся через кнопку, сохраняется в pendingStatField,
-    // затем используется в editStatFieldDone — обход ограничения TextInputWindow (params[2] = текст)
-    public void editStatField(String itemUuid, String statUuid, String fieldName) {
-        if (tiw.isShowWindow || !isWindowActive) return;
-        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(itemUuid);
-        LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
-        LinkedHashMap stat = (LinkedHashMap) stats.get(statUuid);
-
-        pendingStatField = fieldName;
-        tiw.registerCallBack(this, "editStatFieldDone", new String[]{itemUuid, statUuid, ""});
-        tiw.setText(stat.get(fieldName).toString());
-        tiw.show();
-    }
-
-    public void editStatFieldDone(String itemUuid, String statUuid, String value) {
-        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(itemUuid);
-        LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
-        LinkedHashMap stat = (LinkedHashMap) stats.get(statUuid);
-
-        if (pendingStatField.equals("__name__")) {
-            stat.put(pendingStatField, value);
-        } else {
-            value = value.replaceAll("[^0-9\\-]", "");
-            if (value.isEmpty()) value = "0";
-            stat.put(pendingStatField, Integer.parseInt(value));
+    public void editItemNumericFieldDone(String uuid, String value) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        value = value.replaceAll("[^0-9\\-]", "");
+        if (value.isEmpty()) value = "0";
+        int parsed = Integer.parseInt(value);
+        if (pendingItemNumericField.equals("__itemLevel__")) {
+            parsed = ItemGenerator.clamp(parsed, 1, 99);
         }
-        prepareStatView(itemUuid, statUuid);
+        template.put(pendingItemNumericField, parsed);
+
+        // Уровень и основная характеристика влияют на требования — пересчитываем сразу.
+        if (pendingItemNumericField.equals("__mainStat__") || pendingItemNumericField.equals("__itemLevel__")) {
+            ItemGenerator.recomputeRequirements(template);
+        }
+        prepareSelectedItemView(uuid);
     }
 
-    public void deleteStatConfirm(String itemUuid, String statUuid) {
+    // ---- Тип и класс предмета ----
+
+    public void prepareTypePickerView(String uuid) {
+        itemDetails = new ButtonCommon[1000];
+        int i = 0;
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        String selTypeKey = template.containsKey("__type__") ? (String) template.get("__type__") : "";
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "prepareSelectedItemView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        for (String typeKey : ItemModifierCatalog.TYPES.keySet()) {
+            TypeDef type = ItemModifierCatalog.TYPES.get(typeKey);
+            boolean selected = typeKey.equals(selTypeKey);
+            button = new ButtonCommon();
+            button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
+            button.setIcon(itemIcon);
+            button.setText(font, type.label + (selected ? "  <" : ""));
+            button.registerCallBack(this, "setItemType", new String[]{uuid, typeKey});
+            itemDetails[i++] = button;
+        }
+
+        itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
+    }
+
+    // Смена типа: ставится размер по умолчанию для типа, класс роллится (или выводится из размера
+    // для чармов), уровень/редкость роллятся заново, модификаторы перегенерируются с нуля.
+    public void setItemType(String uuid, String typeKey) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        ItemGenerator.applyType(template, typeKey);
+        prepareSelectedItemView(uuid);
+    }
+
+    public void prepareRarityPickerView(String uuid) {
+        itemDetails = new ButtonCommon[1000];
+        int i = 0;
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        String selRarityKey = template.containsKey("__rarity__") ? (String) template.get("__rarity__") : "";
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "prepareSelectedItemView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        for (String rarityKey : ItemModifierCatalog.RARITIES.keySet()) {
+            RarityDef rarity = ItemModifierCatalog.RARITIES.get(rarityKey);
+            boolean selected = rarityKey.equals(selRarityKey);
+            button = new ButtonCommon();
+            button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
+            button.setIcon(statIcon);
+            button.setText(font, rarity.label + (selected ? "  <" : ""));
+            button.registerCallBack(this, "setItemRarity", new String[]{uuid, rarityKey});
+            itemDetails[i++] = button;
+        }
+
+        itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
+    }
+
+    // Ручная смена редкости не рероллит модификаторы — это делает отдельная кнопка реролла,
+    // но требования пересчитываются сразу, т.к. редкость даёт прямую добавку.
+    public void setItemRarity(String uuid, String rarityKey) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        ItemGenerator.setRarity(template, rarityKey);
+        ItemGenerator.recomputeRequirements(template);
+        prepareSelectedItemView(uuid);
+    }
+
+    public void prepareClassPickerView(String uuid) {
+        itemDetails = new ButtonCommon[1000];
+        int i = 0;
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        TypeDef type = currentType(template);
+        String selClassKey = template.containsKey("__itemClass__") ? (String) template.get("__itemClass__") : "";
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "prepareSelectedItemView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        if (type != null) {
+            for (Subtype s : type.subtypes) {
+                boolean selected = s.key.equals(selClassKey);
+                button = new ButtonCommon();
+                button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
+                button.setIcon(itemIcon);
+                button.setText(font, s.label + (selected ? "  <" : ""));
+                button.registerCallBack(this, "setItemClass", new String[]{uuid, s.key});
+                itemDetails[i++] = button;
+            }
+        }
+
+        itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
+    }
+
+    // Ручная смена класса не трогает уже накатанные модификаторы — реролл делается отдельной кнопкой.
+    public void setItemClass(String uuid, String classKey) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        ItemGenerator.setClass(template, classKey);
+        prepareSelectedItemView(uuid);
+    }
+
+    // ---- Размер ----
+
+    public void prepareSizePickerView(String uuid) {
+        itemDetails = new ButtonCommon[1000];
+        int i = 0;
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        int selW = template.containsKey("__width__")  ? (int) template.get("__width__")  : 1;
+        int selH = template.containsKey("__height__") ? (int) template.get("__height__") : 1;
+        TypeDef type = currentType(template);
+        int[][] sizes = type != null ? type.sizes.toArray(new int[0][]) : DEFAULT_SIZES;
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "prepareSelectedItemView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        for (int[] sz : sizes) {
+            int sw = sz[0], sh = sz[1];
+            boolean selected = (sw == selW && sh == selH);
+            button = new ButtonCommon();
+            button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
+            button.setText(font, sw + "x" + sh + (selected ? "  <" : "") + "\n" + makeSizeGrid(sw, sh));
+            button.registerCallBack(this, "setItemSize", new String[]{uuid, String.valueOf(sw), String.valueOf(sh)});
+            itemDetails[i++] = button;
+        }
+
+        itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
+    }
+
+    public void setItemSize(String uuid, String widthStr, String heightStr) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        ItemGenerator.setSize(template, Integer.parseInt(widthStr), Integer.parseInt(heightStr));
+        prepareSelectedItemView(uuid);
+    }
+
+    // ---- Модификаторы (характеристики) ----
+
+    // Перегенерирует набор модификаторов с нуля под текущий тип/класс/уровень/редкость предмета.
+    // Вся логика ролла живёт в ItemGenerator — она же будет использоваться рантайм-симуляцией лута.
+    public void rollModifiers(String uuid) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        ItemGenerator.rollModifiers(template);
+    }
+
+    public void rerollModifiersCallback(String uuid) {
+        rollModifiers(uuid);
+        prepareSelectedItemView(uuid);
+    }
+
+    // Ручное добавление характеристики НЕ подчиняется правилам генератора (гейтинг по
+    // редкости/уровню, эксклюзивность резистов/пулов, skiller-лок, лимиты количества) — это
+    // инструмент дизайнера для сборки предметов, которые рандом в принципе никогда не выдаст.
+    // Все эти правила остаются только в ItemGenerator и применяются исключительно к авто-роллу.
+    public void prepareAddStatPickerView(String uuid) {
+        itemDetails = new ButtonCommon[1000];
+        int i = 0;
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        TypeDef type = currentType(template);
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "prepareSelectedItemView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        if (type == null) {
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setText(font, "Сначала выберите тип предмета");
+            itemDetails[i++] = button;
+        } else {
+            String classKey = (String) template.get("__itemClass__");
+            String rarityKey = ItemGenerator.currentRarity(template).key;
+            LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
+            for (ModifierDef def : type.modifiersFor(classKey)) {
+                if (stats.containsKey(def.key)) continue;
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(statIcon);
+                button.setText(font, def.name + "  [" + def.min + ".." + def.effectiveMax(rarityKey) + def.unit + "]");
+                button.registerCallBack(this, "addSpecificStat", new String[]{uuid, def.key});
+                itemDetails[i++] = button;
+            }
+        }
+
+        itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
+    }
+
+    public void addSpecificStat(String uuid, String modKey) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        ItemGenerator.addModifier(template, modKey);
+        prepareSelectedItemView(uuid);
+    }
+
+    public void editStatValue(String itemUuid, String statKey) {
+        if (tiw.isShowWindow || !isWindowActive) return;
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(itemUuid);
+        LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
+        LinkedHashMap stat = (LinkedHashMap) stats.get(statKey);
+
+        tiw.registerCallBack(this, "editStatValueDone", new String[]{itemUuid, statKey, ""});
+        tiw.setText(stat.get("__value__").toString());
+        tiw.show();
+    }
+
+    public void editStatValueDone(String itemUuid, String statKey, String value) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(itemUuid);
+        LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
+        LinkedHashMap stat = (LinkedHashMap) stats.get(statKey);
+
+        value = value.replaceAll("[^0-9\\-]", "");
+        if (value.isEmpty()) value = "0";
+        stat.put("__value__", Integer.parseInt(value));
+        ItemGenerator.recomputeRequirements(template);
+        prepareStatView(itemUuid, statKey);
+    }
+
+    public void deleteStatConfirm(String itemUuid, String statKey) {
         acw.setText("Удалить характеристику ?");
-        acw.registerCallBack(this, "deleteStat", new String[]{itemUuid, statUuid});
+        acw.registerCallBack(this, "deleteStat", new String[]{itemUuid, statKey});
         acw.show();
     }
 
-    public void deleteStat(String itemUuid, String statUuid) {
+    public void deleteStat(String itemUuid, String statKey) {
         LinkedHashMap template = (LinkedHashMap) itemTemplates.get(itemUuid);
         LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
-        stats.remove(statUuid);
+        stats.remove(statKey);
+        ItemGenerator.recomputeRequirements(template);
         prepareSelectedItemView(itemUuid);
     }
 
@@ -255,6 +439,53 @@ public class ItemsEditorWindow extends Window implements CallBack {
         // ──────── ОСНОВНЫЕ ПАРАМЕТРЫ ────────
         itemDetails[i++] = makeSectionHeader("── ОСНОВНЫЕ ПАРАМЕТРЫ ──");
 
+        TypeDef type = currentType(template);
+        String selTypeKey = template.containsKey("__type__") ? (String) template.get("__type__") : null;
+        String selTypeLabel = type != null ? type.label : "Не выбран";
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(itemIcon);
+        button.setText(font, "Тип: " + selTypeLabel);
+        button.registerCallBack(this, "prepareTypePickerView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        if (type != null && !type.subtypes.isEmpty()) {
+            String classKey = template.containsKey("__itemClass__") ? (String) template.get("__itemClass__") : null;
+            String classLabel = classKey != null ? type.labelForClass(classKey) : "Не выбран";
+
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(statIcon);
+            if (type.classDerivedFromSize) {
+                button.setText(font, "Класс: " + classLabel + " (определяется размером)");
+                // Без коллбэка — класс чарма меняется только сменой размера.
+            } else {
+                button.setText(font, "Класс: " + classLabel);
+                button.registerCallBack(this, "prepareClassPickerView", new String[]{uuid});
+            }
+            itemDetails[i++] = button;
+        }
+
+        if (type != null) {
+            int itemLevel = template.containsKey("__itemLevel__") ? (int) template.get("__itemLevel__") : 1;
+            RarityDef rarity = ItemGenerator.currentRarity(template);
+
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(statIcon);
+            button.setText(font, "Уровень предмета: " + itemLevel);
+            button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__itemLevel__"});
+            itemDetails[i++] = button;
+
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(statIcon);
+            button.setText(font, "Редкость: " + rarity.label);
+            button.registerCallBack(this, "prepareRarityPickerView", new String[]{uuid});
+            itemDetails[i++] = button;
+        }
+
         int selW = template.containsKey("__width__")  ? (int) template.get("__width__")  : 1;
         int selH = template.containsKey("__height__") ? (int) template.get("__height__") : 1;
 
@@ -263,16 +494,6 @@ public class ItemsEditorWindow extends Window implements CallBack {
         button.setIcon(statIcon);
         button.setText(font, "Размер: " + selW + "x" + selH + "\n" + makeSizeGrid(selW, selH));
         button.registerCallBack(this, "prepareSizePickerView", new String[]{uuid});
-        itemDetails[i++] = button;
-
-        String selTypeKey = template.containsKey("__type__") ? (String) template.get("__type__") : null;
-        String selTypeLabel = selTypeKey != null ? ITEM_TYPE_LABELS.get(selTypeKey) : "Не выбран";
-
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(itemIcon);
-        button.setText(font, "Тип: " + selTypeLabel);
-        button.registerCallBack(this, "prepareTypePickerView", new String[]{uuid});
         itemDetails[i++] = button;
 
         // ──────── ТРЕБОВАНИЯ И ОСНОВНАЯ ХАРАКТЕРИСТИКА ────────
@@ -312,18 +533,29 @@ public class ItemsEditorWindow extends Window implements CallBack {
         // ──────── ХАРАКТЕРИСТИКИ ────────
         itemDetails[i++] = makeSectionHeader("── ХАРАКТЕРИСТИКИ ──");
 
+        if (type != null) {
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(plusIcon);
+            button.setText(font, "Реролл модификаторов");
+            button.registerCallBack(this, "rerollModifiersCallback", new String[]{uuid});
+            itemDetails[i++] = button;
+        }
+
         LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
-        for (Object statKey : stats.keySet()) {
-            String statUuid = statKey.toString();
-            LinkedHashMap stat = (LinkedHashMap) stats.get(statUuid);
+        for (Object statKeyObj : stats.keySet()) {
+            String statKey = statKeyObj.toString();
+            LinkedHashMap stat = (LinkedHashMap) stats.get(statKey);
             int val = (int) stat.get("__value__");
-            int min = (int) stat.get("__min__");
-            int max = (int) stat.get("__max__");
+            ModifierDef def = selTypeKey != null ? ItemModifierCatalog.findModifier(selTypeKey, statKey) : null;
+            String label = def != null
+                ? def.name + ": " + val + def.unit + "  [" + def.min + ".." + def.effectiveMax(ItemGenerator.currentRarity(template).key) + "]"
+                : statKey + ": " + val;
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
             button.setIcon(statIcon);
-            button.setText(font, stat.get("__name__") + ": " + val + "  [" + min + " .. " + max + "]");
-            button.registerCallBack(this, "prepareStatView", new String[]{uuid, statUuid});
+            button.setText(font, label);
+            button.registerCallBack(this, "prepareStatView", new String[]{uuid, statKey});
             itemDetails[i++] = button;
         }
 
@@ -331,7 +563,7 @@ public class ItemsEditorWindow extends Window implements CallBack {
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setIcon(plusIcon);
         button.setText(font, "Добавить характеристику");
-        button.registerCallBack(this, "addStatCallback", new String[]{uuid});
+        button.registerCallBack(this, "prepareAddStatPickerView", new String[]{uuid});
         itemDetails[i++] = button;
 
         button = new ButtonCommon();
@@ -344,12 +576,14 @@ public class ItemsEditorWindow extends Window implements CallBack {
         itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
     }
 
-    public void prepareStatView(String itemUuid, String statUuid) {
+    public void prepareStatView(String itemUuid, String statKey) {
         itemDetails = new ButtonCommon[1000];
         int i = 0;
         LinkedHashMap template = (LinkedHashMap) itemTemplates.get(itemUuid);
         LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
-        LinkedHashMap stat = (LinkedHashMap) stats.get(statUuid);
+        LinkedHashMap stat = (LinkedHashMap) stats.get(statKey);
+        String typeKey = (String) template.get("__type__");
+        ModifierDef def = typeKey != null ? ItemModifierCatalog.findModifier(typeKey, statKey) : null;
 
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
@@ -357,130 +591,30 @@ public class ItemsEditorWindow extends Window implements CallBack {
         button.registerCallBack(this, "prepareSelectedItemView", new String[]{itemUuid});
         itemDetails[i++] = button;
 
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(nameIcon);
-        button.setText(font, "Название: " + stat.get("__name__"));
-        button.registerCallBack(this, "editStatField", new String[]{itemUuid, statUuid, "__name__"});
-        itemDetails[i++] = button;
+        itemDetails[i++] = makeSectionHeader(def != null
+            ? def.name + "  (диапазон каталога: " + def.min + ".." + def.effectiveMax(ItemGenerator.currentRarity(template).key) + def.unit + ")"
+            : statKey);
 
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setIcon(statIcon);
-        button.setText(font, "Базовое значение: " + stat.get("__value__"));
-        button.registerCallBack(this, "editStatField", new String[]{itemUuid, statUuid, "__value__"});
-        itemDetails[i++] = button;
-
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(statIcon);
-        button.setText(font, "Мин. модификатор: " + stat.get("__min__"));
-        button.registerCallBack(this, "editStatField", new String[]{itemUuid, statUuid, "__min__"});
-        itemDetails[i++] = button;
-
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(statIcon);
-        button.setText(font, "Макс. модификатор: " + stat.get("__max__"));
-        button.registerCallBack(this, "editStatField", new String[]{itemUuid, statUuid, "__max__"});
+        button.setText(font, "Значение: " + stat.get("__value__"));
+        button.registerCallBack(this, "editStatValue", new String[]{itemUuid, statKey});
         itemDetails[i++] = button;
 
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
         button.setIcon(trashIcon);
         button.setText(font, "Удалить характеристику");
-        button.registerCallBack(this, "deleteStatConfirm", new String[]{itemUuid, statUuid});
+        button.registerCallBack(this, "deleteStatConfirm", new String[]{itemUuid, statKey});
         itemDetails[i++] = button;
 
         itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
     }
 
-    public void prepareSizePickerView(String uuid) {
-        itemDetails = new ButtonCommon[1000];
-        int i = 0;
-        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
-        int selW = template.containsKey("__width__")  ? (int) template.get("__width__")  : 1;
-        int selH = template.containsKey("__height__") ? (int) template.get("__height__") : 1;
-
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setText(font, "<--");
-        button.registerCallBack(this, "prepareSelectedItemView", new String[]{uuid});
-        itemDetails[i++] = button;
-
-        int[][] sizes = {{1,1},{1,2},{1,3},{1,4},{2,1},{2,2},{2,3},{2,4}};
-        for (int[] sz : sizes) {
-            int sw = sz[0], sh = sz[1];
-            boolean selected = (sw == selW && sh == selH);
-            button = new ButtonCommon();
-            button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
-            // Метка + визуальная сетка из # (символ блока поддерживается шрифтом)
-            button.setText(font, sw + "x" + sh + (selected ? "  <" : "") + "\n" + makeSizeGrid(sw, sh));
-            button.registerCallBack(this, "setItemSize", new String[]{uuid, String.valueOf(sw), String.valueOf(sh)});
-            itemDetails[i++] = button;
-        }
-
-        itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
-    }
-
-    public void setItemSize(String uuid, String widthStr, String heightStr) {
-        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
-        template.put("__width__", Integer.parseInt(widthStr));
-        template.put("__height__", Integer.parseInt(heightStr));
-        prepareSelectedItemView(uuid);
-    }
-
-    // ---- Тип предмета ----
-
-    public void prepareTypePickerView(String uuid) {
-        itemDetails = new ButtonCommon[1000];
-        int i = 0;
-        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
-        String selTypeKey = template.containsKey("__type__") ? (String) template.get("__type__") : "";
-
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setText(font, "<--");
-        button.registerCallBack(this, "prepareSelectedItemView", new String[]{uuid});
-        itemDetails[i++] = button;
-
-        for (String typeKey : ITEM_TYPE_KEYS) {
-            boolean selected = typeKey.equals(selTypeKey);
-            button = new ButtonCommon();
-            button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
-            button.setIcon(itemIcon);
-            button.setText(font, ITEM_TYPE_LABELS.get(typeKey) + (selected ? "  <" : ""));
-            button.registerCallBack(this, "setItemType", new String[]{uuid, typeKey});
-            itemDetails[i++] = button;
-        }
-
-        itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
-    }
-
-    public void setItemType(String uuid, String typeKey) {
-        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
-        template.put("__type__", typeKey);
-        prepareSelectedItemView(uuid);
-    }
-
-    // ---- Числовые поля предмета (характеристика, требования) ----
-
-    public void editItemNumericField(String uuid, String fieldName) {
-        if (tiw.isShowWindow || !isWindowActive) return;
-        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
-        pendingItemNumericField = fieldName;
-        Object raw = template.get(fieldName);
-        tiw.registerCallBack(this, "editItemNumericFieldDone", new String[]{uuid, ""});
-        tiw.setText(raw != null ? raw.toString() : "0");
-        tiw.show();
-    }
-
-    public void editItemNumericFieldDone(String uuid, String value) {
-        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
-        value = value.replaceAll("[^0-9\\-]", "");
-        if (value.isEmpty()) value = "0";
-        template.put(pendingItemNumericField, Integer.parseInt(value));
-        prepareSelectedItemView(uuid);
+    private TypeDef currentType(LinkedHashMap template) {
+        if (!template.containsKey("__type__")) return null;
+        return ItemModifierCatalog.TYPES.get(template.get("__type__"));
     }
 
     private String makeSizeGrid(int w, int h) {
