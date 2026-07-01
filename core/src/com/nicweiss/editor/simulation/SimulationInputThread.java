@@ -31,6 +31,7 @@ public class SimulationInputThread implements Runnable {
     // ── Геймпад: edge-detect и дебаунс стика для меню ───────────────────────
     private boolean prevLT = false, prevRT = false, prevStart = false;
     private boolean prevDUp = false, prevDDown = false, prevA = false;
+    private boolean prevR3 = false;
     private float   stickNavTimer = 0f;
     private static final float STICK_NAV_DELAY = 0.28f;
 
@@ -103,6 +104,10 @@ public class SimulationInputThread implements Runnable {
             if (keyCode == 20 || keyCode == 47) store.simKeyDown  = true;
             if (keyCode == 21 || keyCode == 29) store.simKeyLeft  = true;
             if (keyCode == 22 || keyCode == 32) store.simKeyRight = true;
+            // Отладочный выброс лута+опыта (см. Store.debugDropTrigger) — R3 на геймпаде см. pollFrame.
+            if (keyCode == com.badlogic.gdx.Input.Keys.ENTER && store.debugDropTrigger != null) {
+                store.debugDropTrigger.run();
+            }
         }
         return true;
     }
@@ -218,6 +223,15 @@ public class SimulationInputThread implements Runnable {
             // UI закрыт: A подбирает предмет в фокусе (см. DropManager.renderLabels).
             DropManager.tryPickupFocused();
         }
+
+        // R3 (клик правого стика) — отладочный выброс лута+опыта (см. Store.debugDropTrigger,
+        // Enter на клавиатуре — тот же триггер, см. keyDown).
+        boolean r3 = safeButton(ctrl, m.buttonRightStick);
+        if (r3 && !prevR3 && !uiOpen && store.debugDropTrigger != null) {
+            store.debugDropTrigger.run();
+        }
+        prevR3 = r3;
+
         prevLT = lt; prevRT = rt; prevStart = start;
         prevDUp = dUp; prevDDown = dDown; prevA = a;
     }

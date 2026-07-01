@@ -322,8 +322,8 @@ public class ItemModifierCatalog {
         mod(weapon, "weapon_ias", "Скорость атаки", 1, 40, "%", "melee", PHYSICAL);
         mod(weapon, "weapon_fcr", "Скорость каста", 1, 40, "%", "caster", MAGIC);
         mod(weapon, "weapon_ar", "Рейтинг атаки", 10, 450, "", PHYSICAL);
-        mod(weapon, "weapon_flat_min_dmg", "Физический урон", 5, 130, "", "melee", PHYSICAL);
-        mod(weapon, "weapon_flat_min_mgc_dmg", "Магический урон", 5, 130, "", "caster", MAGIC);
+        mod(weapon, "weapon_flat_min_damage", "Физический урон", 5, 130, "", "melee", PHYSICAL);
+        mod(weapon, "weapon_flat_min_magic_damage", "Магический урон", 5, 130, "", "caster", MAGIC);
         mod(weapon, "weapon_fire_dmg", "Стихийный урон: Огонь", 1, 200, "", "melee", MAGIC);
         mod(weapon, "weapon_lightning_dmg", "Стихийный урон: Молния", 1, 480, "", "melee", MAGIC);
         mod(weapon, "weapon_cold_dmg", "Стихийный урон: Холод", 1, 120, "", "melee", MAGIC);
@@ -345,8 +345,8 @@ public class ItemModifierCatalog {
         mod(shield, "shield_flat_def", "Защита", 1, 40, "", PHYSICAL);
         mod(shield, "shield_allres", "Все сопротивления", 1, 20, "%", MAGIC).resist(true);
         oneRes(shield, "shield", 1, 40, MAGIC);
-        mod(shield, "shield_phys_reduction", "Снижение физического урона", 1, 70, "", "shield", PHYSICAL);
-        mod(shield, "shield_magic_reduction", "Снижение магического урона", 1, 30, "", "grimoire", MAGIC);
+        mod(shield, "shield_phys_red", "Снижение физического урона", 1, 70, "", "shield", PHYSICAL);
+        mod(shield, "shield_magic_red", "Снижение магического урона", 1, 30, "", "grimoire", MAGIC);
         mod(shield, "shield_strength", "Сила", 1, 15, "", "shield", PHYSICAL);
         mod(shield, "shield_magic", "Магия", 1, 15, "", "grimoire", MAGIC);
         mod(shield, "shield_health", "Здоровье", 1, 60, "", NEUTRAL);
@@ -364,8 +364,8 @@ public class ItemModifierCatalog {
         mod(helmet, "helmet_fcr", "Скорость каста", 1, 20, "%", "tiara", MAGIC);
         mod(helmet, "helmet_ed_def", "Повышенние защиты", 10, 200, "%", "helmet", PHYSICAL);
         mod(helmet, "helmet_flat_def", "Защита", 1, 30, "", "helmet", PHYSICAL);
-        mod(helmet, "helmet_str", "Сила", 1, 30, "", "helmet", PHYSICAL);
-        mod(helmet, "helmet_mgc", "Магия", 1, 30, "", "tiara", MAGIC);
+        mod(helmet, "helmet_strength", "Сила", 1, 30, "", "helmet", PHYSICAL);
+        mod(helmet, "helmet_magic", "Магия", 1, 30, "", "tiara", MAGIC);
         mod(helmet, "helmet_health", "Здоровье", 1, 60, "", "tiara", NEUTRAL);
         mod(helmet, "helmet_mana", "Мана", 1, 90, "", "tiara", MAGIC);
         mod(helmet, "helmet_life_leech", "Похищение жизни", 1, 8, "%", "helmet", PHYSICAL);
@@ -383,9 +383,9 @@ public class ItemModifierCatalog {
         mod(armor, "armor_ed_def", "Повышение защиты", 10, 400, "%", "armor", PHYSICAL);
         mod(armor, "armor_def_robe", "Защита", 5, 50, "%", "robe", MAGIC);
         mod(armor, "armor_health", "Здоровье", 1, 60, "", "armor", NEUTRAL);
-        mod(armor, "armor_health_robe", "Здоровье", 1, 100, "", "robe", NEUTRAL);
-        mod(armor, "armor_str", "Сила", 1, 30, "", "armor", PHYSICAL);
-        mod(armor, "armor_mgc", "Магия", 1, 30, "", "robe", MAGIC);
+        mod(armor, "robe_health", "Здоровье", 1, 100, "", "robe", NEUTRAL);
+        mod(armor, "armor_strength", "Сила", 1, 30, "", "armor", PHYSICAL);
+        mod(armor, "armor_magic", "Магия", 1, 30, "", "robe", MAGIC);
         mod(armor, "armor_phys_red", "Снижение физического урона", 1, 70, "", "armor", PHYSICAL);
         mod(armor, "robe_phys_red", "Снижение физического урона", 1, 20, "", "robe", PHYSICAL);
         mod(armor, "robe_magic_red", "Снижение магического урона", 1, 70, "", "robe", MAGIC);
@@ -413,16 +413,13 @@ public class ItemModifierCatalog {
         TypeDef boots = type("boots", "Сапоги", new int[][]{{2,2}});
         boots.imageFolder = "boots";
         mod(boots, "boots_frw", "Скорость бега", 1, 30, "%", PHYSICAL);
-        mod(boots, "boots_resist", "Сопротивления к", 1, 40, "%", MAGIC);
-        mod(boots, "boots_magick", "Магия", 1, 9, "", PHYSICAL);
-        mod(boots, "boots_stamina_attr", "Выносливость", 1, 9, "", PHYSICAL);
+        oneRes(boots, "boots", 1, 40, MAGIC);
+        mod(boots, "boots_magic", "Магия", 1, 9, "", MAGIC);
         mod(boots, "boots_mf", "Поиск предметов", 1, 25, "%", NEUTRAL);
         mod(boots, "boots_gf", "Поиск золота", 1, 80, "%", NEUTRAL);
         mod(boots, "boots_ed_def", "Повышение защиты", 10, 200, "%", PHYSICAL);
         mod(boots, "boots_flat_def", "Защита", 1, 30, "", PHYSICAL);
         mod(boots, "boots_replenish_life", "Восстановление здоровья", 1, 5, "", NEUTRAL);
-        mod(boots, "boots_max_stamina", "Максимальная стамина", 1, 30, "", PHYSICAL);
-        mod(boots, "boots_stamina_regen", "Скорость восстановления стамины", 1, 25, "%", PHYSICAL);
 
         // ───────────────────────── ПОЯС ─────────────────────────
         TypeDef belt = type("belt", "Пояс", new int[][]{{2,1}});
@@ -497,7 +494,6 @@ public class ItemModifierCatalog {
         mod(charm, "charm_small_health", "Здоровье", 1, 20, "", "small", NEUTRAL);
         mod(charm, "charm_small_mana", "Мана", 1, 17, "", "small", MAGIC);
         mod(charm, "charm_small_frw", "Скорость бега (FRW)", 1, 3, "%", "small", PHYSICAL);
-        mod(charm, "charm_small_stamina_regen", "Регенерация стамины", 1, 5, "%", "small", PHYSICAL);
         mod(charm, "charm_small_allres", "Сопротивления", 1, 5, "%", "small", MAGIC).resist(true);
         oneRes(charm, "charm_small", 1, 11, "small", MAGIC);
         mod(charm, "charm_small_ar", "Рейтинг атаки", 1, 20, "", "small", PHYSICAL);
@@ -511,9 +507,9 @@ public class ItemModifierCatalog {
         mod(charm, "charm_large_fcr", "Скорость каста", 1, 5, "%", "large", MAGIC);
         mod(charm, "charm_large_allres", "Все сопротивления", 1, 8, "%", "large", MAGIC).resist(true);
         oneRes(charm, "charm_large", 1, 15, "large", MAGIC);
-        mod(charm, "charm_large_damage", "Физический рон", 1, 6, "", "large", PHYSICAL);
-        mod(charm, "charm_large_magic_damage", "Магический рон", 1, 6, "", "large", MAGIC);
-        mod(charm, "charm_large_ar_flat", "Рейтинг атаки", 1, 48, "", "large", PHYSICAL);
+        mod(charm, "charm_large_damage", "Физический урон", 1, 6, "", "large", PHYSICAL);
+        mod(charm, "charm_large_magic_damage", "Магический урон", 1, 6, "", "large", MAGIC);
+        mod(charm, "charm_large_ar", "Рейтинг атаки", 1, 48, "", "large", PHYSICAL);
         mod(charm, "charm_large_gf", "Поиск золота", 1, 22, "%", "large", NEUTRAL);
         mod(charm, "charm_large_mf", "Поиск предметов", 1, 6, "%", "large", NEUTRAL);
 

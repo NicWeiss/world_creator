@@ -63,6 +63,29 @@ public class DropManager {
         }
     }
 
+    // Один дроп (один убитый враг) — общая сумма опыта дробится на случайное число сфер,
+    // а не всегда одно и то же: сумма их значений всегда равна результату Player.experienceForKill.
+    private static final int EXP_ORB_MIN = 1;
+    private static final int EXP_ORB_MAX = 5;
+
+    /**
+     * Спавнит 1-5 сфер опыта в точке (tileX, tileY), поровну делящих общую сумму одного дропа.
+     * Отдельная от dropLoot точка входа — сумма считается из уровня врага и множителя
+     * (см. Player.experienceForKill: множитель > 1 пригодится для мини-боссов/элит того же
+     * уровня, что дают больше опыта). Разлёт/бросок каждой сферы — как у лута (см. spawnItemDrop),
+     * но сферы не укладываются на землю (см. Drop.expAmount).
+     */
+    public static void dropExperience(int enemyLevel, float multiplier, int tileX, int tileY) {
+        if (store.objectedMap == null) return;
+        int total = Player.experienceForKill(Math.max(1, enemyLevel), multiplier);
+        int orbCount = EXP_ORB_MIN + RANDOM.nextInt(EXP_ORB_MAX - EXP_ORB_MIN + 1);
+        int base = total / orbCount;
+        int remainder = total % orbCount;
+        for (int i = 0; i < orbCount; i++) {
+            spawnExpDrop(base + (i < remainder ? 1 : 0), tileX, tileY);
+        }
+    }
+
     /** Золото: один независимый ролл вероятности и размера на весь источник дропа. */
     private static void rollGold(int enemyLevel, int tileX, int tileY) {
         float goldFind = store.player != null ? store.player.goldFind : 0f;
@@ -137,6 +160,18 @@ public class DropManager {
         });
     }
 
+    public static void spawnExpDrop(int amount, int tileX, int tileY) {
+        if (amount <= 0) return;
+        Gdx.app.postRunnable(() -> {
+            Drop drop = createDrop(tileX, tileY);
+            if (drop == null) return;
+
+            drop.expAmount = amount;
+            drop.setTexture(expTexture());
+            // Без подписи — сфера сама по себе достаточно узнаваема, подпись только мешала бы на кучке из нескольких сфер.
+        });
+    }
+
     // ── Подписи: видимость, фокус, раскладка без перекрытия ("кирпичики") ──────
 
     private static final float ITEM_LABEL_BG_ALPHA = 0.6f;
@@ -155,10 +190,11 @@ public class DropManager {
     private static final float PICKUP_RADIUS_FACTOR = 1.0f;
 
     /**
-     * Проверяет, наступил ли игрок на кучку золота (isLanded, goldAmount > 0).
-     * При наступании: gold → player.gold, дроп убирается из store.drops, сетка надписей
-     * пересчитается сама — renderLabels перечитывает store.drops каждый кадр с нуля.
-     * Вызывается на GL-потоке из renderLabels, поэтому потокобезопасно.
+     * Проверяет, наступил/дотронулся ли игрок до кучки золота или сферы опыта (isLanded,
+     * goldAmount > 0 либо expAmount > 0) — оба подбираются автоматически касанием, без инвентаря.
+     * При касании: gold → player.gold / exp → player.addExperience(...), дроп убирается из
+     * store.drops, сетка надписей пересчитается сама — renderLabels перечитывает store.drops
+     * каждый кадр с нуля. Вызывается на GL-потоке из renderLabels, поэтому потокобезопасно.
      */
     private static void checkPickups() {
         if (store.player == null || !store.player.isInitialized()) return;
@@ -170,13 +206,14 @@ public class DropManager {
 
         for (int i = 0; i < store.drops.length; i++) {
             Drop d = store.drops[i];
-            if (d == null || !d.isLanded || d.goldAmount <= 0) continue;
+            if (d == null || !d.isLanded || (d.goldAmount <= 0 && d.expAmount <= 0)) continue;
 
             float dx = playerIsoX - d.getWorldIsoX();
             float dy = playerIsoY - d.getWorldIsoY();
             float dist = (float) Math.sqrt(dx * dx + dy * dy);
             if (dist <= pickupRadius) {
-                store.player.gold += d.goldAmount;
+                if (d.goldAmount > 0) store.player.gold += d.goldAmount;
+                if (d.expAmount > 0) store.player.addExperience(d.expAmount);
                 store.drops[i] = null;
             }
         }
@@ -412,10 +449,13 @@ public class DropManager {
         spawnItemDrop(itemData, tileX, tileY);
     }
 
-    /** Продвигает анимации всех активных дропов на dt секунд. Вызывается из CreationThread. */
+    /**
+     * Продвигает анимации всех активных дропов на dt секунд. Вызывается из CreationThread.
+     * Сферы опыта получают dt и после приземления — иначе не покачивались бы (см. Drop.updateThrow).
+     */
     public static void update(float dt) {
         for (Drop d : store.drops) {
-            if (d != null && !d.isLanded) {
+            if (d != null && (!d.isLanded || d.expAmount > 0)) {
                 d.updateThrow(dt);
             }
         }
@@ -520,6 +560,29 @@ public class DropManager {
         pmap.fillCircle(s / 2, s / 2, s / 2 - 2);
         pmap.setColor(0.6f, 0.45f, 0.05f, 1f);
         pmap.drawCircle(s / 2, s / 2, s / 2 - 2);
+        Texture t = new Texture(pmap);
+        pmap.dispose();
+        return t;
+    }
+
+    private static Texture expTexture;
+    private static Texture expTexture() {
+        if (expTexture == null) expTexture = buildExpTexture();
+        return expTexture;
+    }
+
+    /** Маленькая неоново-синяя сфера опыта — процедурная текстура (до появления готового арта). */
+    private static Texture buildExpTexture() {
+        int s = 24;
+        Pixmap pmap = new Pixmap(s, s, Pixmap.Format.RGBA8888);
+        pmap.setColor(0, 0, 0, 0);
+        pmap.fill();
+        pmap.setColor(0.15f, 0.55f, 1f, 1f);
+        pmap.fillCircle(s / 2, s / 2, s / 2 - 1);
+        pmap.setColor(0.55f, 0.85f, 1f, 1f);
+        pmap.fillCircle(s / 2, s / 2, s / 2 - 4);
+        pmap.setColor(0.9f, 0.98f, 1f, 1f); // яркое ядро — "неоновый" блик
+        pmap.fillCircle(s / 2, s / 2, s / 5);
         Texture t = new Texture(pmap);
         pmap.dispose();
         return t;

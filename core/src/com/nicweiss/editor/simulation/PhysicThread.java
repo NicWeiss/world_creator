@@ -21,6 +21,7 @@ public class PhysicThread implements Runnable {
                         store.player.initAtCameraCenter();
                     }
                     applyInput();
+                    store.player.tickRegen(0.016f);
                 }
                 Thread.sleep(16);
             } catch (InterruptedException e) {

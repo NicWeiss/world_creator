@@ -507,11 +507,14 @@ public class UserInterface {
         editorShiftY     = store.shiftY;
         store.isSimulationMode      = true;
         store.stopSimulationAction  = () -> com.badlogic.gdx.Gdx.app.postRunnable(this::toggleSimulation);
+        // Enter/R3 (см. SimulationInputThread) — отладочный выброс лута+опыта у ног игрока.
+        store.debugDropTrigger      = () -> newDaemon(this::debugSpawnDrops, "DropDebugThread").start();
 
         // Player, PlayerUI, SystemUI и WeatherRenderer создаются на GL-потоке
         com.badlogic.gdx.Gdx.app.postRunnable(() -> {
             store.player          = new com.nicweiss.editor.simulation.Player();
             store.playerUI        = new com.nicweiss.editor.simulation.PlayerUI();
+            store.playerHud       = new com.nicweiss.editor.simulation.PlayerHud();
             store.systemUI        = new com.nicweiss.editor.simulation.SystemUI();
             store.weatherRenderer = new com.nicweiss.editor.simulation.WeatherRenderer(lightClass);
         });
@@ -532,22 +535,20 @@ public class UserInterface {
         inputThread.start();
 
         animateZoom(SIM_ZOOM_TARGET); // плавно до фиксированного игрового зума
-
-        newDaemon(this::debugSpawnDrops, "DropDebugThread").start();
     }
 
-    // ── Отладка дропа ────────────────────────────────────────────────────────
+    // ── Отладка дропа (по кнопке Enter/R3, см. Store.debugDropTrigger) ─────────
     // TODO: убрать, когда появятся реальные точки вызова (смерть врага / открытие сундука) —
-    // DropManager.dropLoot должен вызываться оттуда, а не отсюда.
+    // DropManager.dropLoot/dropExperience должны вызываться оттуда, а не отсюда.
     private void debugSpawnDrops() {
-        // Ждём, пока PhysicThread проинициализирует позицию игрока (нужна для точки спавна).
-        for (int waited = 0; waited < 50 && (store.player == null || !store.player.isInitialized()); waited++) {
-            try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
-        }
         if (store.player == null || !store.player.isInitialized()) return;
 
         int playerTileX = (int) (store.player.worldX / store.tileSizeWidth)  - 1;
         int playerTileY = (int) (store.player.worldY / store.tileSizeHeight) - 1;
+
+        // Уровень/множитель фиксированы (10, x1), пока нет реальной точки вызова
+        // (смерть врага того же уровня даёт multiplier=1, элита/босс — больше).
+        com.nicweiss.editor.simulation.DropManager.dropExperience(10, 1f, playerTileX, playerTileY);
 
         for (int i = 0; i < 10; i++) {
             if (!store.isSimulationMode) return;
@@ -561,9 +562,11 @@ public class UserInterface {
         store.isSimulationMode  = false;
         store.player            = null;
         store.playerUI          = null;
+        store.playerHud         = null;
         store.systemUI          = null;
         store.simulationInput      = null;
         store.stopSimulationAction = null;
+        store.debugDropTrigger     = null;
         store.weatherRenderer      = null;
         store.rainIntensity  = 0f;
         store.windMultiplier = 1f;

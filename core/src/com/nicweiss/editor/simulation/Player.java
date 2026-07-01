@@ -19,30 +19,90 @@ public class Player extends BaseObject {
     public volatile float worldY = -1f;
 
     // ── Характеристики ─────────────────────────────────────────────────────────
+    // maxHealth/maxMana — не отдельные статы, а производные: (сила/магия * множитель) + плоский
+    // бонус с модификаторов предметов (flatHealthBonus/flatManaBonus, см. "_health"/"_mana" в
+    // SystemUI.applyMod). Пересчитываются в SystemUI.recomputePlayerStats() каждый кадр.
+    // health/mana — текущие счётчики (то, что тратится на урон/каст и восполняется лечением/
+    // реген-тиком), никогда не больше max*.
     public float maxHealth = 100f;
     public float health    = 100f;
+    public float maxMana   = 0f;
+    public float mana      = 0f;
+    // Плоские бонусы к ёмкости с модификаторов предметов (например "armor_health", "helmet_mana") —
+    // накапливаются в SystemUI.applyMod, складываются с формулой от силы/магии в recomputePlayerStats.
+    public float flatHealthBonus  = 0f;
+    public float flatManaBonus    = 0f;
+
     public float speed     = 1.0f;
     public int level       = 10;
     public int gold        = 0;
 
+    // true у каждого нового Player: при первом пересчёте статов (см. SystemUI.recomputePlayerStats)
+    // health/mana выставляются в половину только что посчитанной ёмкости, затем флаг гасится —
+    // дальше recompute только клэмпит текущие значения к максимуму, не перезаписывая их.
+    public boolean pendingInitialFill = true;
+
+    // ── Опыт ───────────────────────────────────────────────────────────────────
+    // experience — прогресс ВНУТРИ текущего уровня (0..experienceToNextLevel()), не общая сумма
+    // за игру: при левел-апе остаток переносится на новый уровень (см. addExperience).
+    public int experience = 0;
+
+    // Требование к уровню — степенная кривая XP(L) = A*L^B, B=2.0 ("классический стандарт":
+    // опыт растёт квадратично, ранние уровни пролетают быстро, эндгейм — ощутимый гринд).
+    private static final double LEVEL_XP_A = 100.0;
+    private static final double LEVEL_XP_B = 2.0;
+    // Награда с врага — ОТДЕЛЬНАЯ, более пологая кривая (B=1.0, линейно по уровню врага).
+    // Если считать награду от той же кривой (просто уменьшенной в N раз), "убийств на уровень"
+    // остаётся постоянным на любом уровне — неинтересно и нереалистично (ловушка степенной функции,
+    // см. обсуждение с пользователем). Разные показатели степени → чем выше уровень, тем больше
+    // убийств нужно на левел-ап (на 1 ур. ~5 килов, на 10 ~50, на 40 ~200, на 99 ~500).
+    private static final double REWARD_XP_A = 20.0;
+    private static final double REWARD_XP_B = 1.0;
+
+    /** Опыт, необходимый для перехода с текущего уровня на следующий. */
+    public int experienceToNextLevel() {
+        return (int) Math.round(LEVEL_XP_A * Math.pow(level, LEVEL_XP_B));
+    }
+
+    /**
+     * Опыт за убийство врага уровня enemyLevel с модификатором-множителем (мини-боссы/элиты —
+     * тот же уровень, но множитель выше). Растёт медленнее, чем experienceToNextLevel() — см. REWARD_XP_B.
+     */
+    public static int experienceForKill(int enemyLevel, float multiplier) {
+        double reward = REWARD_XP_A * Math.pow(Math.max(1, enemyLevel), REWARD_XP_B) * multiplier;
+        return Math.max(1, (int) Math.round(reward));
+    }
+
+    /** Начисляет опыт, обрабатывая один или несколько левел-апов подряд (остаток переносится). */
+    public void addExperience(int amount) {
+        if (amount <= 0) return;
+        experience += amount;
+        while (experience >= experienceToNextLevel()) {
+            experience -= experienceToNextLevel();
+            level++;
+        }
+    }
+
     // ── Базовые атрибуты (прокачиваются игроком) ─────────────────────────────
     public int baseStrength  = 20;
     public int baseMagic     = 20;
-    public int baseDexterity = 0;
+    public int baseDexterity = 20;
 
     // ── Вычисленные эффективные статы (= base + предметы + чармы) ────────────
     // Пересчитываются PlayerStatEngine.recompute() при любом изменении снаряжения.
     public int strength     = 20;
     public int magic        = 20;
-    public int dexterity    = 0;
+    public int dexterity    = 20;
     public int energy       = 0;
-    public int stamina      = 0;
-    public int maxMana      = 0;
 
     // Резисты — каждая стихия отдельно
     public int fireRes      = 0;
     public int coldRes      = 0;
     public int lightningRes = 0;
+
+    // Пассивная регенерация здоровья/маны в секунду (от replenish_life / replenish_mana модов).
+    public float lifeRegen = 0f;
+    public float manaRegen = 0f;
 
     // Боевые
     public int attackSpeed  = 0;  // IAS %
@@ -86,6 +146,20 @@ public class Player extends BaseObject {
 
     public boolean isInitialized() {
         return worldX >= 0;
+    }
+
+    /**
+     * Пассивная регенерация здоровья/маны — вызывается из PhysicThread каждый тик.
+     * Только от статов восполнения (lifeRegen/manaRegen, см. replenish_life/replenish_mana модов):
+     * нет мода — нет восполнения. Скорость — ровно значение стата в очках/сек (не % от максимума).
+     */
+    public void tickRegen(float dt) {
+        if (lifeRegen > 0 && health < maxHealth) {
+            health = Math.min(maxHealth, health + lifeRegen * dt);
+        }
+        if (manaRegen > 0 && mana < maxMana) {
+            mana = Math.min(maxMana, mana + manaRegen * dt);
+        }
     }
 
     /** Инициализирует позицию игрока в текущем центре камеры. */

@@ -11,9 +11,10 @@ import java.util.LinkedHashMap;
 import java.util.Random;
 
 /**
- * Предмет или кучка золота, лежащие на земле (после убийства врага / открытия сундука).
- * Появляется с анимацией броска по дуге (как будто подкинули вверх и в сторону),
- * затем лежит на тайле до подбора. Спавнится через {@link DropManager}.
+ * Предмет, кучка золота или сфера опыта, появившиеся после убийства врага / открытия сундука.
+ * Появляется с анимацией броска по дуге (как будто подкинули вверх и в сторону). Предметы/золото
+ * затем лежат на тайле до подбора; сферы опыта не укладываются — парят над тайлом до подбора
+ * игроком (см. expAmount, draw/updateThrow). Спавнится через {@link DropManager}.
  *
  * Сам Drop умеет только рисовать свою иконку и (по запросу) одну плашку подписи в заданной
  * точке — решение "показывать ли подпись, где и с каким фокусом" принимает DropManager
@@ -24,8 +25,9 @@ public class Drop extends BaseObject {
     // Тайл, на который предмет в итоге падает (1-based, та же конвенция, что у Creation.mapCellX/Y).
     public int mapCellX, mapCellY;
 
-    public LinkedHashMap itemData; // null = это кучка золота, не предмет
+    public LinkedHashMap itemData; // null = это кучка золота или сфера опыта, не предмет
     public int goldAmount;
+    public int expAmount; // >0 = это сфера опыта, а не предмет/золото (см. draw/updateThrow)
 
     // ── Анимация броска по дуге ──────────────────────────────────────────────
     private static final float THROW_DURATION = 0.3f; // сек
@@ -33,6 +35,11 @@ public class Drop extends BaseObject {
     private float startIsoX, startIsoY, endIsoX, endIsoY;
     private float elapsed = 0f;
     public boolean isLanded = false;
+
+    // ── Парение сфер опыта (не укладываются на землю, в отличие от предметов/золота) ─────────
+    private static final float BOB_AMPLITUDE = 8f;  // пикселей вверх-вниз
+    private static final float BOB_SPEED     = 2.2f; // рад/сек
+    private float bobTime = 0f;
 
     // ── Случайный ракурс при отрисовке лёжа ──────────────────────────────────
     // Для разнообразия: 33% — как есть, 33% — +90°, 33% — -90° (см. drawIsoFlat).
@@ -42,8 +49,8 @@ public class Drop extends BaseObject {
     // ── Подпись над предметом ──────────────────────────────────────────────────
     private static Font labelFont;
     private static Texture plaqueTexture;
-    private static final float PAD_X = 10, PAD_Y = 6;
-    private static final float OUTLINE_THICKNESS = 2f;
+    private static final float PAD_X = 7.5f, PAD_Y = 4.5f;
+    private static final float OUTLINE_THICKNESS = 1.5f;
 
     private String labelText;
     private float[] labelBgColor = {1f, 1f, 1f};
@@ -63,6 +70,7 @@ public class Drop extends BaseObject {
         this.endIsoY = endIsoY;
         this.elapsed = 0f;
         this.isLanded = false;
+        this.bobTime = 0f;
         x = startIsoX;
         y = startIsoY;
 
@@ -70,9 +78,15 @@ public class Drop extends BaseObject {
         rotationStep = roll < 0.33f ? 1 : roll < 0.66f ? 3 : 0;
     }
 
-    /** Продвигает анимацию броска на dt секунд. Вызывается из CreationThread (DropManager.update). */
+    /**
+     * Продвигает анимацию броска на dt секунд. Вызывается из CreationThread (DropManager.update).
+     * Сферы опыта не останавливаются на "приземлении" — им нужен dt и после isLanded, чтобы парить.
+     */
     public void updateThrow(float dt) {
-        if (isLanded) return;
+        if (isLanded) {
+            if (expAmount > 0) bobTime += dt;
+            return;
+        }
         elapsed += dt;
         float t = Math.min(1f, elapsed / THROW_DURATION);
         x = startIsoX + (endIsoX - startIsoX) * t;
@@ -156,7 +170,12 @@ public class Drop extends BaseObject {
 
         batch.setColor(1, 1, 1, 1);
 
-        if (isLanded) {
+        if (expAmount > 0) {
+            // Сферы опыта никогда не укладываются на землю — парят анфас, покачиваясь по синусоиде
+            // после приземления (см. updateThrow). В полёте (бросок по дуге) — без покачивания.
+            float bob = isLanded ? (float) Math.sin(bobTime * BOB_SPEED) * BOB_AMPLITUDE : 0f;
+            batch.draw(img, drawX, drawY + bob, width, height);
+        } else if (isLanded) {
             // Лежащий предмет проецируем как изометрический ромб 2:1 (как сами тайлы),
             // а не плоский прямоугольник — иначе нет ощущения, что он лежит на земле.
             float centerX = drawX + width / 2f;
@@ -232,10 +251,17 @@ public class Drop extends BaseObject {
         batch.setColor(1, 1, 1, 1);
     }
 
+    // Целевой видимый размер — 6. Запекаем в 2 раза крупнее (12) и выводим с scale=0.5 —
+    // суперсэмплинг: подписи рисуются в мировом батче, который во время симуляции заметно
+    // приближен камерой (см. UserInterface.SIM_ZOOM_TARGET), обычный 1:1 бейк мылится при таком зуме.
+    private static final int LABEL_FONT_SIZE = 6;
+    private static final int LABEL_FONT_BAKE_MULT = 2;
+
     private static void ensureLabelAssets() {
         if (labelFont == null) {
             // Шрифт запекаем белым — иначе batch.setColor(тинт) не подействует (чёрный*цвет = чёрный).
-            labelFont = new Font(8, Color.WHITE);
+            labelFont = new Font(LABEL_FONT_SIZE * LABEL_FONT_BAKE_MULT, Color.WHITE);
+            labelFont.setScale(1f / LABEL_FONT_BAKE_MULT);
         }
         if (plaqueTexture == null) {
             Pixmap pmap = new Pixmap(1, 1, Pixmap.Format.RGBA8888);

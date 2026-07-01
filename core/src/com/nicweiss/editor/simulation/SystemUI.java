@@ -458,8 +458,8 @@ public class SystemUI {
         addBase.accept("Сила",     new int[]{p.baseStrength,  p.strength  - p.baseStrength});
         addBase.accept("Магия",    new int[]{p.baseMagic,     p.magic     - p.baseMagic});
         addBase.accept("Ловкость", new int[]{p.baseDexterity, p.dexterity - p.baseDexterity});
-        if (p.stamina   != 0) lines.add(new String[]{"Выносливость", String.valueOf(p.stamina),    "0.85","0.88","0.95"});
-        if (p.maxMana   != 0) lines.add(new String[]{"Мана",     "+" + p.maxMana,              "0.42","0.68","0.92"});
+        lines.add(new String[]{"Здоровье", (int) p.health + " / " + (int) p.maxHealth, "0.88","0.42","0.42"});
+        if (p.maxMana != 0) lines.add(new String[]{"Мана", (int) p.mana + " / " + (int) p.maxMana, "0.42","0.68","0.92"});
 
         // ── Боевые ────────────────────────────────────────────────────────────
         if (p.physDamage   != 0) lines.add(new String[]{"Физический урон",   "+" + p.physDamage,   "0.91","0.58","0.28"});
@@ -924,9 +924,13 @@ public class SystemUI {
         if (store.player == null) return;
         Player p = store.player;
 
-        // Сброс к базовым значениям
+        // Сброс к базовым значениям. maxHealth/maxMana не сбрасываются здесь — они не копят
+        // бонусы предметов сами по себе, а считаются заново в конце метода по формуле
+        // (сила/магия * множитель) + flatHealthBonus/flatManaBonus, когда итоговые
+        // сила/магия и плоские бонусы уже известны.
         p.strength = p.baseStrength; p.magic = p.baseMagic; p.dexterity = p.baseDexterity;
-        p.energy = 0; p.stamina = 0; p.maxMana = 0;
+        p.energy = 0;
+        p.flatHealthBonus = 0f; p.flatManaBonus = 0f;
         p.fireRes = 0; p.coldRes = 0; p.lightningRes = 0;
         p.attackSpeed = 0; p.castSpeed = 0; p.runSpeed = 0;
         p.attackRating = 0; p.physDamage = 0; p.magicDamage = 0;
@@ -934,6 +938,7 @@ public class SystemUI {
         p.physDamageReduce = 0; p.magicDamageReduce = 0;
         p.containers = 0;
         p.lifeLeech = 0; p.manaLeech = 0;
+        p.lifeRegen = 0f; p.manaRegen = 0f;
         p.magicFind = 0f; p.goldFind = 0f;
 
         // Чармы — активны если уровень игрока >= требуемого
@@ -981,6 +986,33 @@ public class SystemUI {
             if (item != null && item != draggedItem && !active[i])
                 store.inactiveEquipment.add(item);
         }
+
+        // Ёмкость здоровья/маны = (финальные сила/магия * множитель) + плоский бонус с модификаторов
+        // предметов (flatHealthBonus/flatManaBonus) — пересчитывается каждый раз заново.
+        p.maxHealth = p.strength * HEALTH_PER_STRENGTH + p.flatHealthBonus;
+        p.maxMana   = p.magic    * MANA_PER_MAGIC      + p.flatManaBonus;
+
+        if (p.pendingInitialFill) {
+            // При входе в симуляцию — стартуем с половиной ёмкости (см. Player.pendingInitialFill).
+            p.health = p.maxHealth / 2f;
+            p.mana   = p.maxMana   / 2f;
+            p.pendingInitialFill = false;
+        } else {
+            // Текущие здоровье/мана не должны превышать пересчитанный максимум (например, после снятия предмета).
+            p.health = Math.min(p.health, p.maxHealth);
+            p.mana   = Math.min(p.mana,   p.maxMana);
+        }
+    }
+
+    // 8 очков здоровья за 1 силы, 4 очка маны за 1 магии — см. recomputePlayerStats().
+    private static final float HEALTH_PER_STRENGTH = 8f;
+    private static final float MANA_PER_MAGIC      = 4f;
+
+    /** Пересчитывает статы игрока — вызывается HUD-ом каждый кадр, чтобы значения были
+     *  актуальны даже когда инвентарь закрыт (иначе статы пересчитывались только на вкладках
+     *  ИНВЕНТАРЬ/СТАТЫ, см. renderInventory/renderStats). */
+    public void recomputeStats() {
+        recomputePlayerStats();
     }
 
     /** Проверяет, выполняет ли игрок требования предмета по текущим эффективным статам. */
@@ -1003,39 +1035,49 @@ public class SystemUI {
         }
     }
 
+    /**
+     * Роутинг мода на поле Player по его ключу из каталога. Каталог придерживается конвенции
+     * "модификатор всегда называется <префикс>_<канонический суффикс статы" (см. ItemModifierCatalog) —
+     * поэтому здесь матчим по endsWith на ТОЧНЫЙ суффикс, а не contains по произвольной подстроке.
+     * contains() ловил "магический урон" (*_magic_damage) как подстроку "_magic" (атрибут магии) —
+     * endsWith на непересекающиеся суффиксы структурно исключает такие коллизии, а не полагается
+     * на порядок веток. contains() оставлен только там, где семейство ключей действительно не имеет
+     * единого суффикса (см. пометку "_def" ниже) — расширять его дальше не стоит.
+     */
     private static void applyMod(String k, int v, Player p) {
         if (k == null) return;
-        // Снижение урона проверяем ДО _magic/_mana чтобы не поймать magic_red в _magic
-        if      (k.contains("phys_red") || k.contains("phys_reduction"))  p.physDamageReduce  += v;
-        else if (k.contains("magic_red") || k.contains("magic_reduction")) p.magicDamageReduce += v;
-        else if (k.contains("strength"))     p.strength      += v;
-        else if (k.contains("_magic") || k.contains("_magick")) p.magic += v;
-        else if (k.contains("energy"))       p.energy        += v;
-        else if (k.contains("dexterity"))    p.dexterity     += v;
-        else if (k.contains("stamina"))      p.stamina       += v;
-        else if (k.contains("_health"))      p.maxHealth     += v;  // float field
-        else if (k.contains("_mana") && !k.contains("leech") && !k.contains("replenish")) p.maxMana += v;
-        else if (k.contains("allres"))       { p.fireRes += v; p.coldRes += v; p.lightningRes += v; }
-        else if (k.contains("_res_fire"))    p.fireRes       += v;
-        else if (k.contains("_res_cold"))    p.coldRes       += v;
-        else if (k.contains("_res_lightning")) p.lightningRes += v;
-        else if (k.contains("life_leech"))   p.lifeLeech     += v;
-        else if (k.contains("mana_leech"))   p.manaLeech     += v;
-        else if (k.contains("_mf"))          p.magicFind     += v;
-        else if (k.contains("_gf"))          p.goldFind      += v;
-        else if (k.contains("_ias"))         p.attackSpeed   += v;
-        else if (k.contains("_fcr"))         p.castSpeed     += v;
-        else if (k.contains("_frw"))         p.runSpeed      += v;
-        else if (k.contains("_ar"))          p.attackRating  += v;
-        else if (k.contains("_fire_dmg") || k.contains("_lightning_dmg")
-              || k.contains("_cold_dmg")  || k.contains("_elem_dmg")) p.magicDamage += v;
-        else if (k.contains("flat_def"))     p.defence       += v;
-        else if (k.contains("_def"))         p.defenceRating += v;  // ed_def, def_plate, def_robe
-        else if (k.contains("_maxdmg") || k.contains("flat_min"))          p.physDamage += v;
-        else if (k.contains("_ed") && !k.contains("_def"))                 p.physDamage += v;
-        else if (k.contains("damage") && !k.contains("magic") && !k.contains("_red")) p.physDamage += v;
-        else if (k.contains("all_attributes")) { p.strength += v; p.magic += v; p.dexterity += v; }
-        else if (k.contains("containers"))   p.containers    += v;
+        if      (k.endsWith("_phys_red"))    p.physDamageReduce  += v;
+        else if (k.endsWith("_magic_red"))   p.magicDamageReduce += v;
+        else if (k.endsWith("_strength"))    p.strength      += v;
+        else if (k.endsWith("_magic"))       p.magic         += v;
+        else if (k.endsWith("_energy"))      p.energy        += v;
+        else if (k.endsWith("_dexterity"))   p.dexterity     += v;
+        else if (k.endsWith("_replenish_life")) p.lifeRegen  += v;  // очков/сек, см. Player.tickRegen
+        else if (k.endsWith("_replenish_mana")) p.manaRegen  += v;
+        else if (k.endsWith("_health"))      p.flatHealthBonus += v;  // складывается с формулой от силы, см. recomputePlayerStats
+        else if (k.endsWith("_mana"))        p.flatManaBonus += v;    // *_mana_leech/*_replenish_mana уже перехвачены выше
+        else if (k.endsWith("_allres"))      { p.fireRes += v; p.coldRes += v; p.lightningRes += v; }
+        else if (k.endsWith("_res_fire"))    p.fireRes       += v;
+        else if (k.endsWith("_res_cold"))    p.coldRes       += v;
+        else if (k.endsWith("_res_lightning")) p.lightningRes += v;
+        else if (k.endsWith("_life_leech"))  p.lifeLeech     += v;
+        else if (k.endsWith("_mana_leech"))  p.manaLeech     += v;
+        else if (k.endsWith("_mf"))          p.magicFind     += v;
+        else if (k.endsWith("_gf"))          p.goldFind      += v;
+        else if (k.endsWith("_ias"))         p.attackSpeed   += v;
+        else if (k.endsWith("_fcr"))         p.castSpeed     += v;
+        else if (k.endsWith("_frw"))         p.runSpeed      += v;
+        else if (k.endsWith("_ar"))          p.attackRating  += v;
+        else if (k.endsWith("_magic_damage") || k.endsWith("_fire_dmg")
+              || k.endsWith("_lightning_dmg") || k.endsWith("_cold_dmg")) p.magicDamage += v;
+        else if (k.endsWith("_flat_def"))    p.defence       += v;
+        // "_def" не вынесен в единый суффикс во всём каталоге (armor_def_plate, armor_def_robe,
+        // *_ed_def) — contains() тут безопасен: ни один модификатор другой категории "_def" не содержит.
+        else if (k.contains("_def"))         p.defenceRating += v;
+        else if (k.endsWith("_damage"))      p.physDamage    += v;  // *_magic_damage уже перехвачен выше
+        else if (k.endsWith("_ed"))          p.physDamage    += v;  // weapon_ed; *_ed_def уже перехвачен выше (contains "_def")
+        else if (k.endsWith("_attributes"))  { p.strength += v; p.magic += v; p.dexterity += v; }
+        else if (k.endsWith("_containers"))  p.containers    += v;
     }
 
     // ── Hit-testing ───────────────────────────────────────────────────────────
@@ -1616,11 +1658,10 @@ public class SystemUI {
             case 2: // LEECH: жизнь → мана
                 sub = k.contains("life") ? 0 : 1;
                 break;
-            case 3: // STATS: сила → энергия/магия → ловкость → стамина
+            case 3: // STATS: сила → энергия/магия → ловкость
                 if (k.contains("strength"))  sub = 0;
                 else if (k.contains("energy") || k.contains("_magic") || k.contains("_magick")) sub = 1;
-                else if (k.contains("dexterity")) sub = 2;
-                else sub = 3; // stamina
+                else sub = 2; // dexterity
                 break;
             case 4: // POOL: здоровье → мана → восст. здоровья → восст. маны
                 if (k.contains("_health"))            sub = 0;
@@ -1645,7 +1686,7 @@ public class SystemUI {
                 else if (k.contains("_frw"))      sub = 2;
                 else if (k.contains("light_radius")) sub = 3;
                 else if (k.contains("containers")) sub = 4;
-                else sub = 5; // experience, stamina_regen
+                else sub = 5; // experience
                 break;
         }
         return cluster * 100 + sub;
@@ -1670,7 +1711,7 @@ public class SystemUI {
             return MOD_POOL;
         // Статы (_magic проверяем после magic_red — он уже пойман выше)
         if (k.contains("strength") || k.contains("_magic") || k.contains("_magick")
-         || k.contains("energy") || k.contains("dexterity") || k.contains("stamina")
+         || k.contains("energy") || k.contains("dexterity")
          || k.contains("all_attributes"))
             return MOD_STATS;
         // Утилиты — поиски, свет, скорость, контейнеры

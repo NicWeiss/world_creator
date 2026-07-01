@@ -544,6 +544,9 @@ public class Editor extends View{
         if (store.isSimulationMode && store.playerUI != null) {
             store.playerUI.render(uiBatch);
         }
+        if (store.isSimulationMode && store.playerHud != null) {
+            store.playerHud.render(uiBatch);
+        }
         if (store.isSimulationMode && store.systemUI != null) {
             store.systemUI.render(uiBatch, store.uiWidthOriginal, store.uiHeightOriginal);
         }
