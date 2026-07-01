@@ -1206,27 +1206,32 @@ public class SystemUI {
         if (item.containsKey("__reqMagic__")   && toInt(item.get("__reqMagic__"))   > 0)
             reqLines.add("Требуемая магия: " + item.get("__reqMagic__"));
 
-        // Модификаторы: каждый — вложенная LinkedHashMap {__modId__, __value__}
-        java.util.List<String> modLines = new java.util.ArrayList<>();
+        // Модификаторы: {__modId__, __value__} → строка + цвет, отсортированные по кластеру
+        java.util.List<String[]> rawMods = new java.util.ArrayList<>(); // {modId, displayText}
         Object statsObj = item.get("__stats__");
         if (statsObj instanceof LinkedHashMap) {
-            LinkedHashMap stats = (LinkedHashMap) statsObj;
-            for (Object v : stats.values()) {
+            for (Object v : ((LinkedHashMap) statsObj).values()) {
                 if (!(v instanceof LinkedHashMap)) continue;
                 LinkedHashMap statEntry = (LinkedHashMap) v;
                 String modId = (String) statEntry.get("__modId__");
                 int value = toInt(statEntry.get("__value__"));
                 com.nicweiss.editor.utils.ItemModifierCatalog.ModifierDef def =
                     typeKey != null ? com.nicweiss.editor.utils.ItemModifierCatalog.findModifier(typeKey, modId) : null;
-                if (def != null) {
-                    String unit = def.unit.isEmpty() ? "" : " " + def.unit;
-                    modLines.add(def.name + ": +" + value + unit);
-                } else {
-                    modLines.add(value + ": +" + modId);
-                }
+                String text = def != null
+                    ? def.name + ": +" + value + (def.unit.isEmpty() ? "" : " " + def.unit)
+                    : modId + ": +" + value;
+                rawMods.add(new String[]{modId, text});
             }
         }
+        // Сортировка по кластеру и sub-приоритету внутри кластера
+        rawMods.sort((a, b) -> Integer.compare(modSortKey(a[0]), modSortKey(b[0])));
 
+        java.util.List<String>  modLines  = new java.util.ArrayList<>();
+        java.util.List<float[]> modColors = new java.util.ArrayList<>();
+        for (String[] m : rawMods) {
+            modLines.add(m[1]);
+            modColors.add(modKeyColor(m[0]));
+        }
 
         // ── Рендер ────────────────────────────────────────────────────────────
         float TPAD = 14f, LINE_H = 22f;
@@ -1246,23 +1251,31 @@ public class SystemUI {
             drawCentered(batch, subtypeLabel, tx, lineY, tw); lineY -= LINE_H;
         }
 
+        // Основная характеристика — белый
         if (mainStatLine != null) {
             col(batch, C_BORDER); batch.draw(pixel, tx + TPAD, lineY, tw - TPAD * 2, 1f); lineY -= LINE_H * 0.5f;
             font.setColor(C_TEXT_ACT);
             drawCentered(batch, mainStatLine, tx, lineY, tw); lineY -= LINE_H;
         }
 
+        // Требования — белый; красный если уровень выше текущего
         if (!reqLines.isEmpty()) {
+            boolean playerReady = store.player != null && store.player.isInitialized();
+            int playerLevel = playerReady ? store.player.level : 0;
             for (String r : reqLines) {
-                font.setColor(0.80f, 0.30f, 0.30f, 1f);
+                boolean failed = playerReady && r.startsWith("Требуемый уровень:")
+                    && toInt(item.get("__reqLevel__")) > playerLevel;
+                font.setColor(failed ? 0.90f : 1f, failed ? 0.25f : 1f, failed ? 0.25f : 1f, 1f);
                 drawCentered(batch, r, tx, lineY, tw); lineY -= LINE_H;
             }
         }
 
+        // Модификаторы — каждый в цвете своего кластера
         if (!modLines.isEmpty()) {
-            for (String l : modLines) {
-                font.setColor(0.95f, 0.78f, 0.35f, 1f);
-                drawCentered(batch, l, tx, lineY, tw); lineY -= LINE_H;
+            for (int i = 0; i < modLines.size(); i++) {
+                float[] c = modColors.get(i);
+                font.setColor(c[0], c[1], c[2], 1f);
+                drawCentered(batch, modLines.get(i), tx, lineY, tw); lineY -= LINE_H;
             }
         }
 
@@ -1273,6 +1286,117 @@ public class SystemUI {
         }
 
         batch.setColor(1, 1, 1, 1);
+    }
+
+    // ── Цвета модификаторов (мягкие, но читаемые на тёмном фоне тултипа) ──────
+    private static final float[] MOD_RESIST  = {0.35f, 0.80f, 0.75f}; // бирюзовый  — резисты/защита
+    private static final float[] MOD_SKILL   = {0.72f, 0.55f, 0.90f}; // лиловый    — навыки/FCR
+    private static final float[] MOD_LEECH   = {0.88f, 0.42f, 0.55f}; // розовый    — личи
+    private static final float[] MOD_POOL    = {0.42f, 0.83f, 0.50f}; // зелёный    — здоровье/мана
+    private static final float[] MOD_STATS   = {0.42f, 0.68f, 0.92f}; // голубой    — статы
+    private static final float[] MOD_UTILITY = {0.85f, 0.77f, 0.35f}; // золотой    — поиски/утилиты
+    private static final float[] MOD_COMBAT  = {0.90f, 0.58f, 0.28f}; // оранжевый  — урон/атака/дебаффы
+
+    /** Порядок кластера для сортировки (меньше = выше в списке). */
+    private static int modClusterOrder(String k) {
+        float[] c = modKeyColor(k);
+        if (c == MOD_SKILL)   return 0;
+        if (c == MOD_COMBAT)  return 1;
+        if (c == MOD_LEECH)   return 2;
+        if (c == MOD_STATS)   return 3;
+        if (c == MOD_POOL)    return 4;
+        if (c == MOD_RESIST)  return 5;
+        return 6; // MOD_UTILITY
+    }
+
+    /**
+     * Полный ключ сортировки: cluster * 100 + sub.
+     * Sub-порядок определяется с учётом кластера — без конфликтов между ними.
+     */
+    private static int modSortKey(String k) {
+        int cluster = modClusterOrder(k);
+        int sub;
+        switch (cluster) {
+            case 0: // SKILL: все навыки → ветки → FCR
+                if (k.contains("all_skills"))  sub = 0;
+                else if (k.contains("_branch") || k.contains("elem_branch") || k.contains("single_skill")) sub = 1;
+                else sub = 2; // _fcr
+                break;
+            case 1: // COMBAT: урон → скорость атаки → точность → стихийный урон → дебаффы
+                if (k.contains("_ed") && !k.contains("_def")) sub = 0;
+                else if (k.contains("damage") || k.contains("_maxdmg") || k.contains("flat_min")) sub = 1;
+                else if (k.contains("_ias")) sub = 2;
+                else if (k.contains("_ar"))  sub = 3;
+                else if (k.contains("_fire_dmg") || k.contains("_lightning_dmg")
+                      || k.contains("_cold_dmg")  || k.contains("_elem_dmg")) sub = 4;
+                else sub = 5; // blind, freeze, itd, itr, thorns, prevent_heal
+                break;
+            case 2: // LEECH: жизнь → мана
+                sub = k.contains("life") ? 0 : 1;
+                break;
+            case 3: // STATS: сила → энергия/магия → ловкость → стамина
+                if (k.contains("strength"))  sub = 0;
+                else if (k.contains("energy") || k.contains("_magic") || k.contains("_magick")) sub = 1;
+                else if (k.contains("dexterity")) sub = 2;
+                else sub = 3; // stamina
+                break;
+            case 4: // POOL: здоровье → мана → восст. здоровья → восст. маны
+                if (k.contains("_health"))            sub = 0;
+                else if (k.contains("_mana"))         sub = 1;
+                else if (k.contains("replenish_life")) sub = 2;
+                else sub = 3; // replenish_mana
+                break;
+            case 5: // RESIST: все рез. → fire → cold → lightning → poison → физ.ред. → маг.ред. → блок → защита
+                if (k.contains("allres"))                                       sub = 0;
+                else if (k.contains("_res_fire"))                               sub = 1;
+                else if (k.contains("_res_cold"))                               sub = 2;
+                else if (k.contains("_res_lightning"))                          sub = 3;
+                else if (k.contains("_res_poison"))                             sub = 4;
+                else if (k.contains("phys_red") || k.contains("phys_reduction")) sub = 5;
+                else if (k.contains("magic_red") || k.contains("magic_reduction")) sub = 6;
+                else if (k.contains("_block"))                                  sub = 7;
+                else sub = 8; // _def, ed_def, flat_def
+                break;
+            default: // UTILITY: поиск предметов → поиск золота → скорость → свет → контейнеры → опыт
+                if (k.contains("_mf"))            sub = 0;
+                else if (k.contains("_gf"))       sub = 1;
+                else if (k.contains("_frw"))      sub = 2;
+                else if (k.contains("light_radius")) sub = 3;
+                else if (k.contains("containers")) sub = 4;
+                else sub = 5; // experience, stamina_regen
+                break;
+        }
+        return cluster * 100 + sub;
+    }
+
+    private static float[] modKeyColor(String k) {
+        if (k == null) return MOD_COMBAT;
+        // Резисты и защита — первыми (специфичные паттерны)
+        if (k.contains("allres") || k.contains("_res_") || k.contains("_resist")
+         || k.contains("_block") || k.contains("phys_red") || k.contains("magic_red")
+         || k.contains("phys_reduction") || k.contains("magic_reduction") || k.contains("_def"))
+            return MOD_RESIST;
+        // Личи
+        if (k.contains("life_leech") || k.contains("mana_leech"))
+            return MOD_LEECH;
+        // Навыки и скорость каста
+        if (k.contains("all_skills") || k.contains("single_skill") || k.contains("_branch")
+         || k.contains("_fcr") || k.contains("elem_branch"))
+            return MOD_SKILL;
+        // Здоровье и мана (replenish тоже сюда)
+        if (k.contains("_health") || k.contains("_mana") || k.contains("replenish"))
+            return MOD_POOL;
+        // Статы (_magic проверяем после magic_red — он уже пойман выше)
+        if (k.contains("strength") || k.contains("_magic") || k.contains("_magick")
+         || k.contains("energy") || k.contains("dexterity") || k.contains("stamina")
+         || k.contains("all_attributes"))
+            return MOD_STATS;
+        // Утилиты — поиски, свет, скорость, контейнеры
+        if (k.contains("_mf") || k.contains("_gf") || k.contains("light_radius")
+         || k.contains("containers") || k.contains("_frw") || k.contains("experience"))
+            return MOD_UTILITY;
+        // По умолчанию — боевые
+        return MOD_COMBAT;
     }
 
     /** Рисует строку текста по центру прямоугольника [rx, rx+rw]. */
