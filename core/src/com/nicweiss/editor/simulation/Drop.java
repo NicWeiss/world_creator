@@ -5,7 +5,9 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.BaseObject;
+import com.nicweiss.editor.objects.MapObject;
 import com.nicweiss.editor.utils.Font;
+import com.nicweiss.editor.utils.Transform;
 
 import java.util.LinkedHashMap;
 import java.util.Random;
@@ -134,6 +136,35 @@ public class Drop extends BaseObject {
     public float getWorldIsoX() { return x; }
     public float getWorldIsoY() { return y; }
 
+    // Кэш последнего расчёта позиции источника света — cartesianToIsometric не бесплатен,
+    // а getLightSourceIsoX/Y дважды за кадр (X и Y) вызывают одно и то же преобразование.
+    private int litForCellX = Integer.MIN_VALUE, litForCellY = Integer.MIN_VALUE;
+    private final float[] lightSourcePos = new float[2];
+
+    private void ensureLightSourcePos() {
+        if (litForCellX == mapCellX && litForCellY == mapCellY) return;
+        // Та же формула, что и Light.addColoredPoint для обычных источников (факелы/лампы) —
+        // используем её, а не позицию спрайта, чтобы сфера светила ровно так же, как остальные
+        // источники света на карте.
+        //
+        // mapCellX - 2 (а не -1!): по оси X в этом проекте есть давний, задокументированный сдвиг
+        // на один тайл между 1-based индексом ячейки и её реальным декартовым якорем — см.
+        // Player.isCollidingAt(), где для того же массива objectedMap[ai][...] (ai = mi-1) декартовый
+        // X-диапазон тайла — [(ai+2)*tileW, (ai+3)*tileW], а не [(ai+1)*tileW, ...], как по оси Y
+        // (там для objectedMap[...][mj] диапазон честный — [(mj+1)*tileH, ...]). Только X, только
+        // в этом проекте — эмпирически найденная особенность геометрии тайлов, не опечатка здесь.
+        float[] iso = Transform.cartesianToIsometric(
+            (mapCellX - 2) * store.tileSizeWidth, (mapCellY - 1) * store.tileSizeHeight);
+        lightSourcePos[0] = iso[0] + store.tileSizeWidth;
+        lightSourcePos[1] = iso[1] + store.tileSizeHeight;
+        litForCellX = mapCellX;
+        litForCellY = mapCellY;
+    }
+
+    /** Позиция источника света дропа — см. ensureLightSourcePos(). Тот же формат, что store.lightPoints[i][1]/[2]. */
+    public float getLightSourceIsoX() { ensureLightSourcePos(); return lightSourcePos[0]; }
+    public float getLightSourceIsoY() { ensureLightSourcePos(); return lightSourcePos[1]; }
+
     public float getIconScreenCenterX() {
         float[] fp = computeFootprint();
         return x + store.shiftX + fp[0] / 2f;
@@ -168,14 +199,18 @@ public class Drop extends BaseObject {
         width = Math.round(fp[0]);
         height = Math.round(fp[1]);
 
-        batch.setColor(1, 1, 1, 1);
-
         if (expAmount > 0) {
-            // Сферы опыта никогда не укладываются на землю — парят анфас, покачиваясь по синусоиде
-            // после приземления (см. updateThrow). В полёте (бросок по дуге) — без покачивания.
+            // Сферы опыта сами светятся — не темнеют от ночи/дождя/тени (см. calcLitColor в MapObject:
+            // они сами являются источником света для тайлов и других дропов, а не его получателем).
+            batch.setColor(1, 1, 1, 1);
+            // Никогда не укладываются на землю — парят анфас, покачиваясь по синусоиде после
+            // приземления (см. updateThrow). В полёте (бросок по дуге) — без покачивания.
             float bob = isLanded ? (float) Math.sin(bobTime * BOB_SPEED) * BOB_AMPLITUDE : 0f;
             batch.draw(img, drawX, drawY + bob, width, height);
         } else if (isLanded) {
+            // Предметы/золото освещаются как обычные тайлы карты — см. computeLitColor().
+            float[] lit = computeLitColor();
+            batch.setColor(lit[0], lit[1], lit[2], 1f);
             // Лежащий предмет проецируем как изометрический ромб 2:1 (как сами тайлы),
             // а не плоский прямоугольник — иначе нет ощущения, что он лежит на земле.
             float centerX = drawX + width / 2f;
@@ -183,9 +218,83 @@ public class Drop extends BaseObject {
             float diamondWidth = Math.max(width, height);
             drawIsoFlat(batch, img, centerX, centerY, diamondWidth);
         } else {
-            // В полёте (бросок по дуге) предмет рисуется обычным спрайтом "анфас".
+            // В полёте (бросок по дуге) предмет рисуется обычным спрайтом "анфас", но освещается так же.
+            float[] lit = computeLitColor();
+            batch.setColor(lit[0], lit[1], lit[2], 1f);
             batch.draw(img, drawX, drawY, width, height);
         }
+    }
+
+    // ── Освещение (день/ночь, дождь, источники света) ───────────────────────────
+    // Reusable-буфер результата — избегаем new float[3] на каждый кадр для каждого дропа.
+    private final float[] litColorBuf = new float[3];
+
+    /**
+     * Освещённость предмета/золота в текущей точке — та же логика, что у тайлов карты
+     * (см. MapObject.calcLitColor/calcLight): дневная температура цвета, затемнение дождём,
+     * статичные источники света (лампы/факелы, store.lightPoints) и сферы опыта (свои
+     * источники, см. MapObject.EXP_ORB_LIGHT_*). Упрощение: без затенения препятствиями
+     * (DDA-проверка в calcLight) — приемлемо для мелких лежащих предметов на земле.
+     */
+    private float[] computeLitColor() {
+        double angle  = store.dayPhase * 2.0 * Math.PI;
+        float  cosA   = (float) Math.cos(angle);
+        float  warmth = cosA * cosA;
+        float  cool   = Math.max(0f, (float) Math.sin(angle));
+        float  dayBright = Math.max(0f, store.dayCoefficient);
+        float tR = 1f + (warmth * 0.22f - cool * 0.06f) * dayBright;
+        float tG = 1f + (-warmth * 0.06f + cool * 0.03f) * dayBright;
+        float tB = 1f + (-warmth * 0.28f + cool * 0.22f) * dayBright;
+
+        float raw = Math.max(0.05f, (0.2f + store.dayCoefficient) * (1f - store.rainIntensity * 0.45f));
+        float dayR = raw * tR, dayG = raw * tG, dayB = raw * tB;
+
+        float lr = 0f, lg = 0f, lb = 0f;
+
+        // Своя позиция в формате источника света (см. getLightSourceIsoX/Y) — та же система
+        // координат, что у store.lightPoints[i][1]/[2], с которыми она напрямую сравнивается ниже.
+        float selfX = getLightSourceIsoX();
+        float selfY = getLightSourceIsoY();
+
+        // Статичные источники света (факелы/лампы на карте) — без учёта затенения препятствиями.
+        if (store.lightPoints != null) {
+            int countTo = Math.min(store.lightPointsHighWaterMark + 1, store.lightPoints.length);
+            for (int i = 1; i < countTo; i++) {
+                float[] lp = store.lightPoints[i];
+                if (lp[0] == 0) continue;
+                float ddx = selfX - lp[1];
+                float ddy = (selfY - lp[2]) * 1.45f;
+                if (Math.abs(ddx) > 130f || Math.abs(ddy) > 130f) continue;
+                float dist = (float) Math.sqrt(ddx * ddx + ddy * ddy);
+                if (dist >= 120f) continue;
+                float lpv  = dist / 120f * 100f;
+                float dark = Math.max(0.2f, 1.6f - lpv / 100f * 0.8f);
+                lr = Math.max(lr, Math.max(0f, 1f - (lpv / (dark * 100f + 35f) * 50f) / 500f) * lp[5]);
+                lg = Math.max(lg, Math.max(0f, 1f - (lpv / (dark * 100f + 15f) * 50f) / 500f) * lp[6]);
+                lb = Math.max(lb, Math.max(0f, 1f - (lpv / (dark * 100f + 5f)  * 50f) / 500f) * lp[7]);
+            }
+        }
+
+        // Сферы опыта — те же константы, что MapObject.calcLitColor использует для тайлов.
+        if (store.drops != null) {
+            for (Drop d : store.drops) {
+                if (d == null || d == this || d.expAmount <= 0) continue;
+                float odx = selfX - d.getLightSourceIsoX();
+                float ody = (selfY - d.getLightSourceIsoY()) * 1.45f;
+                if (Math.abs(odx) > MapObject.EXP_ORB_LIGHT_RADIUS || Math.abs(ody) > MapObject.EXP_ORB_LIGHT_RADIUS) continue;
+                float odist = (float) Math.sqrt(odx * odx + ody * ody);
+                if (odist >= MapObject.EXP_ORB_LIGHT_RADIUS) continue;
+                float t = 1f - odist / MapObject.EXP_ORB_LIGHT_RADIUS;
+                lr = Math.max(lr, MapObject.EXP_ORB_LIGHT_R * t);
+                lg = Math.max(lg, MapObject.EXP_ORB_LIGHT_G * t);
+                lb = Math.max(lb, MapObject.EXP_ORB_LIGHT_B * t);
+            }
+        }
+
+        litColorBuf[0] = Math.min(1f, Math.max(dayR, lr));
+        litColorBuf[1] = Math.min(1f, Math.max(dayG, lg));
+        litColorBuf[2] = Math.min(1f, Math.max(dayB, lb));
+        return litColorBuf;
     }
 
     // Переиспользуемый буфер вершин — избегаем new float[20] на каждый кадр для каждого дропа.

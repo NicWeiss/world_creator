@@ -3,6 +3,7 @@ package com.nicweiss.editor.objects;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.g2d.Batch;
 import com.nicweiss.editor.Generic.BaseObject;
+import com.nicweiss.editor.simulation.Drop;
 import com.nicweiss.editor.utils.Transform;
 
 
@@ -18,6 +19,13 @@ public class MapObject  extends BaseObject {
     public boolean isDialogBind = false;
 
     float[] point;
+
+    // Свечение сфер опыта (см. calcLitColor). Публичные — Drop.computeLitColor() переиспользует
+    // эти же константы, чтобы предметы/золото освещались теми же сферами так же, как тайлы.
+    public static final float EXP_ORB_LIGHT_RADIUS = 80f;
+    public static final float EXP_ORB_LIGHT_R = 0.08f;
+    public static final float EXP_ORB_LIGHT_G = 0.30f;
+    public static final float EXP_ORB_LIGHT_B = 0.70f;
 
     public MapObject(){
         isEnableRenderLimits = true;
@@ -444,6 +452,27 @@ public class MapObject  extends BaseObject {
                 lr = Math.max(lr, rp);
                 // lg = max(lg, gp) — не нужно, gp=0
                 lb = Math.max(lb, bp);
+            }
+        }
+
+        // Сферы опыта — очень слабый неоново-синий источник света радиусом ~1 тайл (см. Drop.expAmount).
+        // Не входят в store.lightPoints (та система — для статичных, редко меняющихся источников;
+        // сферы летают, часто спавнятся/подбираются) — считаются заново каждый кадр, как вспышка молнии.
+        if (store.isSimulationMode && store.drops != null) {
+            for (Drop d : store.drops) {
+                if (d == null || d.expAmount <= 0) continue;
+                // getLightSourceIsoX/Y — та же формула, что Light.addColoredPoint для обычных
+                // источников света: сравниваем "как источник света", а не как позицию спрайта,
+                // иначе свет ложится со сдвигом (см. store.lightPoints[i][1]/[2] в calcLight выше).
+                float odx = (x - store.shiftX + (float) width / 2f) - d.getLightSourceIsoX();
+                float ody = ((y - store.shiftY - height * 0.1f) - d.getLightSourceIsoY()) * 1.45f;
+                if (Math.abs(odx) > EXP_ORB_LIGHT_RADIUS || Math.abs(ody) > EXP_ORB_LIGHT_RADIUS) continue;
+                float odist = (float) Math.sqrt(odx * odx + ody * ody);
+                if (odist >= EXP_ORB_LIGHT_RADIUS) continue;
+                float t = 1f - odist / EXP_ORB_LIGHT_RADIUS;
+                lr = Math.max(lr, EXP_ORB_LIGHT_R * t);
+                lg = Math.max(lg, EXP_ORB_LIGHT_G * t);
+                lb = Math.max(lb, EXP_ORB_LIGHT_B * t);
             }
         }
 
