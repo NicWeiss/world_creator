@@ -140,6 +140,13 @@ public class SystemUI {
 
     // ── Геймпад edge-detect ───────────────────────────────────────────────────
     private boolean prevLT = false, prevRT = false, prevStart = false, prevB = false, prevBX = false;
+    private boolean prevY = false, prevAGp = false;
+
+    // ── Сравнение предметов ───────────────────────────────────────────────────
+    private boolean compareMode = false;      // Shift удержан / Y на геймпаде
+    private float   holdATimer  = 0f;         // сколько A уже зажата
+    private boolean holdAFired  = false;      // долгое нажатие A уже сработало
+    private static final float HOLD_A_SWAP = 1.0f; // секунд до быстрой замены
 
     // ── Кэшированная геометрия панели (обновляется каждый render) ────────────
     private float _px = 0, _py = 0;
@@ -233,38 +240,62 @@ public class SystemUI {
 
         // Клик в зоне инвентаря
         if (activeTab == Tab.INVENTORY) {
-            tryInteractAt(mx, my);
+            boolean shift = Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_LEFT)
+                         || Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_RIGHT);
+            if (shift && draggedItem == null) quickSwapWithEquipped(mx, my);
+            else                              tryInteractAt(mx, my);
         }
 
         return true;
     }
 
-    /** Опрос кнопок геймпада (edge-detect внутри). stickX/Y — левый стик [-1..1]. */
+    /** Опрос кнопок геймпада. stickX/Y — левый стик [-1..1]. a/y/bx — кнопки A, Y, X. */
     public void pollGamepad(boolean start, boolean lt, boolean rt, boolean b,
-                            boolean bx, float stickX, float stickY) {
+                            boolean bx, boolean y, boolean a, float stickX, float stickY) {
         float dt = Gdx.graphics.getDeltaTime();
 
         if (start && !prevStart) {
-            if (isOpen) { cancelDrag(); isOpen = false; }
+            if (isOpen) { compareMode = false; cancelDrag(); isOpen = false; }
             else        { toggle(Tab.INVENTORY); }
         }
         if (lt && !prevLT && isOpen) switchTab(-1);
         if (rt && !prevRT && isOpen) switchTab(+1);
-        if (b  && !prevB  && isOpen) { cancelDrag(); isOpen = false; }
+        if (b  && !prevB  && isOpen) { compareMode = false; cancelDrag(); isOpen = false; }
 
         // X — выбросить перетаскиваемый предмет на землю
         if (bx && !prevBX && isOpen && draggedItem != null) dropDraggedToGround();
 
-        // Курсор геймпада и взаимодействие в инвентаре
+        // Y — переключить режим сравнения
+        if (y && !prevY && isOpen && activeTab == Tab.INVENTORY) compareMode = !compareMode;
+
         if (isOpen && activeTab == Tab.INVENTORY) {
             float contentH = PANEL_H - TAB_H - 1;
             if (Math.abs(stickX) > 0.12f) gpX += stickX * GP_SPEED * dt;
-            if (Math.abs(stickY) > 0.12f) gpY -= stickY * GP_SPEED * dt; // стик Y инвертирован
+            if (Math.abs(stickY) > 0.12f) gpY -= stickY * GP_SPEED * dt;
             gpX = Math.max(_px, Math.min(_px + PANEL_W - CELL, gpX));
             gpY = Math.max(_py, Math.min(_py + contentH - CELL, gpY));
+
+            // A: долгое удержание (≥1с) — быстрый своп со сравниваемым; короткое — обычный подбор
+            if (a) {
+                holdATimer += dt;
+                if (!holdAFired && holdATimer >= HOLD_A_SWAP) {
+                    quickSwapWithEquipped(gpX + CELL * 0.5f, gpY + CELL * 0.5f);
+                    holdAFired = true;
+                }
+            } else {
+                if (prevAGp && !holdAFired) {
+                    // Отпускание A без долгого удержания — обычное взаимодействие
+                    tryInteractAt(gpX + CELL * 0.5f, gpY + CELL * 0.5f);
+                }
+                holdATimer = 0f;
+                holdAFired = false;
+            }
+        } else {
+            holdATimer = 0f; holdAFired = false;
         }
 
         prevStart = start; prevLT = lt; prevRT = rt; prevB = b; prevBX = bx;
+        prevY = y; prevAGp = a;
     }
 
     /** Навигация по кнопкам меню (D-pad / стрелки). */
@@ -273,14 +304,12 @@ public class SystemUI {
         menuFocus = (menuFocus + dir + MENU_ITEMS.length) % MENU_ITEMS.length;
     }
 
-    /** Активация кнопки в фокусе (кнопка A). */
+    /** Активация кнопки в фокусе (кнопка A) — только для MENU вкладки.
+     *  INVENTORY обрабатывается внутри pollGamepad (различие короткого/долгого нажатия). */
     public void gamepadActivate() {
         if (!isOpen) return;
-        if (activeTab == Tab.MENU) {
-            activateMenuItem(menuFocus);
-        } else if (activeTab == Tab.INVENTORY) {
-            tryInteractAt(gpX + CELL * 0.5f, gpY + CELL * 0.5f);
-        }
+        if (activeTab == Tab.MENU) activateMenuItem(menuFocus);
+        // INVENTORY: handled in pollGamepad via hold-A detection
     }
 
     // ── Рендер ────────────────────────────────────────────────────────────────
@@ -471,12 +500,26 @@ public class SystemUI {
             rect(batch, gpX, gpY, CELL, CELL);
         }
 
-        // ── Тултип предмета под курсором ──────────────────────────────────────
+        // ── Детект Shift для режима сравнения (мышь/клавиатура) ──────────────────
+        if (!store.isGamepadMode) {
+            compareMode = Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_LEFT)
+                       || Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_RIGHT);
+        }
+
+        // ── Тултип (и сравнение) предмета под курсором ────────────────────────
         float tipX = store.isGamepadMode ? gpX + CELL * 0.5f : store.mouseX;
         float tipY = store.isGamepadMode ? gpY + CELL * 0.5f : store.mouseY;
         LinkedHashMap hovered = getHoveredItem(tipX, tipY);
-        if (hovered != null && hovered != draggedItem) {
-            renderTooltip(batch, hovered, tipX, tipY);
+        if (hovered != null) {
+            // Сравнение не показываем для уже надетых предметов
+            boolean hoveredIsEquipped = isEquippedItem(hovered);
+            java.util.List<LinkedHashMap> compItems = (compareMode && !hoveredIsEquipped)
+                ? getComparisonItems(hovered) : java.util.Collections.emptyList();
+            if (compItems.isEmpty()) {
+                renderTooltip(batch, hovered, tipX, tipY, hoveredIsEquipped);
+            } else {
+                renderTooltipWithComparisons(batch, hovered, compItems, tipX, tipY);
+            }
         }
     }
 
@@ -875,7 +918,267 @@ public class SystemUI {
 
     // ── Тултип ───────────────────────────────────────────────────────────────
 
-    private void renderTooltip(SpriteBatch batch, LinkedHashMap item, float curX, float curY) {
+    // ── Сравнение и быстрый своп ──────────────────────────────────────────────
+
+    /** true если предмет сейчас находится в одном из eq-слотов. */
+    private boolean isEquippedItem(LinkedHashMap item) {
+        for (LinkedHashMap eq : store.equipmentSlots) {
+            if (eq == item) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Возвращает все надетые предметы, с которыми можно сравнить item.
+     * Для артефактов — все занятые из слотов 6-10 (до 5 штук).
+     * Для остальных типов — первый занятый совместимый слот (список из 1 элемента или пуст).
+     */
+    private java.util.List<LinkedHashMap> getComparisonItems(LinkedHashMap item) {
+        java.util.List<LinkedHashMap> result = new java.util.ArrayList<>();
+        if (item == null) return result;
+        String type = (String) item.get("__type__");
+        for (int slotIdx : allowedEqSlotsForType(type)) {
+            LinkedHashMap eq = store.equipmentSlots[slotIdx];
+            if (eq != null) {
+                result.add(eq);
+                if (!"artifact".equals(type)) break; // для не-артефактов — только первый
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Быстрый своп: предмет под курсором ↔ надетый предмет того же типа.
+     * Надетый идёт в инвентарь на место выбранного (или в первое свободное, или на землю).
+     */
+    private void quickSwapWithEquipped(float cx, float cy) {
+        // Курсор над eq-слотом — пытаемся снять предмет в инвентарь
+        int eqIdx = getEqSlotAt(cx, cy);
+        if (eqIdx >= 0 && store.equipmentSlots[eqIdx] != null) {
+            LinkedHashMap eqItem = store.equipmentSlots[eqIdx];
+            int w = eqItem.containsKey("__width__")  ? (int) eqItem.get("__width__")  : 1;
+            int h = eqItem.containsKey("__height__") ? (int) eqItem.get("__height__") : 1;
+            int[] slot = findFreeInvSlot(w, h);
+            if (slot != null) {
+                store.equipmentSlots[eqIdx] = null;
+                putInInventory(eqItem, slot[0], slot[1]);
+            }
+            // Места нет — ничего не делаем
+            return;
+        }
+
+        // Курсор над предметом в инвентаре — экипируем / свапаем
+        int[] cell = getInvCellAt(cx, cy);
+        if (cell == null) return;
+        LinkedHashMap inv = getItemAt(cell[0], cell[1]);
+        if (inv == null) return;
+
+        String invType = (String) inv.get("__type__");
+
+        // Артефакты: только занять свободную ячейку, свап по кнопке недоступен
+        if ("artifact".equals(invType)) {
+            int targetSlot = -1;
+            for (int s : allowedEqSlotsForType(invType)) {
+                if (store.equipmentSlots[s] == null) { targetSlot = s; break; }
+            }
+            if (targetSlot < 0) return; // все 5 слотов заняты — ничего не делаем
+            int iw = inv.containsKey("__width__")  ? (int) inv.get("__width__")  : 1;
+            int ih = inv.containsKey("__height__") ? (int) inv.get("__height__") : 1;
+            String key = getItemKey(inv);
+            if (key != null) store.inventory.remove(key);
+            clearInvGrid((int) inv.get("__inv_x__"), (int) inv.get("__inv_y__"), iw, ih);
+            store.equipmentSlots[targetSlot] = inv;
+            return;
+        }
+
+        // Если ничего не надето — просто экипируем
+        java.util.List<LinkedHashMap> compList = getComparisonItems(inv);
+        LinkedHashMap comp = compList.isEmpty() ? null : compList.get(0);
+        if (comp == null) {
+            int[] allowed = allowedEqSlotsForType(invType);
+            if (allowed.length == 0) return;
+            int targetSlot = -1;
+            for (int s : allowed) { if (store.equipmentSlots[s] == null) { targetSlot = s; break; } }
+            if (targetSlot < 0) return;
+            int iw = inv.containsKey("__width__")  ? (int) inv.get("__width__")  : 1;
+            int ih = inv.containsKey("__height__") ? (int) inv.get("__height__") : 1;
+            String key = getItemKey(inv);
+            if (key != null) store.inventory.remove(key);
+            clearInvGrid((int) inv.get("__inv_x__"), (int) inv.get("__inv_y__"), iw, ih);
+            store.equipmentSlots[targetSlot] = inv;
+            return;
+        }
+
+        // Найти eq-слот надетого предмета
+        int eqSlot = -1;
+        for (int i = 0; i < store.equipmentSlots.length; i++) {
+            if (store.equipmentSlots[i] == comp) { eqSlot = i; break; }
+        }
+        if (eqSlot < 0 || !canPlaceInEqSlot(eqSlot, inv)) return;
+
+        int invW = inv.containsKey("__width__")  ? (int) inv.get("__width__")  : 1;
+        int invH = inv.containsKey("__height__") ? (int) inv.get("__height__") : 1;
+        int ic   = (int) inv.get("__inv_x__"), ir = (int) inv.get("__inv_y__");
+        int compW = comp.containsKey("__width__")  ? (int) comp.get("__width__")  : 1;
+        int compH = comp.containsKey("__height__") ? (int) comp.get("__height__") : 1;
+
+        // Убираем inv из инвентаря
+        String invKey = getItemKey(inv);
+        if (invKey != null) store.inventory.remove(invKey);
+        clearInvGrid(ic, ir, invW, invH);
+
+        // Inv → eq-слот
+        store.equipmentSlots[eqSlot] = inv;
+
+        // Comp → на место inv, или в свободную ячейку, или на землю
+        if (isInvSlotFree(ic, ir, compW, compH)) {
+            putInInventory(comp, ic, ir);
+        } else {
+            int[] freeSlot = findFreeInvSlot(compW, compH);
+            if (freeSlot != null) putInInventory(comp, freeSlot[0], freeSlot[1]);
+            else                   DropManager.spawnDropAtPlayer(comp);
+        }
+    }
+
+    // ── Тултип ───────────────────────────────────────────────────────────────
+
+    /** Рисует два тултипа рядом: слева — надетый (с меткой «Экипировано»), справа — под курсором. */
+    /**
+     * Рисует основной тултип справа и comparison-тултипы слева.
+     * Comparison-тултипы раскладываются колонками по MAX_COMP_PER_COL в высоту.
+     */
+    private static final int MAX_COMP_PER_COL = 2;
+
+    private void renderTooltipWithComparisons(SpriteBatch batch, LinkedHashMap item,
+                                              java.util.List<LinkedHashMap> compList,
+                                              float curX, float curY) {
+        float gap    = 8f;
+        float colGap = 8f;
+        float screenW = store.uiWidthOriginal;
+        float screenH = store.uiHeightOriginal;
+        int   n       = compList.size();
+
+        float[] id = tooltipDimensions(item, false);
+        float[][] cd = new float[n][];
+        for (int i = 0; i < n; i++) cd[i] = tooltipDimensions(compList.get(i), true);
+
+        int numCols = (n + MAX_COMP_PER_COL - 1) / MAX_COMP_PER_COL;
+
+        // Единая ширина всех comparison-тултипов (max)
+        float colW = 0;
+        for (float[] d : cd) colW = Math.max(colW, d[0]);
+
+        // Максимальная высота среди всех колонок
+        float maxColH = 0;
+        for (int col = 0; col < numCols; col++) {
+            int from = col * MAX_COMP_PER_COL;
+            int to   = Math.min(from + MAX_COMP_PER_COL, n);
+            float colH = -gap;
+            for (int i = from; i < to; i++) colH += cd[i][1] + gap;
+            maxColH = Math.max(maxColH, colH);
+        }
+
+        float compAreaW = numCols * colW + (numCols - 1) * colGap;
+        float totalW    = compAreaW + id[0] + gap;
+        float pairLeft  = Math.max(2f, Math.min(screenW - totalW - 2f, curX - totalW * 0.5f));
+        float itemX     = pairLeft + compAreaW + gap;
+
+        float sharedH = Math.max(id[1], maxColH);
+        float sharedY = computeTooltipY(curY, sharedH);
+
+        renderTooltipAt(batch, item, itemX, sharedY, id[0], id[1], false);
+
+        for (int col = 0; col < numCols; col++) {
+            int from = col * MAX_COMP_PER_COL;
+            int to   = Math.min(from + MAX_COMP_PER_COL, n);
+
+            float colH = -gap;
+            for (int i = from; i < to; i++) colH += cd[i][1] + gap;
+
+            float colX   = pairLeft + col * (colW + colGap);
+            float colTop = sharedY + (sharedH - colH) * 0.5f;
+            colTop = Math.max(2f, Math.min(screenH - colH - 2f, colTop));
+
+            float cy = colTop;
+            for (int i = from; i < to; i++) {
+                renderTooltipAt(batch, compList.get(i), colX, cy, colW, cd[i][1], true);
+                cy += cd[i][1] + gap;
+            }
+        }
+    }
+
+    /** Вычисляет Y-позицию тултипа: выше или ниже курсора. Зажимается в экранные границы. */
+    private float computeTooltipY(float curY, float th) {
+        float screenH = store.uiHeightOriginal;
+        float spaceAbove = curY;
+        float spaceBelow = screenH - curY;
+        float ty = (spaceAbove >= th + 12f || (spaceAbove > spaceBelow && spaceAbove >= th + 4f))
+            ? curY - th - 10f : curY + 10f;
+        return Math.max(2f, Math.min(screenH - th - 2f, ty));
+    }
+
+    /** Вычисляет ширину и высоту тултипа без рендеринга (измеряет все строки). */
+    private float[] tooltipDimensions(LinkedHashMap item, boolean equipped) {
+        float TPAD = 14f, LINE_H = 22f;
+        String typeKey  = (String) item.get("__type__");
+        String classKey = (String) item.get("__itemClass__");
+        String name     = item.containsKey("__name__") ? (String) item.get("__name__") : "Предмет";
+
+        String subtypeLabel = null;
+        if (typeKey != null && classKey != null && com.nicweiss.editor.utils.ItemModifierCatalog.TYPES.containsKey(typeKey))
+            subtypeLabel = com.nicweiss.editor.utils.ItemModifierCatalog.TYPES.get(typeKey).labelForClass(classKey);
+
+        String mainStatLine = null;
+        if (item.containsKey("__mainStat__"))
+            mainStatLine = ("weapon".equals(typeKey) ? "Урон" : "Защита") + ": " + item.get("__mainStat__");
+
+        java.util.List<String> reqLines = new java.util.ArrayList<>();
+        if (item.containsKey("__reqLevel__")    && toInt(item.get("__reqLevel__"))    > 1) reqLines.add("Требуемый уровень: "  + item.get("__reqLevel__"));
+        if (item.containsKey("__reqStrength__") && toInt(item.get("__reqStrength__")) > 0) reqLines.add("Требуемая сила: "     + item.get("__reqStrength__"));
+        if (item.containsKey("__reqMagic__")    && toInt(item.get("__reqMagic__"))    > 0) reqLines.add("Требуемая магия: "    + item.get("__reqMagic__"));
+
+        java.util.List<String> modLines = new java.util.ArrayList<>();
+        Object statsObj = item.get("__stats__");
+        if (statsObj instanceof LinkedHashMap) {
+            for (Object v : ((LinkedHashMap) statsObj).values()) {
+                if (!(v instanceof LinkedHashMap)) continue;
+                LinkedHashMap e = (LinkedHashMap) v;
+                String modId = (String) e.get("__modId__");
+                int val = toInt(e.get("__value__"));
+                com.nicweiss.editor.utils.ItemModifierCatalog.ModifierDef def =
+                    typeKey != null ? com.nicweiss.editor.utils.ItemModifierCatalog.findModifier(typeKey, modId) : null;
+                modLines.add(def != null ? def.name + ": +" + val + (def.unit.isEmpty() ? "" : " " + def.unit) : modId + ": +" + val);
+            }
+        }
+
+        int lines = 1 + (subtypeLabel != null ? 1 : 0) + (mainStatLine != null ? 2 : 0)
+                  + (!modLines.isEmpty() ? modLines.size() + 1 : 0)
+                  + (!reqLines.isEmpty() ? reqLines.size() + 1 : 0)
+                  + (equipped ? 2 : 0);
+
+        float minW = 180f;
+        layout.setText(font, name); minW = Math.max(minW, layout.width);
+        if (subtypeLabel != null) { layout.setText(font, subtypeLabel); minW = Math.max(minW, layout.width); }
+        if (mainStatLine != null) { layout.setText(font, mainStatLine); minW = Math.max(minW, layout.width); }
+        for (String l : modLines) { layout.setText(font, l);            minW = Math.max(minW, layout.width); }
+        for (String r : reqLines) { layout.setText(font, r);            minW = Math.max(minW, layout.width); }
+        if (equipped)             { layout.setText(font, "Экипировано"); minW = Math.max(minW, layout.width); }
+
+        return new float[]{ minW + TPAD * 2, lines * LINE_H + TPAD * 2 };
+    }
+
+    private void renderTooltip(SpriteBatch batch, LinkedHashMap item, float curX, float curY, boolean equipped) {
+        float[] d = tooltipDimensions(item, equipped);
+        float tw = d[0], th = d[1];
+        float screenW = store.uiWidthOriginal;
+        float ty = computeTooltipY(curY, th);
+        float tx = Math.max(2f, Math.min(screenW - tw - 2f, curX - tw * 0.5f));
+        renderTooltipAt(batch, item, tx, ty, tw, th, equipped);
+    }
+
+    /** Рисует тултип по явным координатам (tx,ty) с известными размерами. */
+    private void renderTooltipAt(SpriteBatch batch, LinkedHashMap item,
+                                  float tx, float ty, float tw, float th, boolean equipped) {
         String typeKey   = (String) item.get("__type__");
         String classKey  = (String) item.get("__itemClass__");
         String rarityKey = item.containsKey("__rarity__") ? (String) item.get("__rarity__") : "common";
@@ -925,43 +1228,8 @@ public class SystemUI {
         }
 
 
-        // ── Вычисляем размеры тултипа ─────────────────────────────────────────
-        float TPAD = 14f, LINE_H = 22f, SEP_H = LINE_H; // SEP занимает место строки
-        int lineCount = 1 // name
-            + (subtypeLabel  != null ? 1 : 0)
-            + (mainStatLine  != null ? 2 : 0) // sep + main
-            + (!modLines.isEmpty()  ? modLines.size() + 1 : 0) // sep + lines
-            + (!reqLines.isEmpty()  ? reqLines.size()  + 1 : 0);
-        float minW = 180f;
-        java.util.List<String> allText = new java.util.ArrayList<>();
-        allText.add(name);
-        if (subtypeLabel != null) allText.add(subtypeLabel);
-        if (mainStatLine != null) allText.add(mainStatLine);
-        allText.addAll(modLines);
-        allText.addAll(reqLines);
-        for (String t : allText) { layout.setText(font, t); minW = Math.max(minW, layout.width); }
-
-        float tw = minW + TPAD * 2;
-        float th = lineCount * LINE_H + TPAD * 2;
-
-        // Размещаем сверху или снизу курсора — там где больше места
-        float contentBottom = _py;
-        float contentTop    = _py + PANEL_H - TAB_H;
-        float spaceAbove    = curY - contentBottom;
-        float spaceBelow    = contentTop - curY;
-        float tx, ty;
-        if (spaceAbove >= th + 12f || (spaceAbove > spaceBelow && spaceAbove >= th + 4f)) {
-            ty = curY - th - 10f; // сверху
-        } else {
-            ty = curY + 10f;      // снизу
-        }
-        ty = Math.max(contentBottom + 2f, Math.min(contentTop - th - 2f, ty));
-
-        // Горизонтально: центрируем под курсором
-        tx = curX - tw * 0.5f;
-        tx = Math.max(_px + 2f, Math.min(_px + PANEL_W - tw - 2f, tx));
-
         // ── Рендер ────────────────────────────────────────────────────────────
+        float TPAD = 14f, LINE_H = 22f;
         col(batch, C_TOOLTIP_BG);
         batch.draw(pixel, tx, ty, tw, th);
         col(batch, C_BORDER);
@@ -969,40 +1237,39 @@ public class SystemUI {
 
         float lineY = ty + th - TPAD - LINE_H * 0.72f;
 
-        // Имя — цвет по редкости, по центру
         float[] rc = rarityColor(rarityKey);
         font.setColor(rc[0], rc[1], rc[2], 1f);
         drawCentered(batch, name, tx, lineY, tw); lineY -= LINE_H;
 
-        // Подтип
         if (subtypeLabel != null) {
             font.setColor(C_TEXT_DIM);
             drawCentered(batch, subtypeLabel, tx, lineY, tw); lineY -= LINE_H;
         }
 
-        // Основная характеристика
         if (mainStatLine != null) {
-            col(batch, C_BORDER); batch.draw(pixel, tx + TPAD, lineY, tw - TPAD * 2, 1f); lineY -= SEP_H * 0.5f;
+            col(batch, C_BORDER); batch.draw(pixel, tx + TPAD, lineY, tw - TPAD * 2, 1f); lineY -= LINE_H * 0.5f;
             font.setColor(C_TEXT_ACT);
             drawCentered(batch, mainStatLine, tx, lineY, tw); lineY -= LINE_H;
         }
 
-        // Требования
         if (!reqLines.isEmpty()) {
-//            col(batch, C_BORDER); batch.draw(pixel, tx + TPAD, lineY, tw - TPAD * 2, 1f); lineY -= SEP_H * 0.5f;
             for (String r : reqLines) {
                 font.setColor(0.80f, 0.30f, 0.30f, 1f);
                 drawCentered(batch, r, tx, lineY, tw); lineY -= LINE_H;
             }
         }
 
-        // Модификаторы
         if (!modLines.isEmpty()) {
-//            col(batch, C_BORDER); batch.draw(pixel, tx + TPAD, lineY, tw - TPAD * 2, 1f); lineY -= SEP_H * 0.5f;
             for (String l : modLines) {
                 font.setColor(0.95f, 0.78f, 0.35f, 1f);
                 drawCentered(batch, l, tx, lineY, tw); lineY -= LINE_H;
             }
+        }
+
+        if (equipped) {
+            col(batch, C_BORDER); batch.draw(pixel, tx + TPAD, lineY, tw - TPAD * 2, 1f); lineY -= LINE_H * 0.5f;
+            font.setColor(0.40f, 0.80f, 0.40f, 1f);
+            drawCentered(batch, "Экипировано", tx, lineY, tw);
         }
 
         batch.setColor(1, 1, 1, 1);

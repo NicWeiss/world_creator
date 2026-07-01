@@ -198,8 +198,10 @@ public class SimulationInputThread implements Runnable {
         }
 
         boolean bx = safeButton(ctrl, m.buttonX);
+        boolean by = safeButton(ctrl, m.buttonY);
+        boolean ba = safeButton(ctrl, m.buttonA);
         if (store.systemUI != null) {
-            store.systemUI.pollGamepad(start, lt, rt, safeButton(ctrl, m.buttonB), bx, ax, ay);
+            store.systemUI.pollGamepad(start, lt, rt, safeButton(ctrl, m.buttonB), bx, by, ba, ax, ay);
         }
 
         // D-pad и A — навигация меню (edge-detect)
@@ -210,7 +212,8 @@ public class SimulationInputThread implements Runnable {
         if (store.systemUI != null && store.systemUI.isOpen()) {
             if (dUp   && !prevDUp)   store.systemUI.gamepadNavigate(-1);
             if (dDown && !prevDDown) store.systemUI.gamepadNavigate(+1);
-            if (a     && !prevA)     store.systemUI.gamepadActivate();
+            // A в инвентаре обрабатывается pollGamepad (различие короткого/долгого нажатия)
+            if (a && !prevA && store.systemUI.isMenuOpen()) store.systemUI.gamepadActivate();
         } else if (a && !prevA) {
             // UI закрыт: A подбирает предмет в фокусе (см. DropManager.renderLabels).
             DropManager.tryPickupFocused();
