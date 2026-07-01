@@ -21,12 +21,53 @@ public class Player extends BaseObject {
     // ── Характеристики ─────────────────────────────────────────────────────────
     public float maxHealth = 100f;
     public float health    = 100f;
-    public float speed     = 1.0f;   // множитель скорости (1 = стандарт)
-    public int level       = 1;
-    // Поиск предметов/золота — проценты сверх базы (Magic Find / Gold Find), влияют на дроп (см. DropManager).
-    public float magicFind = 0f;
-    public float goldFind  = 0f;
-    public int gold = 0; // накопленное золото — подбирается при наступании на кучку (см. DropManager.checkPickups)
+    public float speed     = 1.0f;
+    public int level       = 10;
+    public int gold        = 0;
+
+    // ── Базовые атрибуты (прокачиваются игроком) ─────────────────────────────
+    public int baseStrength  = 20;
+    public int baseMagic     = 20;
+    public int baseDexterity = 0;
+
+    // ── Вычисленные эффективные статы (= base + предметы + чармы) ────────────
+    // Пересчитываются PlayerStatEngine.recompute() при любом изменении снаряжения.
+    public int strength     = 20;
+    public int magic        = 20;
+    public int dexterity    = 0;
+    public int energy       = 0;
+    public int stamina      = 0;
+    public int maxMana      = 0;
+
+    // Резисты — каждая стихия отдельно
+    public int fireRes      = 0;
+    public int coldRes      = 0;
+    public int lightningRes = 0;
+
+    // Боевые
+    public int attackSpeed  = 0;  // IAS %
+    public int castSpeed    = 0;  // FCR %
+    public int runSpeed     = 0;  // FRW %
+    public int attackRating = 0;
+    public int physDamage   = 0;
+    public int magicDamage  = 0;
+
+    // Защитные
+    public int defence           = 0;  // плоская защита
+    public int defenceRating     = 0;  // % повышенная защита
+    public int physDamageReduce  = 0;  // снижение физического урона
+    public int magicDamageReduce = 0;  // снижение магического урона
+
+    // Контейнеры для артефактов (из пояса)
+    public int containers   = 0;  // сколько слотов артефактов доступно (0-5)
+
+    // Личи
+    public int lifeLeech    = 0;
+    public int manaLeech    = 0;
+
+    // Поиск
+    public float magicFind  = 0f;
+    public float goldFind   = 0f;
 
     // ── Анимация ───────────────────────────────────────────────────────────────
     public Direction direction = Direction.DOWN;

@@ -25,8 +25,8 @@ public class SystemUI {
     public static Store store;
 
     // ── Вкладки ───────────────────────────────────────────────────────────────
-    public enum Tab { QUESTS, INVENTORY, SKILLS, MENU }
-    private static final String[] TAB_LABELS = {"ЗАДАНИЯ", "ИНВЕНТАРЬ", "НАВЫКИ", "МЕНЮ"};
+    public enum Tab { QUESTS, INVENTORY, STATS, SKILLS, MENU }
+    private static final String[] TAB_LABELS = {"ЗАДАНИЯ", "ИНВЕНТАРЬ", "СТАТЫ", "НАВЫКИ", "МЕНЮ"};
 
     private boolean isOpen    = false;
     private Tab     activeTab = Tab.INVENTORY;
@@ -134,8 +134,9 @@ public class SystemUI {
     private static final Color C_TEXT      = new Color(0.85f, 0.88f, 0.95f, 1f);
     private static final Color C_TEXT_DIM  = new Color(0.45f, 0.50f, 0.60f, 1f);
     private static final Color C_TEXT_ACT  = new Color(1.00f, 1.00f, 1.00f, 1f);
-    private static final Color C_HIGHLIGHT_OK  = new Color(0.10f, 0.85f, 0.20f, 0.40f);
-    private static final Color C_HIGHLIGHT_BAD = new Color(0.90f, 0.15f, 0.10f, 0.40f);
+    private static final Color C_HIGHLIGHT_OK   = new Color(0.10f, 0.85f, 0.20f, 0.40f); // зелёный — можно надеть
+    private static final Color C_HIGHLIGHT_WARN = new Color(0.90f, 0.50f, 0.05f, 0.45f); // рыжий — тип подходит, нет статов
+    private static final Color C_HIGHLIGHT_BAD  = new Color(0.90f, 0.15f, 0.10f, 0.40f); // красный — тип не совпадает
     private static final Color C_TOOLTIP_BG    = new Color(0f,    0f,    0f,    0.80f);
 
     // ── Геймпад edge-detect ───────────────────────────────────────────────────
@@ -157,6 +158,12 @@ public class SystemUI {
     private float gpX = 0f, gpY = 0f;
     private static final float GP_SPEED = 500f;
     private boolean gpInitialized = false;
+
+    // ── Скролл вкладки статов ────────────────────────────────────────────────
+    private float statsScroll = 0f;
+    private static final float STATS_SCROLL_SPEED = 300f;
+    private static final float STATS_LINE_H       = 24f;
+    private static final float STATS_PAD          = 16f;
 
     // ── Буфер переноса ───────────────────────────────────────────────────────
     // Предмет в буфере ВСЕГДА вне store.inventory и store.equipmentSlots.
@@ -209,9 +216,11 @@ public class SystemUI {
 
         // Клик вне панели
         if (mx < px || mx > px + PANEL_W || my < py || my > py + PANEL_H) {
-            if (draggedItem != null) dropDraggedToGround();
-            else cancelDrag();
-            isOpen = false;
+            if (draggedItem != null) {
+                dropDraggedToGround(); // выбрасываем предмет, но окно не закрываем
+            } else {
+                isOpen = false;
+            }
             return false;
         }
 
@@ -265,8 +274,13 @@ public class SystemUI {
         // X — выбросить перетаскиваемый предмет на землю
         if (bx && !prevBX && isOpen && draggedItem != null) dropDraggedToGround();
 
-        // Y — переключить режим сравнения
+        // Y — переключить режим сравнения (инвентарь) / скролл вниз (статы)
         if (y && !prevY && isOpen && activeTab == Tab.INVENTORY) compareMode = !compareMode;
+
+        // Скролл вкладки статов левым стиком
+        if (isOpen && activeTab == Tab.STATS && Math.abs(stickY) > 0.12f) {
+            statsScroll = Math.max(0, statsScroll - stickY * STATS_SCROLL_SPEED * dt);
+        }
 
         if (isOpen && activeTab == Tab.INVENTORY) {
             float contentH = PANEL_H - TAB_H - 1;
@@ -296,6 +310,13 @@ public class SystemUI {
 
         prevStart = start; prevLT = lt; prevRT = rt; prevB = b; prevBX = bx;
         prevY = y; prevAGp = a;
+    }
+
+    /** Скролл колёсиком мыши (amountY > 0 = вниз). */
+    public boolean handleScroll(float amountY) {
+        if (!isOpen || activeTab != Tab.STATS) return false;
+        statsScroll = Math.max(0, statsScroll + amountY * STATS_LINE_H * 3);
+        return true;
     }
 
     /** Навигация по кнопкам меню (D-pad / стрелки). */
@@ -366,6 +387,7 @@ public class SystemUI {
         switch (activeTab) {
             case QUESTS:    renderPlaceholder(batch, px, py, cH, "Активных заданий нет."); break;
             case INVENTORY: renderInventory(batch, px, py, cH);                            break;
+            case STATS:     renderStats(batch, px, py, cH);                                break;
             case SKILLS:    renderPlaceholder(batch, px, py, cH, "Навыки не изучены.");    break;
             case MENU:      renderMenu(batch, px, py, cH);                                  break;
         }
@@ -409,6 +431,99 @@ public class SystemUI {
      * Рисует вкладку инвентаря: сверху сетка снаряжения, снизу главный инвентарь.
      * В Y-up libGDX: строка 0 снаряжения находится ВВЕРХУ (большой Y).
      */
+    private void renderStats(SpriteBatch batch, float px, float py, float cH) {
+        if (store.player == null) return;
+        Player p = store.player;
+        recomputePlayerStats();
+
+        // Собираем строки
+        java.util.List<String[]> lines = new java.util.ArrayList<>(); // {label, value, color_r, color_g, color_b}
+
+        // Вспомогательные лямбды для формата
+        // Базовый стат: "X (B + D)" если D != 0, иначе просто "X"
+        java.util.function.BiConsumer<String, int[]> addBase = (name, vals) -> {
+            int base = vals[0], bonus = vals[1], total = base + bonus;
+            String val = bonus != 0 ? total + " (" + base + " + " + bonus + ")" : String.valueOf(total);
+            lines.add(new String[]{name, val, "1.0", "1.0", "1.0"});
+        };
+        // Простой стат: показываем только если != 0
+        java.util.function.BiConsumer<String, int[]> addBonus = (name, vals) -> {
+            int v = vals[0]; String suffix = vals.length > 1 ? vals[1] + "" : "";
+            if (v == 0) return;
+            lines.add(new String[]{name, v + (vals.length > 1 ? "%" : ""), "0.85", "0.88", "0.95"});
+        };
+
+        // ── Базовые атрибуты ──────────────────────────────────────────────────
+        lines.add(new String[]{"Уровень", String.valueOf(p.level), "0.85", "0.88", "0.95"});
+        addBase.accept("Сила",     new int[]{p.baseStrength,  p.strength  - p.baseStrength});
+        addBase.accept("Магия",    new int[]{p.baseMagic,     p.magic     - p.baseMagic});
+        addBase.accept("Ловкость", new int[]{p.baseDexterity, p.dexterity - p.baseDexterity});
+        if (p.stamina   != 0) lines.add(new String[]{"Выносливость", String.valueOf(p.stamina),    "0.85","0.88","0.95"});
+        if (p.maxMana   != 0) lines.add(new String[]{"Мана",     "+" + p.maxMana,              "0.42","0.68","0.92"});
+
+        // ── Боевые ────────────────────────────────────────────────────────────
+        if (p.physDamage   != 0) lines.add(new String[]{"Физический урон",   "+" + p.physDamage,   "0.91","0.58","0.28"});
+        if (p.magicDamage  != 0) lines.add(new String[]{"Магический урон", "+" + p.magicDamage,  "0.72","0.55","0.90"});
+        if (p.attackRating != 0) lines.add(new String[]{"Рейтинг атаки",   String.valueOf(p.attackRating), "0.91","0.58","0.28"});
+        if (p.attackSpeed  != 0) lines.add(new String[]{"Скорость атаки",  p.attackSpeed  + "%", "0.91","0.58","0.28"});
+        if (p.castSpeed    != 0) lines.add(new String[]{"Скорость каста",  p.castSpeed    + "%", "0.72","0.55","0.90"});
+        if (p.runSpeed     != 0) lines.add(new String[]{"Скорость бега",   p.runSpeed     + "%", "0.85","0.77","0.35"});
+
+        // ── Защита ────────────────────────────────────────────────────────────
+        if (p.defence          != 0) lines.add(new String[]{"Защита",             String.valueOf(p.defence),          "0.35","0.80","0.75"});
+        if (p.defenceRating    != 0) lines.add(new String[]{"Повышение защита",      p.defenceRating    + "%",           "0.35","0.80","0.75"});
+        if (p.physDamageReduce != 0) lines.add(new String[]{"Снижение физического урона",String.valueOf(p.physDamageReduce), "0.35","0.80","0.75"});
+        if (p.magicDamageReduce!= 0) lines.add(new String[]{"Снижение магического урона",String.valueOf(p.magicDamageReduce),"0.35","0.80","0.75"});
+
+        // ── Резисты ───────────────────────────────────────────────────────────
+        if (p.fireRes      != 0) lines.add(new String[]{"Сопротивление к огню",   p.fireRes      + "%", "0.35","0.80","0.75"});
+        if (p.coldRes      != 0) lines.add(new String[]{"Сопротивление к холоду", p.coldRes      + "%", "0.35","0.80","0.75"});
+        if (p.lightningRes != 0) lines.add(new String[]{"Сопротивление к молнии", p.lightningRes + "%", "0.35","0.80","0.75"});
+
+        // ── Личи ─────────────────────────────────────────────────────────────
+        if (p.lifeLeech != 0) lines.add(new String[]{"Похищение жизни", p.lifeLeech + "%", "0.88","0.42","0.55"});
+        if (p.manaLeech != 0) lines.add(new String[]{"Похищение маны",  p.manaLeech + "%", "0.88","0.42","0.55"});
+
+        // ── Поиски ────────────────────────────────────────────────────────────
+        if (p.magicFind  != 0) lines.add(new String[]{"Поиск предметов",  (int)p.magicFind + "%", "0.85","0.77","0.35"});
+        if (p.goldFind   != 0) lines.add(new String[]{"Поиск золота",     (int)p.goldFind  + "%", "0.85","0.77","0.35"});
+        if (p.containers != 0) lines.add(new String[]{"Контейнеры",       String.valueOf(p.containers), "0.85","0.88","0.95"});
+
+        // ── Рендер ────────────────────────────────────────────────────────────
+        float totalH    = lines.size() * STATS_LINE_H + STATS_PAD * 2;
+        float maxScroll = Math.max(0, totalH - cH);
+        statsScroll     = Math.min(statsScroll, maxScroll);
+
+        float contentTop = py + cH - STATS_PAD + statsScroll;
+        float colValX    = px + PANEL_W - STATS_PAD;
+
+        for (String[] entry : lines) {
+            float lineY = contentTop - (lines.indexOf(entry) + 1) * STATS_LINE_H;
+            if (lineY + STATS_LINE_H < py) break;           // ниже видимой области
+            if (lineY > py + cH)           continue;         // выше видимой области
+
+            float r = Float.parseFloat(entry[2]), g = Float.parseFloat(entry[3]), b = Float.parseFloat(entry[4]);
+            font.setColor(r, g, b, 1f);
+            font.draw(batch, entry[0], px + STATS_PAD, lineY);
+
+            layout.setText(font, entry[1]);
+            font.draw(batch, entry[1], colValX - layout.width, lineY);
+        }
+
+        // Полоса скролла
+        if (maxScroll > 0) {
+            float trackH  = cH - STATS_PAD * 2;
+            float thumbH  = Math.max(20f, trackH * (cH / totalH));
+            float thumbY  = py + STATS_PAD + (trackH - thumbH) * (1f - statsScroll / maxScroll);
+            col(batch, C_BORDER);
+            batch.draw(pixel, px + PANEL_W - 6f, py + STATS_PAD, 4f, trackH);
+            col(batch, C_FOCUS_OUT);
+            batch.draw(pixel, px + PANEL_W - 6f, thumbY, 4f, thumbH);
+        }
+
+        batch.setColor(1, 1, 1, 1);
+    }
+
     private void renderInventory(SpriteBatch batch, float px, float py, float cH) {
         // ── Кэшируем геометрию (нужна для hit-testing в handleClick/pollGamepad) ──
         _px = px; _py = py;
@@ -419,6 +534,9 @@ public class SystemUI {
         float invGridX = px + (PANEL_W - (float)(INV_COLS * CELL)) / 2f;
         float invTop   = eqTop - EQ_TOTAL_H - INV_GAP;
         _invGridX = invGridX; _invTop = invTop;
+
+        // Пересчитываем статы игрока каждый кадр (снаряжение + чармы)
+        recomputePlayerStats();
 
         // Инициализируем курсор геймпада при первом открытии
         if (!gpInitialized) {
@@ -444,6 +562,17 @@ public class SystemUI {
             }
         }
 
+        // ── Серые заблокированные слоты артефактов ───────────────────────────
+        int availContainers = store.player != null ? store.player.containers : 0;
+        for (int i = 6; i <= 10; i++) {
+            if ((i - 6) < availContainers) continue;
+            int[] s = EQ_SLOTS[i];
+            col(batch, new com.badlogic.gdx.graphics.Color(0.12f, 0.12f, 0.15f, 0.88f));
+            batch.draw(pixel, gridX + s[0] + 1, eqTop - s[1] - s[3] * CELL + 1,
+                       s[2] * CELL - 2, s[3] * CELL - 2);
+        }
+        batch.setColor(1, 1, 1, 1);
+
         // ── Подсветка целевых клеток при перетаскивании ───────────────────────
         if (draggedItem != null) {
             int dw = draggedItem.containsKey("__width__")  ? (int) draggedItem.get("__width__")  : 1;
@@ -465,10 +594,14 @@ public class SystemUI {
                 int eq = getEqSlotAt(curX, curY);
                 if (eq >= 0) {
                     int[] es = EQ_SLOTS[eq];
-                    boolean ok = canPlaceInEqSlot(eq, draggedItem);
-                    drawHighlight(batch,
-                        gridX + es[0], eqTop - es[1] - es[3] * CELL,
-                        es[2] * CELL, es[3] * CELL, ok);
+                    boolean typeOk = canPlaceInEqSlot(eq, draggedItem);
+                    boolean reqOk  = typeOk && (store.player == null
+                        || itemMeetsRequirements(draggedItem, store.player));
+                    Color hlColor = typeOk ? (reqOk ? C_HIGHLIGHT_OK : C_HIGHLIGHT_WARN) : C_HIGHLIGHT_BAD;
+                    col(batch, hlColor);
+                    batch.draw(pixel, gridX + es[0] + 1, eqTop - es[1] - es[3] * CELL + 1,
+                               es[2] * CELL - 2, es[3] * CELL - 2);
+                    batch.setColor(1, 1, 1, 1);
                 }
             }
         }
@@ -525,7 +658,6 @@ public class SystemUI {
 
     /** Рисует иконки предметов в обычном инвентаре, пропуская перетаскиваемый. */
     private void renderInventoryItems(SpriteBatch batch) {
-        batch.setColor(1, 1, 1, 1);
         for (Object value : store.inventory.values()) {
             if (!(value instanceof LinkedHashMap)) continue;
             LinkedHashMap itemData = (LinkedHashMap) value;
@@ -544,14 +676,19 @@ public class SystemUI {
             float drawW = icon.getWidth() * scale, drawH = icon.getHeight() * scale;
             float x = _invGridX + col * CELL + (slotW - drawW) / 2f;
             float y = _invTop - row * CELL - h * CELL + (slotH - drawH) / 2f;
+
+            // Чарм с невыполненным уровнем — рыжий (не даёт статы)
+            boolean charmInactive = "charm".equals(itemData.get("__type__"))
+                && store.player != null
+                && !itemMeetsRequirements(itemData, store.player);
+            batch.setColor(charmInactive ? 0.75f : 1f, charmInactive ? 0.35f : 1f, charmInactive ? 0.05f : 1f, 1f);
             batch.draw(icon, x, y, drawW, drawH);
         }
         batch.setColor(1, 1, 1, 1);
     }
 
-    /** Рисует иконки предметов в слотах снаряжения. */
+    /** Рисует иконки предметов в слотах снаряжения. Неактивные (нет статов) — тёмно-красные. */
     private void renderEquipmentItems(SpriteBatch batch, float gridX, float eqTop) {
-        batch.setColor(1, 1, 1, 1);
         for (int i = 0; i < EQ_SLOTS.length; i++) {
             LinkedHashMap item = store.equipmentSlots[i];
             if (item == null) continue;
@@ -563,6 +700,10 @@ public class SystemUI {
             float drawW = icon.getWidth() * scale, drawH = icon.getHeight() * scale;
             float x = gridX + s[0] + (slotW - drawW) / 2f;
             float y = eqTop - s[1] - s[3] * CELL + (slotH - drawH) / 2f;
+            if (store.inactiveEquipment.contains(item))
+                batch.setColor(0.75f, 0.35f, 0.05f, 1f); // рыжий — не выполнены требования
+            else
+                batch.setColor(1f, 1f, 1f, 1f);
             batch.draw(icon, x, y, drawW, drawH);
         }
         batch.setColor(1, 1, 1, 1);
@@ -725,9 +866,11 @@ public class SystemUI {
 
         int eq = getEqSlotAt(cx, cy);
         if (eq >= 0 && canPlaceInEqSlot(eq, draggedItem)) {
+            // Проверяем требования: нельзя надеть если не хватает статов
+            if (store.player != null && !itemMeetsRequirements(draggedItem, store.player)) return;
             LinkedHashMap existing = store.equipmentSlots[eq];
             store.equipmentSlots[eq] = draggedItem;
-            draggedItem = existing; // null если слот был пуст, иначе — своп в буфер
+            draggedItem = existing;
         }
     }
 
@@ -767,6 +910,132 @@ public class SystemUI {
             for (int c = 0; c <= INV_COLS - w; c++)
                 if (isInvSlotFree(c, r, w, h)) return new int[]{c, r};
         return null;
+    }
+
+    // ── Система статов ────────────────────────────────────────────────────────
+
+    /**
+     * Пересчитывает эффективные статы игрока:
+     *   base + чармы в инвентаре (всегда активны) + снаряжение (активно если требования выполнены).
+     * Снаряжение активируется итеративно: надетый предмет может давать стату, нужную другому.
+     * Неактивные предметы заносятся в store.inactiveEquipment.
+     */
+    private void recomputePlayerStats() {
+        if (store.player == null) return;
+        Player p = store.player;
+
+        // Сброс к базовым значениям
+        p.strength = p.baseStrength; p.magic = p.baseMagic; p.dexterity = p.baseDexterity;
+        p.energy = 0; p.stamina = 0; p.maxMana = 0;
+        p.fireRes = 0; p.coldRes = 0; p.lightningRes = 0;
+        p.attackSpeed = 0; p.castSpeed = 0; p.runSpeed = 0;
+        p.attackRating = 0; p.physDamage = 0; p.magicDamage = 0;
+        p.defence = 0; p.defenceRating = 0;
+        p.physDamageReduce = 0; p.magicDamageReduce = 0;
+        p.containers = 0;
+        p.lifeLeech = 0; p.manaLeech = 0;
+        p.magicFind = 0f; p.goldFind = 0f;
+
+        // Чармы — активны если уровень игрока >= требуемого
+        for (Object v : store.inventory.values()) {
+            if (!(v instanceof LinkedHashMap)) continue;
+            LinkedHashMap item = (LinkedHashMap) v;
+            if (item == draggedItem) continue;
+            if ("charm".equals(item.get("__type__")) && itemMeetsRequirements(item, p))
+                applyItemStats(item, p);
+        }
+
+        // Фаза 1: всё снаряжение кроме артефактов (слоты 6-10), итеративно
+        // Нужно сначала получить containers от пояса, чтобы затем решить что делать с артефактами
+        boolean[] active = new boolean[store.equipmentSlots.length];
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (int i = 0; i < store.equipmentSlots.length; i++) {
+                if (i >= 6 && i <= 10) continue; // артефакты — в фазе 2
+                LinkedHashMap item = store.equipmentSlots[i];
+                if (item == null || item == draggedItem || active[i]) continue;
+                if (itemMeetsRequirements(item, p)) {
+                    applyItemStats(item, p);
+                    active[i] = true;
+                    changed = true;
+                }
+            }
+        }
+
+        // Фаза 2: артефакты — только в пределах containers
+        for (int i = 6; i <= 10; i++) {
+            LinkedHashMap item = store.equipmentSlots[i];
+            if (item == null || item == draggedItem) continue;
+            boolean slotUnlocked = (i - 6) < p.containers;
+            if (slotUnlocked && itemMeetsRequirements(item, p)) {
+                applyItemStats(item, p);
+                active[i] = true;
+            }
+        }
+
+        // Помечаем неактивные слоты
+        store.inactiveEquipment.clear();
+        for (int i = 0; i < store.equipmentSlots.length; i++) {
+            LinkedHashMap item = store.equipmentSlots[i];
+            if (item != null && item != draggedItem && !active[i])
+                store.inactiveEquipment.add(item);
+        }
+    }
+
+    /** Проверяет, выполняет ли игрок требования предмета по текущим эффективным статам. */
+    private static boolean itemMeetsRequirements(LinkedHashMap item, Player p) {
+        if (item == null) return true;
+        if (item.containsKey("__reqLevel__")    && toInt(item.get("__reqLevel__"))    > p.level)    return false;
+        if (item.containsKey("__reqStrength__") && toInt(item.get("__reqStrength__")) > p.strength) return false;
+        if (item.containsKey("__reqMagic__")    && toInt(item.get("__reqMagic__"))    > p.magic)    return false;
+        return true;
+    }
+
+    /** Добавляет бонусы всех статов предмета к Player. */
+    private static void applyItemStats(LinkedHashMap item, Player p) {
+        Object statsObj = item.get("__stats__");
+        if (!(statsObj instanceof LinkedHashMap)) return;
+        for (Object v : ((LinkedHashMap) statsObj).values()) {
+            if (!(v instanceof LinkedHashMap)) continue;
+            LinkedHashMap stat = (LinkedHashMap) v;
+            applyMod((String) stat.get("__modId__"), toInt(stat.get("__value__")), p);
+        }
+    }
+
+    private static void applyMod(String k, int v, Player p) {
+        if (k == null) return;
+        // Снижение урона проверяем ДО _magic/_mana чтобы не поймать magic_red в _magic
+        if      (k.contains("phys_red") || k.contains("phys_reduction"))  p.physDamageReduce  += v;
+        else if (k.contains("magic_red") || k.contains("magic_reduction")) p.magicDamageReduce += v;
+        else if (k.contains("strength"))     p.strength      += v;
+        else if (k.contains("_magic") || k.contains("_magick")) p.magic += v;
+        else if (k.contains("energy"))       p.energy        += v;
+        else if (k.contains("dexterity"))    p.dexterity     += v;
+        else if (k.contains("stamina"))      p.stamina       += v;
+        else if (k.contains("_health"))      p.maxHealth     += v;  // float field
+        else if (k.contains("_mana") && !k.contains("leech") && !k.contains("replenish")) p.maxMana += v;
+        else if (k.contains("allres"))       { p.fireRes += v; p.coldRes += v; p.lightningRes += v; }
+        else if (k.contains("_res_fire"))    p.fireRes       += v;
+        else if (k.contains("_res_cold"))    p.coldRes       += v;
+        else if (k.contains("_res_lightning")) p.lightningRes += v;
+        else if (k.contains("life_leech"))   p.lifeLeech     += v;
+        else if (k.contains("mana_leech"))   p.manaLeech     += v;
+        else if (k.contains("_mf"))          p.magicFind     += v;
+        else if (k.contains("_gf"))          p.goldFind      += v;
+        else if (k.contains("_ias"))         p.attackSpeed   += v;
+        else if (k.contains("_fcr"))         p.castSpeed     += v;
+        else if (k.contains("_frw"))         p.runSpeed      += v;
+        else if (k.contains("_ar"))          p.attackRating  += v;
+        else if (k.contains("_fire_dmg") || k.contains("_lightning_dmg")
+              || k.contains("_cold_dmg")  || k.contains("_elem_dmg")) p.magicDamage += v;
+        else if (k.contains("flat_def"))     p.defence       += v;
+        else if (k.contains("_def"))         p.defenceRating += v;  // ed_def, def_plate, def_robe
+        else if (k.contains("_maxdmg") || k.contains("flat_min"))          p.physDamage += v;
+        else if (k.contains("_ed") && !k.contains("_def"))                 p.physDamage += v;
+        else if (k.contains("damage") && !k.contains("magic") && !k.contains("_red")) p.physDamage += v;
+        else if (k.contains("all_attributes")) { p.strength += v; p.magic += v; p.dexterity += v; }
+        else if (k.contains("containers"))   p.containers    += v;
     }
 
     // ── Hit-testing ───────────────────────────────────────────────────────────
@@ -872,11 +1141,19 @@ public class SystemUI {
         return found;
     }
 
-    /** true если draggedItem подходит к eq-слоту по типу (слот может быть занят — это своп). */
+    /** true если draggedItem подходит к eq-слоту по типу и доступности (для артефактов — учитываем containers). */
     private boolean canPlaceInEqSlot(int slotIdx, LinkedHashMap item) {
         String type = (String) item.get("__type__");
         int[] allowed = allowedEqSlotsForType(type);
-        for (int s : allowed) if (s == slotIdx) return true;
+        for (int s : allowed) {
+            if (s != slotIdx) continue;
+            // Артефактные слоты 6-10: доступны только если containers достаточно
+            if (s >= 6 && s <= 10) {
+                int containers = store.player != null ? store.player.containers : 0;
+                return (s - 6) < containers;
+            }
+            return true;
+        }
         return false;
     }
 
@@ -1261,10 +1538,15 @@ public class SystemUI {
         // Требования — белый; красный если уровень выше текущего
         if (!reqLines.isEmpty()) {
             boolean playerReady = store.player != null && store.player.isInitialized();
-            int playerLevel = playerReady ? store.player.level : 0;
+            int pLevel    = playerReady ? store.player.level    : 0;
+            int pStrength = playerReady ? store.player.strength : 0;
+            int pMagic    = playerReady ? store.player.magic    : 0;
             for (String r : reqLines) {
-                boolean failed = playerReady && r.startsWith("Требуемый уровень:")
-                    && toInt(item.get("__reqLevel__")) > playerLevel;
+                boolean failed = playerReady && (
+                    (r.startsWith("Требуемый уровень:") && toInt(item.get("__reqLevel__"))    > pLevel)    ||
+                    (r.startsWith("Требуемая сила:")    && toInt(item.get("__reqStrength__")) > pStrength) ||
+                    (r.startsWith("Требуемая магия:")   && toInt(item.get("__reqMagic__"))    > pMagic)
+                );
                 font.setColor(failed ? 0.90f : 1f, failed ? 0.25f : 1f, failed ? 0.25f : 1f, 1f);
                 drawCentered(batch, r, tx, lineY, tw); lineY -= LINE_H;
             }

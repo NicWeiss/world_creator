@@ -312,8 +312,10 @@ public class ItemGenerator {
 
         int levelReq = Math.round(itemLevel * 0.85f) + rarity.reqBonus / 2;
 
-        template.put("__reqStrength__", clamp(strengthReq, 0, 300));
-        template.put("__reqMagic__", clamp(magicReq, 0, 300));
+        // Чармы не требуют силы и магии — только уровень
+        boolean isCharm = "charm".equals(typeKey);
+        template.put("__reqStrength__", isCharm ? 0 : clamp(strengthReq, 0, 300));
+        template.put("__reqMagic__",    isCharm ? 0 : clamp(magicReq,    0, 300));
         template.put("__reqLevel__", clamp(levelReq, 1, 99));
     }
 

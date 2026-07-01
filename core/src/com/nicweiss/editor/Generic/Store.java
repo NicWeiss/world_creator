@@ -127,6 +127,9 @@ public class Store {
     public static Creation[] creations = new Creation[100];
     public static int creationCount = -1;
 
+    // Слоты снаряжения, требования которых не выполнены — рисуются тёмно-красными (см. SystemUI).
+    public static java.util.Set<LinkedHashMap> inactiveEquipment = new java.util.HashSet<>();
+
     // Предметы/золото, лежащие на земле в симуляции (см. DropManager) — отдельный список
     // объектов карты, с которыми можно взаимодействовать (подобрать).
     public static Drop[] drops = new Drop[500];

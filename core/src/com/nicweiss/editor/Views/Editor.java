@@ -266,6 +266,7 @@ public class Editor extends View{
     @Override
     public boolean scrolled(float amountX, float amountY) {
         isImmediatelyReleaseKey = true;
+        if (store.systemUI != null && store.systemUI.handleScroll(amountY)) return true;
         if (amountY > 0) {
             keyDown(156);
         } else {
