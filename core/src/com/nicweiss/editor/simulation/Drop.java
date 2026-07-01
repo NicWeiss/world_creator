@@ -50,6 +50,11 @@ public class Drop extends BaseObject {
     private float labelBgAlpha = 1f;
     private float[] labelTextColor = {0f, 0f, 0f};
 
+    /** Подпрыгивает на месте (без бокового смещения) — когда в инвентаре нет места для подбора. */
+    public void bounce() {
+        initThrow(x, y, x, y);
+    }
+
     /** Запускает анимацию броска от (startIsoX,startIsoY) к (endIsoX,endIsoY) — изометрические мировые пиксели. */
     public void initThrow(float startIsoX, float startIsoY, float endIsoX, float endIsoY) {
         this.startIsoX = startIsoX;

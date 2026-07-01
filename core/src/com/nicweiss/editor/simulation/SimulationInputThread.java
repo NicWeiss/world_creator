@@ -119,10 +119,15 @@ public class SimulationInputThread implements Runnable {
 
     /** @return true — клик поглощён UI */
     public boolean touchDown(int mouseX, int mouseY) {
+        store.isGamepadMode = false;
         if (store.systemUI != null) {
-            return store.systemUI.handleClick(mouseX, mouseY,
-                store.uiWidthOriginal, store.uiHeightOriginal);
+            if (store.systemUI.handleClick(mouseX, mouseY,
+                    store.uiWidthOriginal, store.uiHeightOriginal)) {
+                return true;
+            }
         }
+        // ЛКМ по лейблу/иконке дропа — попытка подбора в инвентарь.
+        DropManager.tryPickupHovered();
         return false;
     }
 
@@ -185,8 +190,16 @@ public class SimulationInputThread implements Runnable {
                   || safeTriggerAxis(ctrl, axisCount, 5, rightStickX, rightStickY);  // Windows RT
         boolean start = safeButton(ctrl, m.buttonStart);
 
+        // Обнаруживаем ввод с геймпада — переключаем режим
+        if (Math.abs(ax) > 0.3f || Math.abs(ay) > 0.3f
+                || safeButton(ctrl, m.buttonA) || safeButton(ctrl, m.buttonB)
+                || safeButton(ctrl, m.buttonX) || lt || rt || start) {
+            store.isGamepadMode = true;
+        }
+
+        boolean bx = safeButton(ctrl, m.buttonX);
         if (store.systemUI != null) {
-            store.systemUI.pollGamepad(start, lt, rt, safeButton(ctrl, m.buttonB));
+            store.systemUI.pollGamepad(start, lt, rt, safeButton(ctrl, m.buttonB), bx, ax, ay);
         }
 
         // D-pad и A — навигация меню (edge-detect)
@@ -198,6 +211,9 @@ public class SimulationInputThread implements Runnable {
             if (dUp   && !prevDUp)   store.systemUI.gamepadNavigate(-1);
             if (dDown && !prevDDown) store.systemUI.gamepadNavigate(+1);
             if (a     && !prevA)     store.systemUI.gamepadActivate();
+        } else if (a && !prevA) {
+            // UI закрыт: A подбирает предмет в фокусе (см. DropManager.renderLabels).
+            DropManager.tryPickupFocused();
         }
         prevLT = lt; prevRT = rt; prevStart = start;
         prevDUp = dUp; prevDDown = dDown; prevA = a;

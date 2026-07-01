@@ -260,15 +260,17 @@ public class DropManager {
         // они совпадают с пространством лейблов (isoX + shiftX), в отличие от mouseX/Y (UI-пиксели).
         float curX = store.playerPositionX;
         float curY = store.playerPositionY;
-        Drop focus = null;
+        Drop hoverCandidate = null;
         for (int i = 0; i < n; i++) {
             if (curX >= lx[i] && curX <= lx[i] + lw[i] &&
                 curY >= ly[i] && curY <= ly[i] + lh[i]) {
-                focus = shown.get(i);
+                hoverCandidate = shown.get(i);
                 break;
             }
         }
-        if (focus == null) focus = iconHovered != null && shown.contains(iconHovered) ? iconHovered : null;
+        if (hoverCandidate == null) hoverCandidate = iconHovered != null && shown.contains(iconHovered) ? iconHovered : null;
+
+        Drop focus = hoverCandidate;
         if (focus == null && playerReady) {
             float best = Float.MAX_VALUE;
             for (Drop d : shown) {
@@ -279,9 +281,87 @@ public class DropManager {
             }
         }
 
+        // hoveredDrop — строго наведение курсором (без фолбэка на "ближайший к игроку"),
+        // именно его подбираем по клику/кнопке A. focusedDrop — для подсветки (с фолбэком).
+        hoveredDrop = hoverCandidate;
+        focusedDrop = focus;
+
         for (int i = 0; i < n; i++) {
             shown.get(i).drawLabelAt(batch, lx[i], ly[i], shown.get(i) == focus);
         }
+    }
+
+    // ── Подбор предмета в инвентарь ─────────────────────────────────────────────
+
+    // Дроп, чья подпись сейчас подсвечена (с фолбэком на ближайшего к игроку) — для рендера.
+    public static Drop focusedDrop = null;
+    // Дроп строго под курсором (лейбл или иконка), без фолбэка — именно его подбираем по клику/A.
+    public static Drop hoveredDrop = null;
+
+    private static final int INV_COLS = 10;
+    private static final int INV_ROWS = 5;
+
+    /** Кнопка A геймпада: подбирает предмет в фокусе (с фолбэком на ближайший к игроку — нет курсора). */
+    public static void tryPickupFocused() {
+        tryPickup(focusedDrop);
+    }
+
+    /** ЛКМ: подбирает предмет, только если курсор реально наведён на его лейбл/иконку. */
+    public static void tryPickupHovered() {
+        tryPickup(hoveredDrop);
+    }
+
+    /**
+     * Золото подбирается само наступанием (см. checkPickups), сюда попадают только предметы.
+     * Ищет в инвентаре свободный прямоугольник под размер предмета, сканируя от краёв к центру
+     * (сверху-слева построчно). Если место есть — занимает ячейки и убирает дроп с земли;
+     * если нет — дроп просто подпрыгивает на месте (см. Drop.bounce).
+     */
+    private static void tryPickup(Drop d) {
+        if (d == null || !d.isLanded || d.itemData == null) return;
+
+        int w = d.itemData.containsKey("__width__") ? (int) d.itemData.get("__width__") : 1;
+        int h = d.itemData.containsKey("__height__") ? (int) d.itemData.get("__height__") : 1;
+
+        int[] slot = findInventorySlot(w, h);
+        if (slot == null) {
+            d.bounce();
+            return;
+        }
+
+        for (int c = slot[0]; c < slot[0] + w; c++) {
+            for (int r = slot[1]; r < slot[1] + h; r++) {
+                store.inventoryGrid[c][r] = true;
+            }
+        }
+        d.itemData.put("__inv_x__", slot[0]);
+        d.itemData.put("__inv_y__", slot[1]);
+        String uuid = (String) d.itemData.get("__uuid__");
+        store.inventory.put(uuid != null ? uuid : com.nicweiss.editor.utils.Uuid.generate(), d.itemData);
+
+        for (int i = 0; i < store.drops.length; i++) {
+            if (store.drops[i] == d) { store.drops[i] = null; break; }
+        }
+        focusedDrop = null;
+    }
+
+    /** Ищет первый свободный прямоугольник w×h, сканируя построчно сверху-слева — от краёв к центру. */
+    private static int[] findInventorySlot(int w, int h) {
+        for (int r = 0; r <= INV_ROWS - h; r++) {
+            for (int c = 0; c <= INV_COLS - w; c++) {
+                if (slotFree(c, r, w, h)) return new int[]{c, r};
+            }
+        }
+        return null;
+    }
+
+    private static boolean slotFree(int col, int row, int w, int h) {
+        for (int c = col; c < col + w; c++) {
+            for (int r = row; r < row + h; r++) {
+                if (store.inventoryGrid[c][r]) return false;
+            }
+        }
+        return true;
     }
 
     private static Drop findHovered(List<Drop> candidates) {
@@ -320,6 +400,14 @@ public class DropManager {
         float cy = d.getIconScreenCenterY();
         float margin = store.tileSizeWidth * 3f;
         return cx > -margin && cx < dispW + margin && cy > -margin && cy < dispH + margin;
+    }
+
+    /** Выбрасывает предмет из инвентаря на землю рядом с игроком. */
+    public static void spawnDropAtPlayer(LinkedHashMap itemData) {
+        if (store.player == null || store.tileSizeWidth == 0) return;
+        int tileX = (int)(store.player.worldX / store.tileSizeWidth);
+        int tileY = (int)(store.player.worldY / store.tileSizeHeight);
+        spawnItemDrop(itemData, tileX, tileY);
     }
 
     /** Продвигает анимации всех активных дропов на dt секунд. Вызывается из CreationThread. */

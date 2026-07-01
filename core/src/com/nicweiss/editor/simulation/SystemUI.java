@@ -10,6 +10,10 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.nicweiss.editor.Generic.Store;
 
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * Системный интерфейс игрока: ЗАДАНИЯ | ИНВЕНТАРЬ | НАВЫКИ | МЕНЮ
  *
@@ -130,14 +134,35 @@ public class SystemUI {
     private static final Color C_TEXT      = new Color(0.85f, 0.88f, 0.95f, 1f);
     private static final Color C_TEXT_DIM  = new Color(0.45f, 0.50f, 0.60f, 1f);
     private static final Color C_TEXT_ACT  = new Color(1.00f, 1.00f, 1.00f, 1f);
+    private static final Color C_HIGHLIGHT_OK  = new Color(0.10f, 0.85f, 0.20f, 0.40f);
+    private static final Color C_HIGHLIGHT_BAD = new Color(0.90f, 0.15f, 0.10f, 0.40f);
+    private static final Color C_TOOLTIP_BG    = new Color(0f,    0f,    0f,    0.80f);
 
     // ── Геймпад edge-detect ───────────────────────────────────────────────────
-    private boolean prevLT = false, prevRT = false, prevStart = false, prevB = false;
+    private boolean prevLT = false, prevRT = false, prevStart = false, prevB = false, prevBX = false;
+
+    // ── Кэшированная геометрия панели (обновляется каждый render) ────────────
+    private float _px = 0, _py = 0;
+    private float _invGridX = 0, _invTop = 0;
+    private float _eqGridX  = 0, _eqTop  = 0;
+
+    // ── Курсор геймпада (LibGDX Y-up, экранные пиксели) ──────────────────────
+    private float gpX = 0f, gpY = 0f;
+    private static final float GP_SPEED = 500f;
+    private boolean gpInitialized = false;
+
+    // ── Буфер переноса ───────────────────────────────────────────────────────
+    // Предмет в буфере ВСЕГДА вне store.inventory и store.equipmentSlots.
+    // Подобран → удалён из источника. Положен → добавлен в цель. Просто.
+    private LinkedHashMap draggedItem = null;
 
     // ── GL-ресурсы ────────────────────────────────────────────────────────────
     private final Texture    pixel;
     private final BitmapFont font;
     private final GlyphLayout layout;
+
+    // Кэш текстур иконок предметов по пути __image__ — чтобы не грузить PNG заново каждый кадр.
+    private static final Map<String, Texture> iconCache = new HashMap<>();
 
     public SystemUI() {
         Pixmap pm = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
@@ -172,7 +197,16 @@ public class SystemUI {
     /** Клик мышью. @return true — поглощён */
     public boolean handleClick(float mx, float my, float sw, float sh) {
         if (!isOpen) return false;
+        store.isGamepadMode = false;
         float px = (sw - PANEL_W) / 2f, py = (sh - PANEL_H) / 2f;
+
+        // Клик вне панели
+        if (mx < px || mx > px + PANEL_W || my < py || my > py + PANEL_H) {
+            if (draggedItem != null) dropDraggedToGround();
+            else cancelDrag();
+            isOpen = false;
+            return false;
+        }
 
         // Клик по вкладкам
         float tabY = py + PANEL_H - TAB_H;
@@ -189,7 +223,7 @@ public class SystemUI {
             float cx = px + (PANEL_W - BTN_W) / 2f;
             for (int i = 0; i < MENU_ITEMS.length; i++) {
                 float by = menuButtonY(i, py, PANEL_H - TAB_H);
-                if (mx >= cx && mx <= cx+BTN_W && my >= by && my <= by+BTN_H) {
+                if (mx >= cx && mx <= cx + BTN_W && my >= by && my <= by + BTN_H) {
                     menuFocus = i;
                     activateMenuItem(i);
                     return true;
@@ -197,25 +231,40 @@ public class SystemUI {
             }
         }
 
-        // Клик вне панели — закрыть
-        if (mx < px || mx > px+PANEL_W || my < py || my > py+PANEL_H) isOpen = false;
-        return isOpen;
+        // Клик в зоне инвентаря
+        if (activeTab == Tab.INVENTORY) {
+            tryInteractAt(mx, my);
+        }
+
+        return true;
     }
 
-    /** Опрос кнопок геймпада (edge-detect внутри). */
-    public void pollGamepad(boolean start, boolean lt, boolean rt, boolean b) {
-        // Start: открывает ИНВЕНТАРЬ если закрыт, закрывает если открыт
+    /** Опрос кнопок геймпада (edge-detect внутри). stickX/Y — левый стик [-1..1]. */
+    public void pollGamepad(boolean start, boolean lt, boolean rt, boolean b,
+                            boolean bx, float stickX, float stickY) {
+        float dt = Gdx.graphics.getDeltaTime();
+
         if (start && !prevStart) {
-            if (isOpen) isOpen = false;
-            else         toggle(Tab.INVENTORY);
+            if (isOpen) { cancelDrag(); isOpen = false; }
+            else        { toggle(Tab.INVENTORY); }
         }
-        // LT/RT: переключают вкладки ТОЛЬКО когда UI уже открыт
         if (lt && !prevLT && isOpen) switchTab(-1);
         if (rt && !prevRT && isOpen) switchTab(+1);
-        // B: закрывает UI
-        if (b  && !prevB  && isOpen) isOpen = false;
+        if (b  && !prevB  && isOpen) { cancelDrag(); isOpen = false; }
 
-        prevStart = start; prevLT = lt; prevRT = rt; prevB = b;
+        // X — выбросить перетаскиваемый предмет на землю
+        if (bx && !prevBX && isOpen && draggedItem != null) dropDraggedToGround();
+
+        // Курсор геймпада и взаимодействие в инвентаре
+        if (isOpen && activeTab == Tab.INVENTORY) {
+            float contentH = PANEL_H - TAB_H - 1;
+            if (Math.abs(stickX) > 0.12f) gpX += stickX * GP_SPEED * dt;
+            if (Math.abs(stickY) > 0.12f) gpY -= stickY * GP_SPEED * dt; // стик Y инвертирован
+            gpX = Math.max(_px, Math.min(_px + PANEL_W - CELL, gpX));
+            gpY = Math.max(_py, Math.min(_py + contentH - CELL, gpY));
+        }
+
+        prevStart = start; prevLT = lt; prevRT = rt; prevB = b; prevBX = bx;
     }
 
     /** Навигация по кнопкам меню (D-pad / стрелки). */
@@ -226,8 +275,12 @@ public class SystemUI {
 
     /** Активация кнопки в фокусе (кнопка A). */
     public void gamepadActivate() {
-        if (!isMenuOpen()) return;
-        activateMenuItem(menuFocus);
+        if (!isOpen) return;
+        if (activeTab == Tab.MENU) {
+            activateMenuItem(menuFocus);
+        } else if (activeTab == Tab.INVENTORY) {
+            tryInteractAt(gpX + CELL * 0.5f, gpY + CELL * 0.5f);
+        }
     }
 
     // ── Рендер ────────────────────────────────────────────────────────────────
@@ -328,19 +381,30 @@ public class SystemUI {
      * В Y-up libGDX: строка 0 снаряжения находится ВВЕРХУ (большой Y).
      */
     private void renderInventory(SpriteBatch batch, float px, float py, float cH) {
-        // Центрируем оборудование и инвентарь по ширине панели
+        // ── Кэшируем геометрию (нужна для hit-testing в handleClick/pollGamepad) ──
+        _px = px; _py = py;
         float gridX = px + (PANEL_W - EQ_TOTAL_W) / 2f;
-        float eqTop = py + cH - PAD; // верх области снаряжения (Y-up)
-
-        // ── Слоты снаряжения ─────────────────────────────────────────────────
-        for (int i = 0; i < EQ_SLOTS.length; i++) {
-            int[] s = EQ_SLOTS[i]; // {xPx, yPx, wCells, hCells}
-            drawSlotPx(batch, gridX, eqTop, s[0], s[1], s[2], s[3], EQ_NAMES[i]);
-        }
+        float eqTop = py + cH - PAD;
+        _eqGridX = gridX; _eqTop = eqTop;
 
         float invGridX = px + (PANEL_W - (float)(INV_COLS * CELL)) / 2f;
         float invTop   = eqTop - EQ_TOTAL_H - INV_GAP;
+        _invGridX = invGridX; _invTop = invTop;
 
+        // Инициализируем курсор геймпада при первом открытии
+        if (!gpInitialized) {
+            gpX = invGridX;
+            gpY = invTop - CELL;
+            gpInitialized = true;
+        }
+
+        // ── Слоты снаряжения ──────────────────────────────────────────────────
+        for (int i = 0; i < EQ_SLOTS.length; i++) {
+            int[] s = EQ_SLOTS[i];
+            drawSlotPx(batch, gridX, eqTop, s[0], s[1], s[2], s[3], EQ_NAMES[i]);
+        }
+
+        // ── Сетка инвентаря ───────────────────────────────────────────────────
         font.setColor(C_TEXT_DIM);
         layout.setText(font, "Инвентарь");
         font.draw(batch, "Инвентарь", invGridX, invTop + layout.height + 3);
@@ -349,6 +413,129 @@ public class SystemUI {
             for (int col = 0; col < INV_COLS; col++) {
                 drawSlotPx(batch, invGridX, invTop, col * CELL, row * CELL, 1, 1, null);
             }
+        }
+
+        // ── Подсветка целевых клеток при перетаскивании ───────────────────────
+        if (draggedItem != null) {
+            int dw = draggedItem.containsKey("__width__")  ? (int) draggedItem.get("__width__")  : 1;
+            int dh = draggedItem.containsKey("__height__") ? (int) draggedItem.get("__height__") : 1;
+            float curX = store.isGamepadMode ? gpX + CELL * 0.5f : store.mouseX;
+            float curY = store.isGamepadMode ? gpY + CELL * 0.5f : store.mouseY;
+
+            int[] invCell = getInvCellAt(curX, curY);
+            if (invCell != null) {
+                int tc = Math.max(0, Math.min(INV_COLS - dw, invCell[0] - dw / 2));
+                int tr = Math.max(0, Math.min(INV_ROWS - dh, invCell[1] - dh / 2));
+                LinkedHashMap tgt = getSingleItemInArea(tc, tr, dw, dh);
+                boolean swapOk = tgt != null && isInvSlotFreeIgnoring(tc, tr, dw, dh, tgt);
+                boolean ok = isInvSlotFree(tc, tr, dw, dh) || swapOk;
+                drawHighlight(batch,
+                    invGridX + tc * CELL, invTop - tr * CELL - dh * CELL,
+                    dw * CELL, dh * CELL, ok);
+            } else {
+                int eq = getEqSlotAt(curX, curY);
+                if (eq >= 0) {
+                    int[] es = EQ_SLOTS[eq];
+                    boolean ok = canPlaceInEqSlot(eq, draggedItem);
+                    drawHighlight(batch,
+                        gridX + es[0], eqTop - es[1] - es[3] * CELL,
+                        es[2] * CELL, es[3] * CELL, ok);
+                }
+            }
+        }
+
+        // ── Предметы ─────────────────────────────────────────────────────────
+        renderInventoryItems(batch);
+        renderEquipmentItems(batch, gridX, eqTop);
+
+        // ── Перетаскиваемый предмет рисуем под курсором ───────────────────────
+        if (draggedItem != null) {
+            Texture icon = loadIcon((String) draggedItem.get("__image__"));
+            if (icon != null) {
+                int dw = draggedItem.containsKey("__width__")  ? (int) draggedItem.get("__width__")  : 1;
+                int dh = draggedItem.containsKey("__height__") ? (int) draggedItem.get("__height__") : 1;
+                float slotW = dw * CELL, slotH = dh * CELL;
+                float scale = Math.min(slotW / icon.getWidth(), slotH / icon.getHeight());
+                float drawW = icon.getWidth() * scale, drawH = icon.getHeight() * scale;
+                float cx = store.isGamepadMode ? gpX + CELL * 0.5f : store.mouseX;
+                float cy = store.isGamepadMode ? gpY + CELL * 0.5f : store.mouseY;
+                batch.setColor(1, 1, 1, 0.85f);
+                batch.draw(icon, cx - drawW / 2f, cy - drawH / 2f, drawW, drawH);
+                batch.setColor(1, 1, 1, 1);
+            }
+        }
+
+        // ── Курсор геймпада ───────────────────────────────────────────────────
+        if (store.isGamepadMode) {
+            col(batch, C_FOCUS_OUT);
+            rect(batch, gpX, gpY, CELL, CELL);
+        }
+
+        // ── Тултип предмета под курсором ──────────────────────────────────────
+        float tipX = store.isGamepadMode ? gpX + CELL * 0.5f : store.mouseX;
+        float tipY = store.isGamepadMode ? gpY + CELL * 0.5f : store.mouseY;
+        LinkedHashMap hovered = getHoveredItem(tipX, tipY);
+        if (hovered != null && hovered != draggedItem) {
+            renderTooltip(batch, hovered, tipX, tipY);
+        }
+    }
+
+    /** Рисует иконки предметов в обычном инвентаре, пропуская перетаскиваемый. */
+    private void renderInventoryItems(SpriteBatch batch) {
+        batch.setColor(1, 1, 1, 1);
+        for (Object value : store.inventory.values()) {
+            if (!(value instanceof LinkedHashMap)) continue;
+            LinkedHashMap itemData = (LinkedHashMap) value;
+            if (!itemData.containsKey("__inv_x__") || !itemData.containsKey("__inv_y__")) continue;
+
+            int col = (int) itemData.get("__inv_x__");
+            int row = (int) itemData.get("__inv_y__");
+            int w = itemData.containsKey("__width__")  ? (int) itemData.get("__width__")  : 1;
+            int h = itemData.containsKey("__height__") ? (int) itemData.get("__height__") : 1;
+
+            Texture icon = loadIcon((String) itemData.get("__image__"));
+            if (icon == null) continue;
+
+            float slotW = w * CELL, slotH = h * CELL;
+            float scale = Math.min(slotW / icon.getWidth(), slotH / icon.getHeight());
+            float drawW = icon.getWidth() * scale, drawH = icon.getHeight() * scale;
+            float x = _invGridX + col * CELL + (slotW - drawW) / 2f;
+            float y = _invTop - row * CELL - h * CELL + (slotH - drawH) / 2f;
+            batch.draw(icon, x, y, drawW, drawH);
+        }
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    /** Рисует иконки предметов в слотах снаряжения. */
+    private void renderEquipmentItems(SpriteBatch batch, float gridX, float eqTop) {
+        batch.setColor(1, 1, 1, 1);
+        for (int i = 0; i < EQ_SLOTS.length; i++) {
+            LinkedHashMap item = store.equipmentSlots[i];
+            if (item == null) continue;
+            Texture icon = loadIcon((String) item.get("__image__"));
+            if (icon == null) continue;
+            int[] s = EQ_SLOTS[i];
+            float slotW = s[2] * CELL, slotH = s[3] * CELL;
+            float scale = Math.min(slotW / icon.getWidth(), slotH / icon.getHeight());
+            float drawW = icon.getWidth() * scale, drawH = icon.getHeight() * scale;
+            float x = gridX + s[0] + (slotW - drawW) / 2f;
+            float y = eqTop - s[1] - s[3] * CELL + (slotH - drawH) / 2f;
+            batch.draw(icon, x, y, drawW, drawH);
+        }
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    /** Грузит и кэширует иконку предмета по абсолютному пути __image__ (см. DropManager.loadItemTexture). */
+    private Texture loadIcon(String imagePath) {
+        if (imagePath == null) return null;
+        Texture cached = iconCache.get(imagePath);
+        if (cached != null) return cached;
+        try {
+            Texture tex = new Texture(Gdx.files.absolute(imagePath));
+            iconCache.put(imagePath, tex);
+            return tex;
+        } catch (Exception ignored) {
+            return null;
         }
     }
 
@@ -385,8 +572,14 @@ public class SystemUI {
     // ── Приватные утилиты ─────────────────────────────────────────────────────
 
     private void toggle(Tab tab) {
-        if (isOpen && activeTab == tab) isOpen = false;
-        else { isOpen = true; activeTab = tab; }
+        if (isOpen && activeTab == tab) {
+            cancelDrag();
+            isOpen = false;
+        } else {
+            if (!isOpen) gpInitialized = false; // сбросить курсор при открытии
+            isOpen = true;
+            activeTab = tab;
+        }
     }
 
     private void switchTab(int dir) {
@@ -420,5 +613,418 @@ public class SystemUI {
         b.draw(pixel, x,       y+h-1,   w, 1);
         b.draw(pixel, x,       y,       1, h);
         b.draw(pixel, x+w-1,   y,       1, h);
+    }
+
+    // ── Взаимодействие с предметами ───────────────────────────────────────────
+    // Предмет в буфере (draggedItem) ВСЕГДА вне store.inventory и store.equipmentSlots.
+    // Подобран — удалён из источника. Положен — добавлен в цель. Никаких флагов.
+
+    /** Клик/A: подобрать если буфер пуст, положить если есть предмет в буфере. */
+    private void tryInteractAt(float cx, float cy) {
+        if (activeTab != Tab.INVENTORY) return;
+        if (draggedItem != null) tryPlaceAt(cx, cy);
+        else                      tryPickupAt(cx, cy);
+    }
+
+    /** Подобрать предмет — удаляем из источника, кладём в буфер. */
+    private void tryPickupAt(float cx, float cy) {
+        int[] cell = getInvCellAt(cx, cy);
+        if (cell != null) {
+            LinkedHashMap item = getItemAt(cell[0], cell[1]);
+            if (item != null) {
+                int w = item.containsKey("__width__")  ? (int) item.get("__width__")  : 1;
+                int h = item.containsKey("__height__") ? (int) item.get("__height__") : 1;
+                String key = getItemKey(item);
+                if (key != null) store.inventory.remove(key);
+                clearInvGrid((int) item.get("__inv_x__"), (int) item.get("__inv_y__"), w, h);
+                draggedItem = item;
+                return;
+            }
+        }
+        int eq = getEqSlotAt(cx, cy);
+        if (eq >= 0 && store.equipmentSlots[eq] != null) {
+            draggedItem = store.equipmentSlots[eq];
+            store.equipmentSlots[eq] = null;
+        }
+    }
+
+    /** Положить буферный предмет: вставка на свободные клетки или своп. */
+    private void tryPlaceAt(float cx, float cy) {
+        if (draggedItem == null) return;
+        int dw = draggedItem.containsKey("__width__")  ? (int) draggedItem.get("__width__")  : 1;
+        int dh = draggedItem.containsKey("__height__") ? (int) draggedItem.get("__height__") : 1;
+
+        int[] cell = getInvCellAt(cx, cy);
+        if (cell != null) {
+            int tc = Math.max(0, Math.min(INV_COLS - dw, cell[0] - dw / 2));
+            int tr = Math.max(0, Math.min(INV_ROWS - dh, cell[1] - dh / 2));
+
+            if (isInvSlotFree(tc, tr, dw, dh)) {
+                putInInventory(draggedItem, tc, tr);
+                draggedItem = null;
+                return;
+            }
+
+            // Своп: в целевой области ровно один предмет, и после его изъятия область свободна
+            LinkedHashMap target = getSingleItemInArea(tc, tr, dw, dh);
+            if (target != null && isInvSlotFreeIgnoring(tc, tr, dw, dh, target)) {
+                int bw = target.containsKey("__width__")  ? (int) target.get("__width__")  : 1;
+                int bh = target.containsKey("__height__") ? (int) target.get("__height__") : 1;
+                int bCol = (int) target.get("__inv_x__"), bRow = (int) target.get("__inv_y__");
+                String key = getItemKey(target);
+                if (key != null) store.inventory.remove(key);
+                clearInvGrid(bCol, bRow, bw, bh);
+                putInInventory(draggedItem, tc, tr);
+                draggedItem = target; // target уходит в буфер
+            }
+            return;
+        }
+
+        int eq = getEqSlotAt(cx, cy);
+        if (eq >= 0 && canPlaceInEqSlot(eq, draggedItem)) {
+            LinkedHashMap existing = store.equipmentSlots[eq];
+            store.equipmentSlots[eq] = draggedItem;
+            draggedItem = existing; // null если слот был пуст, иначе — своп в буфер
+        }
+    }
+
+    /** Добавляет предмет в store.inventory на позицию (col,row), заполняет сетку. */
+    private void putInInventory(LinkedHashMap item, int col, int row) {
+        int w = item.containsKey("__width__")  ? (int) item.get("__width__")  : 1;
+        int h = item.containsKey("__height__") ? (int) item.get("__height__") : 1;
+        item.put("__inv_x__", col);
+        item.put("__inv_y__", row);
+        String uuid = (String) item.get("__uuid__");
+        if (uuid == null) uuid = com.nicweiss.editor.utils.Uuid.generate();
+        store.inventory.put(uuid, item);
+        fillInvGrid(col, row, w, h);
+    }
+
+    /** При закрытии инвентаря: если в буфере что-то есть — ищем место или бросаем на землю. */
+    private void cancelDrag() {
+        if (draggedItem != null) {
+            int dw = draggedItem.containsKey("__width__")  ? (int) draggedItem.get("__width__")  : 1;
+            int dh = draggedItem.containsKey("__height__") ? (int) draggedItem.get("__height__") : 1;
+            int[] slot = findFreeInvSlot(dw, dh);
+            if (slot != null) putInInventory(draggedItem, slot[0], slot[1]);
+            else               DropManager.spawnDropAtPlayer(draggedItem);
+            draggedItem = null;
+        }
+    }
+
+    private void dropDraggedToGround() {
+        if (draggedItem == null) return;
+        DropManager.spawnDropAtPlayer(draggedItem);
+        draggedItem = null;
+    }
+
+    /** Первый свободный прямоугольник w×h (сканирование от края к центру). */
+    private int[] findFreeInvSlot(int w, int h) {
+        for (int r = 0; r <= INV_ROWS - h; r++)
+            for (int c = 0; c <= INV_COLS - w; c++)
+                if (isInvSlotFree(c, r, w, h)) return new int[]{c, r};
+        return null;
+    }
+
+    // ── Hit-testing ───────────────────────────────────────────────────────────
+
+    /** Ячейка инвентаря по экранной точке, или null если вне сетки. */
+    private int[] getInvCellAt(float cx, float cy) {
+        int col = (int)((cx - _invGridX) / CELL);
+        int row = (int)((_invTop - cy)   / CELL);
+        if (col < 0 || col >= INV_COLS || row < 0 || row >= INV_ROWS) return null;
+        return new int[]{col, row};
+    }
+
+    /** Индекс eq-слота по экранной точке, или -1 если вне всех слотов. */
+    private int getEqSlotAt(float cx, float cy) {
+        for (int i = 0; i < EQ_SLOTS.length; i++) {
+            int[] s = EQ_SLOTS[i];
+            float sx = _eqGridX + s[0], sy = _eqTop - s[1] - s[3] * CELL;
+            float sw = s[2] * CELL, sh = s[3] * CELL;
+            if (cx >= sx && cx < sx + sw && cy >= sy && cy < sy + sh) return i;
+        }
+        return -1;
+    }
+
+    /** Предмет в инвентаре, занимающий ячейку (col, row). */
+    private LinkedHashMap getItemAt(int col, int row) {
+        for (Object v : store.inventory.values()) {
+            if (!(v instanceof LinkedHashMap)) continue;
+            LinkedHashMap item = (LinkedHashMap) v;
+            if (!item.containsKey("__inv_x__")) continue;
+            int ix = (int) item.get("__inv_x__"), iy = (int) item.get("__inv_y__");
+            int iw = item.containsKey("__width__")  ? (int) item.get("__width__")  : 1;
+            int ih = item.containsKey("__height__") ? (int) item.get("__height__") : 1;
+            if (col >= ix && col < ix + iw && row >= iy && row < iy + ih) return item;
+        }
+        return null;
+    }
+
+    /** Предмет под курсором (в инвентаре или в eq-слоте). */
+    private LinkedHashMap getHoveredItem(float cx, float cy) {
+        int[] cell = getInvCellAt(cx, cy);
+        if (cell != null) return getItemAt(cell[0], cell[1]);
+        int eq = getEqSlotAt(cx, cy);
+        return eq >= 0 ? store.equipmentSlots[eq] : null;
+    }
+
+    /** Ключ (uuid) предмета в store.inventory. */
+    private String getItemKey(LinkedHashMap item) {
+        for (java.util.Map.Entry<?, ?> e : store.inventory.entrySet()) {
+            if (e.getValue() == item) return (String) e.getKey();
+        }
+        return null;
+    }
+
+    // ── Логика слотов ────────────────────────────────────────────────────────
+
+    /** true если прямоугольник w×h начиная с (col,row) свободен (draggedItem считается поднятым). */
+    private boolean isInvSlotFree(int col, int row, int w, int h) {
+        if (col < 0 || col + w > INV_COLS || row < 0 || row + h > INV_ROWS) return false;
+        for (Object v : store.inventory.values()) {
+            if (!(v instanceof LinkedHashMap)) continue;
+            LinkedHashMap item = (LinkedHashMap) v;
+            if (!item.containsKey("__inv_x__")) continue;
+            int ix = (int) item.get("__inv_x__"), iy = (int) item.get("__inv_y__");
+            int iw = item.containsKey("__width__")  ? (int) item.get("__width__")  : 1;
+            int ih = item.containsKey("__height__") ? (int) item.get("__height__") : 1;
+            if (col < ix + iw && col + w > ix && row < iy + ih && row + h > iy) return false;
+        }
+        return true;
+    }
+
+    /** true если в целевом прямоугольнике ровно один предмет, и он влезает на старое место draggedItem. */
+    /** isInvSlotFree, но игнорирует один конкретный предмет (нужен для проверки свопа). */
+    private boolean isInvSlotFreeIgnoring(int col, int row, int w, int h, LinkedHashMap ignore) {
+        if (col < 0 || col + w > INV_COLS || row < 0 || row + h > INV_ROWS) return false;
+        for (Object v : store.inventory.values()) {
+            if (!(v instanceof LinkedHashMap)) continue;
+            LinkedHashMap item = (LinkedHashMap) v;
+            if (item == ignore) continue;
+            if (!item.containsKey("__inv_x__")) continue;
+            int ix = (int) item.get("__inv_x__"), iy = (int) item.get("__inv_y__");
+            int iw = item.containsKey("__width__")  ? (int) item.get("__width__")  : 1;
+            int ih = item.containsKey("__height__") ? (int) item.get("__height__") : 1;
+            if (col < ix + iw && col + w > ix && row < iy + ih && row + h > iy) return false;
+        }
+        return true;
+    }
+
+    /** Возвращает единственный предмет, перекрывающий область col×row w×h, или null если 0 или 2+. */
+    private LinkedHashMap getSingleItemInArea(int col, int row, int w, int h) {
+        LinkedHashMap found = null;
+        for (Object v : store.inventory.values()) {
+            if (!(v instanceof LinkedHashMap)) continue;
+            LinkedHashMap item = (LinkedHashMap) v;
+            if (!item.containsKey("__inv_x__")) continue;
+            int ix = (int) item.get("__inv_x__"), iy = (int) item.get("__inv_y__");
+            int iw = item.containsKey("__width__")  ? (int) item.get("__width__")  : 1;
+            int ih = item.containsKey("__height__") ? (int) item.get("__height__") : 1;
+            if (col < ix + iw && col + w > ix && row < iy + ih && row + h > iy) {
+                if (found == null) found = item;
+                else if (found != item) return null;
+            }
+        }
+        return found;
+    }
+
+    /** true если draggedItem подходит к eq-слоту по типу (слот может быть занят — это своп). */
+    private boolean canPlaceInEqSlot(int slotIdx, LinkedHashMap item) {
+        String type = (String) item.get("__type__");
+        int[] allowed = allowedEqSlotsForType(type);
+        for (int s : allowed) if (s == slotIdx) return true;
+        return false;
+    }
+
+    private static int[] allowedEqSlotsForType(String type) {
+        if (type == null) return new int[0];
+        switch (type) {
+            case "weapon":   return new int[]{0};
+            case "shield":   return new int[]{11};
+            case "armor":    return new int[]{4};
+            case "helmet":   return new int[]{2};
+            case "belt":     return new int[]{5};
+            case "gloves":   return new int[]{1};
+            case "boots":    return new int[]{12};
+            case "amulet":   return new int[]{3};
+            case "artifact": return new int[]{6, 7, 8, 9, 10};
+            default:         return new int[0];
+        }
+    }
+
+    // ── Утилиты сетки ────────────────────────────────────────────────────────
+
+    private void clearInvGrid(int col, int row, int w, int h) {
+        for (int c = col; c < col + w; c++)
+            for (int r = row; r < row + h; r++)
+                if (c >= 0 && c < INV_COLS && r >= 0 && r < INV_ROWS) store.inventoryGrid[c][r] = false;
+    }
+
+    private void fillInvGrid(int col, int row, int w, int h) {
+        for (int c = col; c < col + w; c++)
+            for (int r = row; r < row + h; r++)
+                if (c >= 0 && c < INV_COLS && r >= 0 && r < INV_ROWS) store.inventoryGrid[c][r] = true;
+    }
+
+    private void drawHighlight(SpriteBatch batch, float x, float y, float w, float h, boolean ok) {
+        col(batch, ok ? C_HIGHLIGHT_OK : C_HIGHLIGHT_BAD);
+        batch.draw(pixel, x + 1, y + 1, w - 2, h - 2);
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    // ── Тултип ───────────────────────────────────────────────────────────────
+
+    private void renderTooltip(SpriteBatch batch, LinkedHashMap item, float curX, float curY) {
+        String typeKey   = (String) item.get("__type__");
+        String classKey  = (String) item.get("__itemClass__");
+        String rarityKey = item.containsKey("__rarity__") ? (String) item.get("__rarity__") : "common";
+        String name      = item.containsKey("__name__") ? (String) item.get("__name__") : "Предмет";
+
+        // Подтип (класс предмета)
+        String subtypeLabel = null;
+        if (typeKey != null && classKey != null && com.nicweiss.editor.utils.ItemModifierCatalog.TYPES.containsKey(typeKey)) {
+            subtypeLabel = com.nicweiss.editor.utils.ItemModifierCatalog.TYPES.get(typeKey).labelForClass(classKey);
+        }
+
+        // Основная характеристика (урон/защита)
+        String mainStatLine = null;
+        if (item.containsKey("__mainStat__")) {
+            String statLabel = "weapon".equals(typeKey) ? "Урон" : "Защита";
+            mainStatLine = statLabel + ": " + item.get("__mainStat__");
+        }
+
+        // Требования
+        java.util.List<String> reqLines = new java.util.ArrayList<>();
+        if (item.containsKey("__reqLevel__")   && toInt(item.get("__reqLevel__"))   > 1)
+            reqLines.add("Требуемый уровень: " + item.get("__reqLevel__"));
+        if (item.containsKey("__reqStrength__") && toInt(item.get("__reqStrength__")) > 0)
+            reqLines.add("Требуемая сила: " + item.get("__reqStrength__"));
+        if (item.containsKey("__reqMagic__")   && toInt(item.get("__reqMagic__"))   > 0)
+            reqLines.add("Требуемая магия: " + item.get("__reqMagic__"));
+
+        // Модификаторы: каждый — вложенная LinkedHashMap {__modId__, __value__}
+        java.util.List<String> modLines = new java.util.ArrayList<>();
+        Object statsObj = item.get("__stats__");
+        if (statsObj instanceof LinkedHashMap) {
+            LinkedHashMap stats = (LinkedHashMap) statsObj;
+            for (Object v : stats.values()) {
+                if (!(v instanceof LinkedHashMap)) continue;
+                LinkedHashMap statEntry = (LinkedHashMap) v;
+                String modId = (String) statEntry.get("__modId__");
+                int value = toInt(statEntry.get("__value__"));
+                com.nicweiss.editor.utils.ItemModifierCatalog.ModifierDef def =
+                    typeKey != null ? com.nicweiss.editor.utils.ItemModifierCatalog.findModifier(typeKey, modId) : null;
+                if (def != null) {
+                    String unit = def.unit.isEmpty() ? "" : " " + def.unit;
+                    modLines.add(def.name + ": +" + value + unit);
+                } else {
+                    modLines.add(value + ": +" + modId);
+                }
+            }
+        }
+
+
+        // ── Вычисляем размеры тултипа ─────────────────────────────────────────
+        float TPAD = 14f, LINE_H = 22f, SEP_H = LINE_H; // SEP занимает место строки
+        int lineCount = 1 // name
+            + (subtypeLabel  != null ? 1 : 0)
+            + (mainStatLine  != null ? 2 : 0) // sep + main
+            + (!modLines.isEmpty()  ? modLines.size() + 1 : 0) // sep + lines
+            + (!reqLines.isEmpty()  ? reqLines.size()  + 1 : 0);
+        float minW = 180f;
+        java.util.List<String> allText = new java.util.ArrayList<>();
+        allText.add(name);
+        if (subtypeLabel != null) allText.add(subtypeLabel);
+        if (mainStatLine != null) allText.add(mainStatLine);
+        allText.addAll(modLines);
+        allText.addAll(reqLines);
+        for (String t : allText) { layout.setText(font, t); minW = Math.max(minW, layout.width); }
+
+        float tw = minW + TPAD * 2;
+        float th = lineCount * LINE_H + TPAD * 2;
+
+        // Размещаем сверху или снизу курсора — там где больше места
+        float contentBottom = _py;
+        float contentTop    = _py + PANEL_H - TAB_H;
+        float spaceAbove    = curY - contentBottom;
+        float spaceBelow    = contentTop - curY;
+        float tx, ty;
+        if (spaceAbove >= th + 12f || (spaceAbove > spaceBelow && spaceAbove >= th + 4f)) {
+            ty = curY - th - 10f; // сверху
+        } else {
+            ty = curY + 10f;      // снизу
+        }
+        ty = Math.max(contentBottom + 2f, Math.min(contentTop - th - 2f, ty));
+
+        // Горизонтально: центрируем под курсором
+        tx = curX - tw * 0.5f;
+        tx = Math.max(_px + 2f, Math.min(_px + PANEL_W - tw - 2f, tx));
+
+        // ── Рендер ────────────────────────────────────────────────────────────
+        col(batch, C_TOOLTIP_BG);
+        batch.draw(pixel, tx, ty, tw, th);
+        col(batch, C_BORDER);
+        rect(batch, tx, ty, tw, th);
+
+        float lineY = ty + th - TPAD - LINE_H * 0.72f;
+
+        // Имя — цвет по редкости, по центру
+        float[] rc = rarityColor(rarityKey);
+        font.setColor(rc[0], rc[1], rc[2], 1f);
+        drawCentered(batch, name, tx, lineY, tw); lineY -= LINE_H;
+
+        // Подтип
+        if (subtypeLabel != null) {
+            font.setColor(C_TEXT_DIM);
+            drawCentered(batch, subtypeLabel, tx, lineY, tw); lineY -= LINE_H;
+        }
+
+        // Основная характеристика
+        if (mainStatLine != null) {
+            col(batch, C_BORDER); batch.draw(pixel, tx + TPAD, lineY, tw - TPAD * 2, 1f); lineY -= SEP_H * 0.5f;
+            font.setColor(C_TEXT_ACT);
+            drawCentered(batch, mainStatLine, tx, lineY, tw); lineY -= LINE_H;
+        }
+
+        // Требования
+        if (!reqLines.isEmpty()) {
+//            col(batch, C_BORDER); batch.draw(pixel, tx + TPAD, lineY, tw - TPAD * 2, 1f); lineY -= SEP_H * 0.5f;
+            for (String r : reqLines) {
+                font.setColor(0.80f, 0.30f, 0.30f, 1f);
+                drawCentered(batch, r, tx, lineY, tw); lineY -= LINE_H;
+            }
+        }
+
+        // Модификаторы
+        if (!modLines.isEmpty()) {
+//            col(batch, C_BORDER); batch.draw(pixel, tx + TPAD, lineY, tw - TPAD * 2, 1f); lineY -= SEP_H * 0.5f;
+            for (String l : modLines) {
+                font.setColor(0.95f, 0.78f, 0.35f, 1f);
+                drawCentered(batch, l, tx, lineY, tw); lineY -= LINE_H;
+            }
+        }
+
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    /** Рисует строку текста по центру прямоугольника [rx, rx+rw]. */
+    private void drawCentered(SpriteBatch batch, String text, float rx, float y, float rw) {
+        layout.setText(font, text);
+        font.draw(batch, text, rx + (rw - layout.width) * 0.5f, y);
+    }
+
+    private static float[] rarityColor(String rarity) {
+        if (rarity == null) return new float[]{0.85f, 0.88f, 0.95f};
+        switch (rarity) {
+            case "magic":  return new float[]{0.50f, 0.70f, 1.00f};
+            case "rare":   return new float[]{1.00f, 0.97f, 0.10f};
+            case "unique": return new float[]{1.00f, 0.55f, 0.08f};
+            default:       return new float[]{0.85f, 0.88f, 0.95f};
+        }
+    }
+
+    private static int toInt(Object v) {
+        return v instanceof Number ? ((Number) v).intValue() : 0;
     }
 }

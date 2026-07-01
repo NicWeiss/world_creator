@@ -424,7 +424,7 @@ public class ItemModifierCatalog {
         mod(boots, "boots_stamina_regen", "Скорость восстановления стамины", 1, 25, "%", PHYSICAL);
 
         // ───────────────────────── ПОЯС ─────────────────────────
-        TypeDef belt = type("belt", "Пояс", new int[][]{{1,2}});
+        TypeDef belt = type("belt", "Пояс", new int[][]{{2,1}});
         belt.imageFolder = "belt";
         mod(belt, "belt_health", "Здоровье", 1, 60, "", NEUTRAL);
         mod(belt, "belt_strength", "Сила", 1, 30, "", PHYSICAL);

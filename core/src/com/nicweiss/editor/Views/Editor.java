@@ -234,6 +234,7 @@ public class Editor extends View{
 
     @Override
     public boolean mouseMoved(int screenX, int screenY) {
+        store.isGamepadMode = false;
         store.mouseX = mouseX = screenX;
         store.mouseY = mouseY = (int) store.uiHeightOriginal - screenY;
 
