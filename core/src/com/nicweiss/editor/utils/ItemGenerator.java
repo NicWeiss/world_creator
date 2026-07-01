@@ -42,6 +42,19 @@ public class ItemGenerator {
      * рантайм-дропом, где уровень предмета не может превышать уровень убитого врага/сундука.
      */
     public static void applyType(LinkedHashMap template, String typeKey, int maxLevel) {
+        applyTypeInternal(template, typeKey, maxLevel, -1, 0f);
+    }
+
+    /**
+     * Вариант для рантайм-дропа (см. DropManager): редкость роллится по кривой вероятности
+     * от уровня игрока и Magic Find — см. {@link #rollLevelAndRarity(LinkedHashMap, int, int, float)}.
+     * Для редактора (playerLevel неизвестен) используется плоский ролл через двухпараметровый applyType.
+     */
+    public static void applyType(LinkedHashMap template, String typeKey, int maxLevel, int playerLevel, float magicFind) {
+        applyTypeInternal(template, typeKey, maxLevel, playerLevel, magicFind);
+    }
+
+    private static void applyTypeInternal(LinkedHashMap template, String typeKey, int maxLevel, int playerLevel, float magicFind) {
         template.put("__type__", typeKey);
 
         TypeDef type = ItemModifierCatalog.TYPES.get(typeKey);
@@ -63,7 +76,12 @@ public class ItemGenerator {
 
         applyDefaultImage(template, type, classKey);
 
-        rollLevelAndRarity(template, maxLevel);
+        // playerLevel < 0 — сигнал "нет игрока" (вызов из редактора) → плоский ролл редкости.
+        if (playerLevel >= 0) {
+            rollLevelAndRarity(template, maxLevel, playerLevel, magicFind);
+        } else {
+            rollLevelAndRarity(template, maxLevel);
+        }
         rollModifiers(template);
     }
 
@@ -71,12 +89,61 @@ public class ItemGenerator {
         rollLevelAndRarity(template, 99);
     }
 
+    /** Плоский ролл редкости (60/30/10) — используется редактором, где нет контекста игрока. */
     public static void rollLevelAndRarity(LinkedHashMap template, int maxLevel) {
         maxLevel = clamp(maxLevel, 1, 99);
         template.put("__itemLevel__", 1 + RANDOM.nextInt(maxLevel));
         int roll = RANDOM.nextInt(100);
         String rarityKey = roll < 60 ? "common" : roll < 90 ? "rare" : "unique";
         template.put("__rarity__", rarityKey);
+    }
+
+    /**
+     * Ролл редкости дропа по гладкой кривой вероятности от уровня игрока (1..99) и Magic Find (%, 0+).
+     * Целевые ориентиры (примерная частота выпадения на один сгенерированный предмет):
+     *  - уровень 10,  MF 0%   → rare ~ раз в 10-50,  unique ~ раз в 200-400;
+     *  - уровень 10,  MF 300%+ → rare ~ раз в 10-30, unique ~ раз в 20-50;
+     *  - уровень 99,  MF 300%+ → rare и unique ~ раз в 7-15 (примерно равны).
+     * Кривая непрерывная (без ступенек): растёт с каждым уровнем и с каждым процентом MF,
+     * при этом MF даёт убывающую отдачу (насыщение), а не жёсткий потолок.
+     */
+    public static void rollLevelAndRarity(LinkedHashMap template, int maxLevel, int playerLevel, float magicFind) {
+        maxLevel = clamp(maxLevel, 1, 99);
+        template.put("__itemLevel__", 1 + RANDOM.nextInt(maxLevel));
+        template.put("__rarity__", rollRarityKey(playerLevel, magicFind));
+    }
+
+    // Вклад уровня игрока и MF% в шанс rare/unique. UNIQUE_SYNERGY — дополнительная прибавка,
+    // когда высоки ОБА фактора сразу (без неё на низком уровне высокий MF задирал бы unique
+    // почти так же сильно, как на высоком уровне — а по ТЗ разрыв должен быть заметным).
+    private static final double RARE_MIN = 0.02, RARE_LEVEL_GAIN = 0.07, RARE_MF_GAIN = 0.03;
+    private static final double UNIQUE_MIN = 0.0025, UNIQUE_LEVEL_GAIN = 0.005, UNIQUE_MF_GAIN = 0.04, UNIQUE_SYNERGY = 0.145;
+    private static final double MF_SATURATION = 300.0; // MF%, дающий половину предельной прибавки от MF
+
+    private static String rollRarityKey(int playerLevel, float magicFind) {
+        double levelFraction = clamp01((playerLevel - 1) / 98.0);
+        double mfFraction = magicFind > 0 ? magicFind / (magicFind + MF_SATURATION) : 0.0;
+
+        double rareChance = RARE_MIN + RARE_LEVEL_GAIN * levelFraction + RARE_MF_GAIN * mfFraction;
+        double uniqueChance = UNIQUE_MIN + UNIQUE_LEVEL_GAIN * levelFraction + UNIQUE_MF_GAIN * mfFraction
+                + UNIQUE_SYNERGY * levelFraction * mfFraction;
+
+        // Защита от патологических входных данных за пределами реальных диапазонов (уровень 1-99, MF 0-500%).
+        double total = rareChance + uniqueChance;
+        if (total > 0.6) {
+            double scale = 0.6 / total;
+            rareChance *= scale;
+            uniqueChance *= scale;
+        }
+
+        double roll = RANDOM.nextDouble();
+        if (roll < uniqueChance) return "unique";
+        if (roll < uniqueChance + rareChance) return "rare";
+        return "common";
+    }
+
+    private static double clamp01(double v) {
+        return Math.max(0.0, Math.min(1.0, v));
     }
 
     /**

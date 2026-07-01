@@ -99,7 +99,9 @@ public class DropManager {
         String[] typeKeys = ItemModifierCatalog.TYPES.keySet().toArray(new String[0]);
         String typeKey = typeKeys[RANDOM.nextInt(typeKeys.length)];
 
-        ItemGenerator.applyType(template, typeKey, enemyLevel);
+        int playerLevel = store.player != null ? store.player.level : enemyLevel;
+        float magicFind = store.player != null ? store.player.magicFind : 0f;
+        ItemGenerator.applyType(template, typeKey, enemyLevel, playerLevel, magicFind);
         template.put("__name__", ItemModifierCatalog.TYPES.get(typeKey).label);
         return template;
     }
