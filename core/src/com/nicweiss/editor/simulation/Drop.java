@@ -62,9 +62,32 @@ public class Drop extends BaseObject {
     private Texture labelIcon;
     private static final float LABEL_ICON_GAP = 3f;
 
+    // Постоянное свечение лейбла (Rare/Unique, см. DropManager.setLabelGlow) — в отличие от
+    // focused-обводки ниже, включено ВСЕГДА, не только при наведении курсора. Два вида:
+    // OUTLINE — тонкая пульсирующая рамка вокруг плашки (Rare, дёшево и достаточно заметно);
+    // HALO — мягкое аддитивное свечение большим радиусом позади плашки (Unique, эффектнее).
+    public enum LabelGlow { NONE, OUTLINE, HALO }
+    private LabelGlow labelGlow = LabelGlow.NONE;
+
+    private static final long  GLOW_PERIOD_MS = 1400L;  // период пульсации OUTLINE (Rare)
+    private static final float GLOW_MIN_ALPHA = 0.35f, GLOW_MAX_ALPHA = 1f;
+
+    // HALO (Unique) — медленнее и шире, чем OUTLINE: "дыхание", а не быстрое мерцание.
+    private static Texture haloTexture;
+    private static final int   HALO_TEX_SIZE   = 64;   // разрешение процедурной радиальной текстуры
+    private static final long  HALO_PERIOD_MS  = 2600L;
+    private static final float HALO_ALPHA_MIN  = 0.35f, HALO_ALPHA_MAX = 0.85f;
+    private static final float HALO_SIZE_MIN   = 1.8f, HALO_SIZE_MAX = 2.6f; // множитель от большей стороны плашки
+
     /** Подпрыгивает на месте (без бокового смещения) — когда в инвентаре нет места для подбора. */
     public void bounce() {
         initThrow(x, y, x, y);
+    }
+
+    /** Сдвигает позицию на (dx,dy) в изометрических мировых пикселях — магнит сферы опыта к игроку (см. DropManager). */
+    public void moveBy(float dx, float dy) {
+        x += dx;
+        y += dy;
     }
 
     /** Запускает анимацию броска от (startIsoX,startIsoY) к (endIsoX,endIsoY) — изометрические мировые пиксели. */
@@ -116,6 +139,11 @@ public class Drop extends BaseObject {
         labelBgAlpha = bgAlpha;
         labelTextColor = textColor;
         labelIcon = icon;
+    }
+
+    /** Постоянное свечение лейбла — NONE/OUTLINE/HALO, см. константы GLOW_ и HALO_, drawLabelAt. */
+    public void setLabelGlow(LabelGlow glow) {
+        labelGlow = glow;
     }
 
     public boolean hasLabel() {
@@ -355,6 +383,16 @@ public class Drop extends BaseObject {
         float plaqueW = getLabelWidth();
         float plaqueH = getLabelHeight();
 
+        if (labelGlow == LabelGlow.HALO) {
+            // Unique: гало + пульсирующая обводка на ОДНОЙ фазе ("в такт") — общий pulse на оба.
+            float pulse = pulseValue(HALO_PERIOD_MS);
+            drawHalo(batch, plaqueX, plaqueY, plaqueW, plaqueH, pulse);
+            if (!focused) drawGlowOutline(batch, plaqueX, plaqueY, plaqueW, plaqueH, pulse);
+        } else if (!focused && labelGlow == LabelGlow.OUTLINE) {
+            // Rare: только пульсирующая обводка, свой (более быстрый) период.
+            drawGlowOutline(batch, plaqueX, plaqueY, plaqueW, plaqueH, pulseValue(GLOW_PERIOD_MS));
+        }
+
         if (focused) {
             // Обводка в цвет текста — увеличенный прямоугольник позади основной плашки.
             batch.setColor(labelTextColor[0], labelTextColor[1], labelTextColor[2], 1f);
@@ -401,5 +439,63 @@ public class Drop extends BaseObject {
             plaqueTexture = new Texture(pmap);
             pmap.dispose();
         }
+        if (haloTexture == null) {
+            haloTexture = buildHaloTexture();
+        }
+    }
+
+    /**
+     * Мягкое аддитивное свечение (Unique, см. LabelGlow.HALO) — большой мягкий круг позади
+     * плашки, пульсирующий по размеру и alpha. Аддитивный блендинг (в отличие от обычного
+     * alpha-blend у плашки/обводки) даёт настоящее "свечение", а не плоский цветной прямоугольник.
+     */
+    private void drawHalo(SpriteBatch batch, float plaqueX, float plaqueY, float plaqueW, float plaqueH, float pulse) {
+        float haloSize = Math.max(plaqueW, plaqueH) * (HALO_SIZE_MIN + (HALO_SIZE_MAX - HALO_SIZE_MIN) * pulse);
+        float alpha = HALO_ALPHA_MIN + (HALO_ALPHA_MAX - HALO_ALPHA_MIN) * pulse;
+
+        float cx = plaqueX + plaqueW / 2f;
+        float cy = plaqueY + plaqueH / 2f;
+
+        int srcFunc = batch.getBlendSrcFunc();
+        int dstFunc = batch.getBlendDstFunc();
+        batch.setBlendFunction(com.badlogic.gdx.graphics.GL20.GL_SRC_ALPHA, com.badlogic.gdx.graphics.GL20.GL_ONE);
+        batch.setColor(labelTextColor[0], labelTextColor[1], labelTextColor[2], alpha);
+        batch.draw(haloTexture, cx - haloSize / 2f, cy - haloSize / 2f, haloSize, haloSize);
+        batch.setBlendFunction(srcFunc, dstFunc);
+        batch.setColor(1f, 1f, 1f, 1f);
+    }
+
+    /** Пульсирующая обводка плашки (не путать с solid-обводкой focused) — alpha по pulse [0..1]. */
+    private void drawGlowOutline(SpriteBatch batch, float plaqueX, float plaqueY, float plaqueW, float plaqueH, float pulse) {
+        float alpha = GLOW_MIN_ALPHA + (GLOW_MAX_ALPHA - GLOW_MIN_ALPHA) * pulse;
+        batch.setColor(labelTextColor[0], labelTextColor[1], labelTextColor[2], alpha);
+        batch.draw(plaqueTexture,
+            plaqueX - OUTLINE_THICKNESS, plaqueY - OUTLINE_THICKNESS,
+            plaqueW + OUTLINE_THICKNESS * 2, plaqueH + OUTLINE_THICKNESS * 2);
+    }
+
+    /** Значение пульсации [0..1] по синусоиде от текущего времени с периодом periodMs. */
+    private static float pulseValue(long periodMs) {
+        float phase = (System.currentTimeMillis() % periodMs) / (float) periodMs;
+        return (float) (0.5 + 0.5 * Math.sin(phase * Math.PI * 2));
+    }
+
+    /** Процедурная мягкая радиальная текстура (белая, альфа затухает от центра к краю) — см. drawHalo. */
+    private static Texture buildHaloTexture() {
+        Pixmap pmap = new Pixmap(HALO_TEX_SIZE, HALO_TEX_SIZE, Pixmap.Format.RGBA8888);
+        float c = HALO_TEX_SIZE / 2f;
+        for (int py = 0; py < HALO_TEX_SIZE; py++) {
+            for (int px = 0; px < HALO_TEX_SIZE; px++) {
+                float dx = px + 0.5f - c, dy = py + 0.5f - c;
+                float dist = (float) Math.sqrt(dx * dx + dy * dy) / c;
+                float a = dist >= 1f ? 0f : (float) Math.pow(1f - dist, 2f);
+                pmap.setColor(1f, 1f, 1f, a);
+                pmap.drawPixel(px, py);
+            }
+        }
+        Texture t = new Texture(pmap);
+        t.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        pmap.dispose();
+        return t;
     }
 }

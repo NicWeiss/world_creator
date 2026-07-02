@@ -244,7 +244,7 @@ public class PlayerHud {
                 batch.draw(icon, x + (SLOT_SIZE - iconSize) / 2f, y + (SLOT_SIZE - iconSize) / 2f, iconSize, iconSize);
             }
 
-            String countText = stack.items.size() + "/" + StackManager.capacityPerSlot();
+            String countText = stack.items.size() + "";
             layout.setText(fontSmall, countText);
             float badgeW = layout.width + 6f, badgeH = layout.height + 4f;
             float badgeX = x + SLOT_SIZE - badgeW - 2f;

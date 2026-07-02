@@ -145,7 +145,7 @@ public class Store {
     public static LinkedHashMap<String, Object> itemTemplates = new LinkedHashMap<>();
     public static LinkedHashMap<String, Object> inventory = new LinkedHashMap<>();
     // Занятость ячеек инвентаря (10 в ширину, 5 в высоту) — см. SystemUI.INV_COLS/INV_ROWS.
-    public static boolean[][] inventoryGrid = new boolean[10][5];
+    public static boolean[][] inventoryGrid = new boolean[12][4];
     public static LinkedHashMap<String, Object> npcs = new LinkedHashMap<>();
     public static Creation[] buildings = new Creation[100];
     public static int buildingCount = -1;
@@ -159,7 +159,7 @@ public class Store {
 
     // Предметы/золото, лежащие на земле в симуляции (см. DropManager) — отдельный список
     // объектов карты, с которыми можно взаимодействовать (подобрать).
-    public static Drop[] drops = new Drop[500];
+    public static Drop[] drops = new Drop[5000];
     public static int dropCount = -1;
     // Alt (клавиатура) или левый бампер (геймпад) — показывает подписи всех дропов в камере.
     public static volatile boolean revealAllDropLabels = false;

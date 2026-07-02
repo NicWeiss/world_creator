@@ -211,6 +211,11 @@ public class DropManager {
                 String name = (String) itemTemplate.get("__name__");
                 // Чёрный полупрозрачный фон у всех предметов, цвет текста — по редкости.
                 drop.setLabel(name != null ? name : "Предмет", ITEM_LABEL_BG, ITEM_LABEL_BG_ALPHA, rarityTextColor(rarityKey));
+                // Rare — пульсирующая обводка, Unique — аддитивное свечение-гало (эффектнее,
+                // подчёркивает разницу редкостей, см. Drop.LabelGlow/drawLabelAt).
+                if ("unique".equals(rarityKey))      drop.setLabelGlow(Drop.LabelGlow.HALO);
+                else if ("rare".equals(rarityKey))   drop.setLabelGlow(Drop.LabelGlow.OUTLINE);
+                else                                  drop.setLabelGlow(Drop.LabelGlow.NONE);
             }
         });
     }
@@ -222,6 +227,11 @@ public class DropManager {
     private static final float[] MANA_LABEL_COLOR     = {0.15f, 0.5f, 1f};    // ярко-синий
     private static final float[] RECOVERY_LABEL_COLOR = {0.65f, 0.25f, 0.95f}; // ярко-фиолетовый
     private static final float[] SCROLL_LABEL_COLOR   = {0.15f, 0.9f, 0.15f};  // зелёный
+
+    // Золото — тот же оттенок, что и заливка монетки (см. buildGoldTexture): тёплый металлический
+    // жёлто-янтарный, заметно темнее/приглушённее лимонного (rare) и оранжевее unique не выглядит —
+    // не путается ни с редкостями предметов, ни с зелёным свитка.
+    private static final float[] GOLD_LABEL_COLOR = {0.95f, 0.78f, 0.15f};
 
     private static void applyConsumableLabel(Drop drop, LinkedHashMap itemTemplate, String typeKey) {
         int tier = itemTemplate.containsKey("__tier__") ? (int) itemTemplate.get("__tier__") : 1;
@@ -252,8 +262,8 @@ public class DropManager {
 
             drop.goldAmount = amount;
             drop.setTexture(goldTexture());
-            // Чёрный фон 60% alpha, зелёный текст — как у предметов, но свой цвет.
-            drop.setLabel("$ " + amount, ITEM_LABEL_BG, ITEM_LABEL_BG_ALPHA, new float[]{0.2f, 0.9f, 0.2f});
+            // Чёрный фон 60% alpha, золотистый текст (см. GOLD_LABEL_COLOR) — как у предметов, но свой цвет.
+            drop.setLabel("$ " + amount, ITEM_LABEL_BG, ITEM_LABEL_BG_ALPHA, GOLD_LABEL_COLOR);
         });
     }
 
@@ -434,8 +444,8 @@ public class DropManager {
     // Дроп строго под курсором (лейбл или иконка), без фолбэка — именно его подбираем по клику/A.
     public static Drop hoveredDrop = null;
 
-    private static final int INV_COLS = 10;
-    private static final int INV_ROWS = 5;
+    private static final int INV_COLS = 12;
+    private static final int INV_ROWS = 4;
 
     /** Кнопка A геймпада: подбирает предмет в фокусе (с фолбэком на ближайший к игроку — нет курсора). */
     public static void tryPickupFocused() {
@@ -556,16 +566,41 @@ public class DropManager {
         spawnItemDrop(itemData, tileX, tileY);
     }
 
+    // Скорость притяжения сферы опыта к игроку (тайлов/сек) — см. magnetizeExpOrb.
+    private static final float EXP_MAGNET_SPEED_TILES = 12f;
+
     /**
      * Продвигает анимации всех активных дропов на dt секунд. Вызывается из CreationThread.
      * Сферы опыта получают dt и после приземления — иначе не покачивались бы (см. Drop.updateThrow).
      */
     public static void update(float dt) {
         for (Drop d : store.drops) {
-            if (d != null && (!d.isLanded || d.expAmount > 0)) {
+            if (d == null) continue;
+            if (!d.isLanded || d.expAmount > 0) {
                 d.updateThrow(dt);
             }
+            if (d.isLanded && d.expAmount > 0) {
+                magnetizeExpOrb(d, dt);
+            }
         }
+    }
+
+    /**
+     * Сфера опыта в радиусе видимости подписи лута (см. PROXIMITY_RADIUS_FACTOR) сама летит к
+     * игроку — не нужно бегать по карте за каждой отдельно; добор довершает checkPickups
+     * (у него радиус меньше — PICKUP_RADIUS_FACTOR).
+     */
+    private static void magnetizeExpOrb(Drop d, float dt) {
+        if (store.player == null || !store.player.isInitialized()) return;
+
+        float[] iso = Transform.cartesianToIsometric(store.player.worldX, store.player.worldY);
+        float dx = iso[0] - d.getWorldIsoX();
+        float dy = iso[1] - d.getWorldIsoY();
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        if (dist < 1f || dist > store.tileSizeWidth * PROXIMITY_RADIUS_FACTOR) return;
+
+        float move = Math.min(store.tileSizeWidth * EXP_MAGNET_SPEED_TILES * dt, dist);
+        d.moveBy(dx / dist * move, dy / dist * move);
     }
 
     // ── Внутреннее ────────────────────────────────────────────────────────────
@@ -759,12 +794,15 @@ public class DropManager {
         return t;
     }
 
-    // Фон у всех предметов одинаковый (чёрный, alpha 60%) — редкость теперь различается цветом текста.
+    // Фон у всех предметов одинаковый (чёрный, alpha 60%) — редкость различается цветом текста.
+    // Циан и малиновый — единственные свободные "холодные" оттенки: жёлтый/оранжевый были заняты
+    // золотом и красным здоровья (см. GOLD_LABEL_COLOR, HEALTH_LABEL_COLOR) и сливались с ними.
     private static float[] rarityTextColor(String rarityKey) {
         switch (rarityKey) {
-            case "rare":   return new float[]{1f, 0.97f, 0.1f};        // лимонно-жёлтый
-            case "unique": return new float[]{1f, 0.55f, 0.08f};     // мандариново-оранжевый
-            default:       return new float[]{1f, 1f, 1f};          // белый текст
+            case "rare":   return new float[]{0.15f, 0.95f, 0.9f};  // электрик-циан
+            case "unique": return new float[]{1f, 0.1f, 0.75f};    // малиновый (magenta)
+            default:       return new float[]{1f, 1f, 1f};         // белый текст
         }
     }
+
 }

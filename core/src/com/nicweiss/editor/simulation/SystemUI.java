@@ -38,7 +38,7 @@ public class SystemUI {
     // ── Размеры ───────────────────────────────────────────────────────────────
     // PANEL_W подобрана под EQ_TOTAL_W=550 (см. EQ_SLOTS) с запасом ~16px на сторону.
     private static final float PANEL_W  = 582f;
-    private static final float PANEL_H  = 800f;
+    private static final float PANEL_H  = 725f;
     private static final float TAB_H    = 44f;
     private static final float BTN_W    = 240f;
     private static final float BTN_H    = 44f;
@@ -46,9 +46,8 @@ public class SystemUI {
 
     // ── Инвентарь ────────────────────────────────────────────────────────────
     private static final int CELL     = 47;   // пикселей на ячейку (+30% от 36)
-    private static final int GAP      = 16;   // зазор между группами слотов
-    private static final int INV_COLS = 10;
-    private static final int INV_ROWS = 5;
+    private static final int INV_COLS = 12;
+    private static final int INV_ROWS = 4;
     private static final int INV_GAP  = 40;  // отступ от снаряжения до инвентаря
     private static final int PAD      = 18;  // внутренний отступ панели
 
@@ -115,7 +114,7 @@ public class SystemUI {
     };
 
     // Ряд из 4 ячеек стека (см. StackManager) — вплотную друг к другу, под поясом в колонке 3.
-    private static final int STACK_X = 173, STACK_Y = 377;
+    private static final int STACK_X = 181, STACK_Y = 377;
     private static final int STACK_COUNT = 4;
 
     // Базовое количество доступных контейнеров-артефактов даже без пояса (см. ТЗ: "по умолчанию
@@ -150,14 +149,7 @@ public class SystemUI {
     private boolean compareMode = false;      // Shift удержан / Y на геймпаде
     private float   holdATimer  = 0f;         // сколько A уже зажата
     private boolean holdAFired  = false;      // долгое нажатие A уже сработало
-    private static final float HOLD_A_SWAP = 0.3f; // секунд до быстрой замены
-
-    // Удержание X (буфер пуст) — быстрая укладка наведённого предмета инвентаря в стек (см.
-    // quickStackAt) — аналог шифт-клика мышью. Короткое нажатие X при непустом буфере — отдельная
-    // ветка (выброс на землю, см. pollGamepad), с этим таймером не пересекается.
-    private float   holdXTimer  = 0f;
-    private boolean holdXFired  = false;
-    private static final float HOLD_X_STACK = 0.3f;
+    private static final float HOLD_A_SWAP = 0.3f; // секунд до быстрой замены/укладки в стек
 
     // ── Кэшированная геометрия панели (обновляется каждый render) ────────────
     private float _px = 0, _py = 0;
@@ -261,17 +253,8 @@ public class SystemUI {
         if (activeTab == Tab.INVENTORY) {
             boolean shift = Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_LEFT)
                          || Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_RIGHT);
-            if (shift && draggedItem == null) {
-                int[] cell = getInvCellAt(mx, my);
-                LinkedHashMap hovered = cell != null ? getItemAt(cell[0], cell[1]) : null;
-                if (hovered != null && com.nicweiss.editor.utils.ItemModifierCatalog.isConsumableType((String) hovered.get("__type__"))) {
-                    quickStackAt(mx, my);
-                } else {
-                    quickSwapWithEquipped(mx, my);
-                }
-            } else {
-                tryInteractAt(mx, my);
-            }
+            if (shift && draggedItem == null) quickActionAt(mx, my);
+            else                              tryInteractAt(mx, my);
         }
 
         return true;
@@ -293,24 +276,6 @@ public class SystemUI {
         // X — выбросить перетаскиваемый предмет на землю (короткое нажатие, буфер не пуст)
         if (bx && !prevBX && isOpen && draggedItem != null) dropDraggedToGround();
 
-        // X — удержание (буфер пуст, вкладка инвентаря): быстрая укладка наведённого предмета
-        // в стек, та же логика, что у шифт-клика мышью (см. quickStackAt).
-        if (isOpen && activeTab == Tab.INVENTORY && draggedItem == null) {
-            if (bx) {
-                holdXTimer += dt;
-                if (!holdXFired && holdXTimer >= HOLD_X_STACK) {
-                    quickStackAt(gpX + CELL * 0.5f, gpY + CELL * 0.5f);
-                    holdXFired = true;
-                }
-            } else {
-                holdXTimer = 0f;
-                holdXFired = false;
-            }
-        } else {
-            holdXTimer = 0f;
-            holdXFired = false;
-        }
-
         // Y — переключить режим сравнения (инвентарь) / скролл вниз (статы)
         if (y && !prevY && isOpen && activeTab == Tab.INVENTORY) compareMode = !compareMode;
 
@@ -326,11 +291,13 @@ public class SystemUI {
             gpX = Math.max(_px, Math.min(_px + PANEL_W - CELL, gpX));
             gpY = Math.max(_py, Math.min(_py + contentH - CELL, gpY));
 
-            // A: долгое удержание (≥1с) — быстрый своп со сравниваемым; короткое — обычный подбор
+            // A: долгое удержание — быстрое действие над наведённым предметом (расходники — в
+            // стек, остальное — быстрый своп со сравниваемым, см. quickActionAt); короткое —
+            // обычный подбор.
             if (a) {
                 holdATimer += dt;
                 if (!holdAFired && holdATimer >= HOLD_A_SWAP) {
-                    quickSwapWithEquipped(gpX + CELL * 0.5f, gpY + CELL * 0.5f);
+                    quickActionAt(gpX + CELL * 0.5f, gpY + CELL * 0.5f);
                     holdAFired = true;
                 }
             } else {
@@ -601,13 +568,27 @@ public class SystemUI {
 
         // ── Серые заблокированные слоты артефактов ───────────────────────────
         int availContainers = store.player != null ? store.player.containers : 0;
+
+        // Массив порядка открытия. Индекс в массиве — это (i - 6).
+        // Значение — при каком количестве контейнеров этот слот должен быть ОТКРЫТ.
+        // slot 6  (i=6,  idx=0) -> нужен 1 контейнер
+        // slot 7  (i=7,  idx=1) -> нужно 3 контейнера
+        // slot 8  (i=8,  idx=2) -> нужно 5 контейнеров
+        // slot 9  (i=9,  idx=3) -> нужен 2 контейнера
+        // slot 10 (i=10, idx=4) -> нужно 4 контейнера
+        // slot 11 (i=11, idx=5) -> нужно 6 контейнеров
+        int[] requiredContainers = {1, 3, 5, 2, 4, 6};
+
         for (int i = 6; i <= 11; i++) {
-            if ((i - 6) < availContainers) continue;
+            // Если у игрока контейнеров больше или столько же, сколько требуется для этого слота — пропускаем закрашивание
+            if (availContainers >= requiredContainers[i - 6]) continue;
+
             int[] s = EQ_SLOTS[i];
             col(batch, new com.badlogic.gdx.graphics.Color(0.12f, 0.12f, 0.15f, 0.88f));
             batch.draw(pixel, gridX + s[0] + 1, eqTop - s[1] - s[3] * CELL + 1,
-                       s[2] * CELL - 2, s[3] * CELL - 2);
+                s[2] * CELL - 2, s[3] * CELL - 2);
         }
+
         batch.setColor(1, 1, 1, 1);
 
         // ── Ряд ячеек стека (см. StackManager) ────────────────────────────────
@@ -772,17 +753,20 @@ public class SystemUI {
             float sy = eqTop - STACK_Y - CELL; // bottom-left, см. drawSlotPx
 
             ItemStack stack = store.stacks != null && i < store.stacks.length ? store.stacks[i] : null;
-            if (stack == null || stack.items.isEmpty()) continue;
+            if (stack == null || stack.items.isEmpty()) {
 
-            LinkedHashMap item = stack.items.get(0);
-            Texture icon = loadIcon((String) item.get("__image__"));
-            if (icon != null) {
-                float pad = 5f;
-                float slotSize = CELL - pad * 2;
-                float scale = Math.min(slotSize / icon.getWidth(), slotSize / icon.getHeight());
-                float drawW = icon.getWidth() * scale, drawH = icon.getHeight() * scale;
-                batch.setColor(1f, 1f, 1f, 1f);
-                batch.draw(icon, sx + (CELL - drawW) / 2f, sy + (CELL - drawH) / 2f, drawW, drawH);
+            }
+            else {
+                LinkedHashMap item = stack.items.get(0);
+                Texture icon = loadIcon((String) item.get("__image__"));
+                if (icon != null) {
+                    float pad = 5f;
+                    float slotSize = CELL - pad * 2;
+                    float scale = Math.min(slotSize / icon.getWidth(), slotSize / icon.getHeight());
+                    float drawW = icon.getWidth() * scale, drawH = icon.getHeight() * scale;
+                    batch.setColor(1f, 1f, 1f, 1f);
+                    batch.draw(icon, sx + (CELL - drawW) / 2f, sy + (CELL - drawH) / 2f, drawW, drawH);
+                }
             }
 
             String countText = stack.items.size() + "/" + cap;
@@ -1078,10 +1062,15 @@ public class SystemUI {
         }
 
         // Фаза 2: артефакты — только в пределах containers
+        int[] requiredContainers = {1, 3, 5, 2, 4, 6}; // Тот же маппинг порядка открытия
+
         for (int i = 6; i <= 11; i++) {
             LinkedHashMap item = store.equipmentSlots[i];
             if (item == null || item == draggedItem) continue;
-            boolean slotUnlocked = (i - 6) < p.containers;
+
+            // Слот разблокирован, если у игрока количество контейнеров больше или равно требуемому
+            boolean slotUnlocked = p.containers >= requiredContainers[i - 6];
+
             if (slotUnlocked && itemMeetsRequirements(item, p)) {
                 applyItemStats(item, p);
                 active[i] = true;
@@ -1348,7 +1337,12 @@ public class SystemUI {
             // Артефактные слоты 6-11: доступны только если containers достаточно
             if (s >= 6 && s <= 11) {
                 int containers = store.player != null ? store.player.containers : 0;
-                return (s - 6) < containers;
+
+                // Массив требований для горизонтального порядка открытия
+                int[] requiredContainers = {1, 3, 5, 2, 4, 6};
+
+                // Слот доступен, если количество контейнеров игрока покрывает требование слота
+                return containers >= requiredContainers[s - 6];
             }
             return true;
         }
@@ -1423,12 +1417,22 @@ public class SystemUI {
     }
 
     /**
-     * Быстрый своп: предмет под курсором ↔ надетый предмет того же типа.
-     * Надетый идёт в инвентарь на место выбранного (или в первое свободное, или на землю).
+     * Быстрое действие над предметом инвентаря под курсором (долгое A на геймпаде / шифт-клик
+     * мышью, см. pollGamepad/handleClick): расходники — попытка уложить в стек (см. quickStackAt),
+     * остальное — быстрый своп с надетым предметом того же типа (см. quickSwapWithEquipped).
      */
+    private void quickActionAt(float cx, float cy) {
+        int[] cell = getInvCellAt(cx, cy);
+        LinkedHashMap hovered = cell != null ? getItemAt(cell[0], cell[1]) : null;
+        if (hovered != null && com.nicweiss.editor.utils.ItemModifierCatalog.isConsumableType((String) hovered.get("__type__"))) {
+            quickStackAt(cx, cy);
+        } else {
+            quickSwapWithEquipped(cx, cy);
+        }
+    }
+
     /**
-     * Быстрая укладка предмета инвентаря в стек (шифт-клик мышью / удержание X на геймпаде, см.
-     * handleClick/pollGamepad) — та же логика приоритета, что у подбора с земли
+     * Быстрая укладка предмета инвентаря в стек — та же логика приоритета, что у подбора с земли
      * (см. StackManager.tryAddToStack). Если в стеке нет места — предмет остаётся в инвентаре как есть.
      */
     private void quickStackAt(float cx, float cy) {
@@ -1448,6 +1452,10 @@ public class SystemUI {
         }
     }
 
+    /**
+     * Быстрый своп: предмет под курсором ↔ надетый предмет того же типа.
+     * Надетый идёт в инвентарь на место выбранного (или в первое свободное, или на землю).
+     */
     private void quickSwapWithEquipped(float cx, float cy) {
         // Курсор над eq-слотом — пытаемся снять предмет в инвентарь
         int eqIdx = getEqSlotAt(cx, cy);
@@ -1905,12 +1913,13 @@ public class SystemUI {
         font.draw(batch, text, rx + (rw - layout.width) * 0.5f, y);
     }
 
+    // Синхронизировано с DropManager.rarityTextColor (лейблы дропа на земле) — тот же циан/малиновый.
     private static float[] rarityColor(String rarity) {
         if (rarity == null) return new float[]{0.85f, 0.88f, 0.95f};
         switch (rarity) {
             case "magic":  return new float[]{0.50f, 0.70f, 1.00f};
-            case "rare":   return new float[]{1.00f, 0.97f, 0.10f};
-            case "unique": return new float[]{1.00f, 0.55f, 0.08f};
+            case "rare":   return new float[]{0.15f, 0.95f, 0.90f};
+            case "unique": return new float[]{1.00f, 0.10f, 0.75f};
             default:       return new float[]{0.85f, 0.88f, 0.95f};
         }
     }
