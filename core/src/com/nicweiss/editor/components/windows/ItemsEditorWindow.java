@@ -202,9 +202,15 @@ public class ItemsEditorWindow extends Window implements CallBack {
 
     // Смена типа: ставится размер по умолчанию для типа, класс роллится (или выводится из размера
     // для чармов), уровень/редкость роллятся заново, модификаторы перегенерируются с нуля.
+    // Расходники (зелья/свитки) идут отдельным путём — у них нет класса/редкости/модификаторов,
+    // вместо этого есть тир (см. applyConsumableType/prepareTierPickerView).
     public void setItemType(String uuid, String typeKey) {
         LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
-        ItemGenerator.applyType(template, typeKey);
+        if (ItemModifierCatalog.isConsumableType(typeKey)) {
+            ItemGenerator.applyConsumableType(template, typeKey);
+        } else {
+            ItemGenerator.applyType(template, typeKey);
+        }
         prepareSelectedItemView(uuid);
     }
 
@@ -311,6 +317,43 @@ public class ItemsEditorWindow extends Window implements CallBack {
     public void setItemSize(String uuid, String widthStr, String heightStr) {
         LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
         ItemGenerator.setSize(template, Integer.parseInt(widthStr), Integer.parseInt(heightStr));
+        prepareSelectedItemView(uuid);
+    }
+
+    // ---- Тир расходника (объём зелья) ----
+
+    public void prepareTierPickerView(String uuid) {
+        itemDetails = new ButtonCommon[1000];
+        int i = 0;
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        TypeDef type = currentType(template);
+        int selTier = template.containsKey("__tier__") ? (int) template.get("__tier__") : 1;
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "prepareSelectedItemView", new String[]{uuid});
+        itemDetails[i++] = button;
+
+        if (type != null) {
+            for (int tier = 1; tier <= type.maxTier; tier++) {
+                boolean selected = tier == selTier;
+                int value = (type.tierValues != null && tier - 1 < type.tierValues.length) ? type.tierValues[tier - 1] : 0;
+                button = new ButtonCommon();
+                button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
+                button.setIcon(statIcon);
+                button.setText(font, "x" + tier + (value > 0 ? "  (" + value + ")" : "") + (selected ? "  <" : ""));
+                button.registerCallBack(this, "setItemTier", new String[]{uuid, String.valueOf(tier)});
+                itemDetails[i++] = button;
+            }
+        }
+
+        itemDetails = Arrays.copyOfRange(itemDetails, 0, i);
+    }
+
+    public void setItemTier(String uuid, String tierStr) {
+        LinkedHashMap template = (LinkedHashMap) itemTemplates.get(uuid);
+        ItemGenerator.setConsumableTier(template, Integer.parseInt(tierStr));
         prepareSelectedItemView(uuid);
     }
 
@@ -510,7 +553,7 @@ public class ItemsEditorWindow extends Window implements CallBack {
             updateImagePreview(null);
         }
 
-        if (type != null) {
+        if (type != null && !type.isConsumable) {
             int itemLevel = template.containsKey("__itemLevel__") ? (int) template.get("__itemLevel__") : 1;
             RarityDef rarity = ItemGenerator.currentRarity(template);
 
@@ -540,74 +583,93 @@ public class ItemsEditorWindow extends Window implements CallBack {
         itemDetails[i++] = button;
 
         // ──────── ТРЕБОВАНИЯ И ОСНОВНАЯ ХАРАКТЕРИСТИКА ────────
-        int mainStat = template.containsKey("__mainStat__") ? (int) template.get("__mainStat__") : 0;
-        int reqLevel = template.containsKey("__reqLevel__") ? (int) template.get("__reqLevel__") : 0;
-        int reqStrength = template.containsKey("__reqStrength__") ? (int) template.get("__reqStrength__") : 0;
-        int reqMagic = template.containsKey("__reqMagic__") ? (int) template.get("__reqMagic__") : 0;
+        // Расходники (зелья/свитки) не имеют требований и обычной "основной характеристики" —
+        // вместо неё выбирается тир/объём (см. prepareTierPickerView). У свитка (maxTier=1)
+        // выбирать нечего — вариант всего один, кнопка не нужна.
+        if (type != null && type.isConsumable) {
+            if (type.maxTier > 1) {
+                int tier = template.containsKey("__tier__") ? (int) template.get("__tier__") : 1;
+                int val = template.containsKey("__mainStat__") ? (int) template.get("__mainStat__") : 0;
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(statIcon);
+                button.setText(font, "Объём: x" + tier + (val > 0 ? "  (" + val + ")" : ""));
+                button.registerCallBack(this, "prepareTierPickerView", new String[]{uuid});
+                itemDetails[i++] = button;
+            }
+        } else {
+            int mainStat = template.containsKey("__mainStat__") ? (int) template.get("__mainStat__") : 0;
+            int reqLevel = template.containsKey("__reqLevel__") ? (int) template.get("__reqLevel__") : 0;
+            int reqStrength = template.containsKey("__reqStrength__") ? (int) template.get("__reqStrength__") : 0;
+            int reqMagic = template.containsKey("__reqMagic__") ? (int) template.get("__reqMagic__") : 0;
 
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(statIcon);
-        button.setText(font, "Основная характеристика: " + mainStat);
-        button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__mainStat__"});
-        itemDetails[i++] = button;
-
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(statIcon);
-        button.setText(font, "Требуемый уровень: " + reqLevel);
-        button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__reqLevel__"});
-        itemDetails[i++] = button;
-
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(statIcon);
-        button.setText(font, "Требуемая сила: " + reqStrength);
-        button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__reqStrength__"});
-        itemDetails[i++] = button;
-
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(statIcon);
-        button.setText(font, "Требуемая магия: " + reqMagic);
-        button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__reqMagic__"});
-        itemDetails[i++] = button;
-
-        // ──────── ХАРАКТЕРИСТИКИ ────────
-        itemDetails[i++] = makeSectionHeader("── ХАРАКТЕРИСТИКИ ──");
-
-        if (type != null) {
-            button = new ButtonCommon();
-            button.setBackgrounds(buttonBG, buttonBGHover);
-            button.setIcon(plusIcon);
-            button.setText(font, "Реролл модификаторов");
-            button.registerCallBack(this, "rerollModifiersCallback", new String[]{uuid});
-            itemDetails[i++] = button;
-        }
-
-        LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
-        for (Object statKeyObj : stats.keySet()) {
-            String statKey = statKeyObj.toString();
-            LinkedHashMap stat = (LinkedHashMap) stats.get(statKey);
-            int val = (int) stat.get("__value__");
-            ModifierDef def = selTypeKey != null ? ItemModifierCatalog.findModifier(selTypeKey, statKey) : null;
-            String label = def != null
-                ? def.name + ": " + val + def.unit + "  [" + def.min + ".." + def.effectiveMax(ItemGenerator.currentRarity(template).key) + "]"
-                : statKey + ": " + val;
             button = new ButtonCommon();
             button.setBackgrounds(buttonBG, buttonBGHover);
             button.setIcon(statIcon);
-            button.setText(font, label);
-            button.registerCallBack(this, "prepareStatView", new String[]{uuid, statKey});
+            button.setText(font, "Основная характеристика: " + mainStat);
+            button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__mainStat__"});
+            itemDetails[i++] = button;
+
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(statIcon);
+            button.setText(font, "Требуемый уровень: " + reqLevel);
+            button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__reqLevel__"});
+            itemDetails[i++] = button;
+
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(statIcon);
+            button.setText(font, "Требуемая сила: " + reqStrength);
+            button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__reqStrength__"});
+            itemDetails[i++] = button;
+
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(statIcon);
+            button.setText(font, "Требуемая магия: " + reqMagic);
+            button.registerCallBack(this, "editItemNumericField", new String[]{uuid, "__reqMagic__"});
             itemDetails[i++] = button;
         }
 
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(plusIcon);
-        button.setText(font, "Добавить характеристику");
-        button.registerCallBack(this, "prepareAddStatPickerView", new String[]{uuid});
-        itemDetails[i++] = button;
+        // ──────── ХАРАКТЕРИСТИКИ ────────
+        // У расходников модификаторов нет вовсе (и __stats__ не хранится) — секция скрыта целиком.
+        if (type == null || !type.isConsumable) {
+            itemDetails[i++] = makeSectionHeader("── ХАРАКТЕРИСТИКИ ──");
+
+            if (type != null) {
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(plusIcon);
+                button.setText(font, "Реролл модификаторов");
+                button.registerCallBack(this, "rerollModifiersCallback", new String[]{uuid});
+                itemDetails[i++] = button;
+            }
+
+            LinkedHashMap stats = (LinkedHashMap) template.get("__stats__");
+            for (Object statKeyObj : stats.keySet()) {
+                String statKey = statKeyObj.toString();
+                LinkedHashMap stat = (LinkedHashMap) stats.get(statKey);
+                int val = (int) stat.get("__value__");
+                ModifierDef def = selTypeKey != null ? ItemModifierCatalog.findModifier(selTypeKey, statKey) : null;
+                String label = def != null
+                    ? def.name + ": " + val + def.unit + "  [" + def.min + ".." + def.effectiveMax(ItemGenerator.currentRarity(template).key) + "]"
+                    : statKey + ": " + val;
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(statIcon);
+                button.setText(font, label);
+                button.registerCallBack(this, "prepareStatView", new String[]{uuid, statKey});
+                itemDetails[i++] = button;
+            }
+
+            button = new ButtonCommon();
+            button.setBackgrounds(buttonBG, buttonBGHover);
+            button.setIcon(plusIcon);
+            button.setText(font, "Добавить характеристику");
+            button.registerCallBack(this, "prepareAddStatPickerView", new String[]{uuid});
+            itemDetails[i++] = button;
+        }
 
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);

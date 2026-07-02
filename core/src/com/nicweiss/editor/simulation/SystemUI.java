@@ -54,70 +54,61 @@ public class SystemUI {
     /**
      * Слоты снаряжения в пиксельных координатах: {xPx, yPx, wCells, hCells}.
      * xPx, yPx — позиция от верхнего-левого угла области снаряжения (↓, →).
-     * Все зазоры = GAP=16px.
+     * Все зазоры = GAP=16px, CELL=47px.
      *
-     * Раскладка (CELL=36, GAP=16):
-     *  Левая сторона  (x=0):
-     *    Оружие    y=0,   h=4 → низ=144
-     *    Перчатки  y=160  (144+16)
+     * 5 колонок слева направо, с равными зазорами GAP между ними:
+     *   Кол.1 (x=0,    w=47 )  — 3 артефакта, у низа колонки, с зазорами между собой
+     *   Кол.2 (x=63,   w=94 )  — Оружие (2x4), Перчатки (2x2), по центру высоты колонки
+     *   Кол.3 (x=173,  w=188)  — Шлем+Амулет (в ряд), Броня, Пояс, 4 ячейки стека (вплотную)
+     *   Кол.4 (x=377,  w=94 )  — Щит (2x4), Сапоги (2x2), по центру высоты колонки
+     *   Кол.5 (x=487,  w=47 )  — 3 артефакта (симметрично колонке 1)
+     * EQ_TOTAL_W = 487+47 = 534
      *
-     *  Центр (x=88 = 72+16):
-     *    Шлем      x=88,  y=0,   w=2,h=2 → низ=72
-     *    Амулет    x=176  (88+72+16), y=0
-     *    Броня     x=88,  y=88   (72+16)
-     *    Пояс      x=88,  y=248  (88+144+16)
-     *    Артефакты x=88,140,192,244,296  y=300 (248+36+16), шаг=52(36+16)
+     * Колонка 3 (самая высокая, задаёт EQ_TOTAL_H): Шлем/Амулет(94) + GAP + Броня(188) + GAP +
+     * Пояс(47) + GAP + Стеки(47) = 94+16+188+16+47+16+47 = 424 → EQ_TOTAL_H=424.
+     * Колонки 2/4 (298 высотой: Оружие/Щит 188 + GAP + Перчатки/Сапоги 94) центрируются по
+     * вертикали в 424 → отступ (424-298)/2=63. Колонки 1/5 (173: 3×47 + 2×16) прижаты к низу →
+     * старт y=424-173=251 (шаг между артефактами 47+16=63 — совпадает с рядами Пояс/Стеки).
      *
-     *  Правая сторона (x=348 = 296+36+16):
-     *    Щит       y=0,   h=4 → низ=144
-     *    Сапоги    y=160
-     *
-     * Итог: ширина=420px (348+72), высота=336px (300+36)
+     * Ячейки стека (см. StackManager) НЕ входят в equipmentSlots — это отдельная механика
+     * (store.stacks), рисуются/хит-тестятся отдельно (см. STACK_X/Y, drawStackRow).
      */
-    /**
-     * Размеры области снаряжения (CELL=47, GAP=16, SIDE_Y_OFFSET=70=1.5*CELL):
-     *
-     * Горизонталь:
-     *   Weapon(2*47=94) + GAP(16) + artifacts_span(5*47+4*16=299) + GAP(16) + Shield(94) = 519 → 520
-     *   Центр = 260; Helm x=260-47=213; Amulet x=213+94+16=323; Artifacts start=260-149=111
-     *
-     * Вертикаль (центр-группа):
-     *   Helm(94) + GAP(16) = Armor y=110; Armor(188) + GAP(16) = Belt y=314; Belt(47) + GAP(16) = Art y=377
-     *   EQ_TOTAL_H = 377+47 = 424
-     *
-     * Вертикаль (боковые, +70px сдвиг):
-     *   Weapon y=70; Gloves y=70+188+16=274; Gloves bottom=274+94=368 < 424 ✓
-     */
-    private static final int EQ_TOTAL_W = 520;
+    private static final int EQ_TOTAL_W = 534;
     private static final int EQ_TOTAL_H = 424;
 
     private static final int[][] EQ_SLOTS = {
         // {xPx, yPx, wCells, hCells}   CELL=47, GAP=16
+        { 63,  63, 2, 4},  //  0  Оружие
+        { 63, 267, 2, 2},  //  1  Перчатки
 
-        // Левая сторона (сдвиг вниз 70px; x=50: gap_панель≈gap_до_брони ≈70px)
-        { 50,  70, 2, 4},  //  0  Оружие       x=50, y=70
-        { 50, 274, 2, 2},  //  1  Перчатки      y=274
+        {173,   0, 2, 2},  //  2  Шлем
+        {283,   0, 1, 1},  //  3  Амулет         рядом со шлемом, как и раньше
+        {173, 110, 2, 4},  //  4  Броня
+        {173, 314, 2, 1},  //  5  Пояс
 
-        // Центр (x=213=260-47; y без сдвига)
-        {213,   0, 2, 2},  //  2  Шлем           x=213, y=0
-        {323,   0, 1, 1},  //  3  Амулет          x=213+94+16=323
-        {213, 110, 2, 4},  //  4  Броня           y=94+16=110
-        {213, 314, 2, 1},  //  5  Пояс            y=110+188+16=314
-        {111, 377, 1, 1},  //  6  Арт. 1          y=314+47+16=377; x=260-149=111
-        {174, 377, 1, 1},  //  7  Арт. 2          x=111+63
-        {237, 377, 1, 1},  //  8  Арт. 3
-        {300, 377, 1, 1},  //  9  Арт. 4
-        {363, 377, 1, 1},  // 10  Арт. 5          x=363, right=410; shield=426 gap=16 ✓
+        {  0, 251, 1, 1},  //  6  Арт. 1 (лев.)
+        {  0, 314, 1, 1},  //  7  Арт. 2 (лев.)
+        {  0, 377, 1, 1},  //  8  Арт. 3 (лев.)
+        {487, 251, 1, 1},  //  9  Арт. 4 (прав.)
+        {487, 314, 1, 1},  // 10  Арт. 5 (прав.)
+        {487, 377, 1, 1},  // 11  Арт. 6 (прав.)
 
-        // Правая сторона (сдвиг вниз 70px; x=376=520-94-50: симметрично оружию)
-        {376,  70, 2, 4},  // 11  Щит             x=376
-        {376, 274, 2, 2},  // 12  Сапоги
+        {377,  63, 2, 4},  // 12  Щит
+        {377, 267, 2, 2},  // 13  Сапоги
     };
     private static final String[] EQ_NAMES = {
-        "Оружие","Перчатки","Шлем","Амулет","Броня",
-        "Пояс","","","","","",
+        "Оружие","Перчатки","Шлем","Амулет","Броня","Пояс",
+        "","","","","","",
         "Щит","Сапоги"
     };
+
+    // Ряд из 4 ячеек стека (см. StackManager) — вплотную друг к другу, под поясом в колонке 3.
+    private static final int STACK_X = 173, STACK_Y = 377;
+    private static final int STACK_COUNT = 4;
+
+    // Базовое количество доступных контейнеров-артефактов даже без пояса (см. ТЗ: "по умолчанию
+    // сразу доступно 2 контейнера — сделать базовым значением у игрока").
+    private static final int BASE_CONTAINERS = 2;
 
     // ── Цвета ─────────────────────────────────────────────────────────────────
     private static final Color C_SLOT_BG   = new Color(0.04f, 0.05f, 0.07f, 1f);
@@ -148,6 +139,13 @@ public class SystemUI {
     private float   holdATimer  = 0f;         // сколько A уже зажата
     private boolean holdAFired  = false;      // долгое нажатие A уже сработало
     private static final float HOLD_A_SWAP = 1.0f; // секунд до быстрой замены
+
+    // Удержание X (буфер пуст) — быстрая укладка наведённого предмета инвентаря в стек (см.
+    // quickStackAt) — аналог шифт-клика мышью. Короткое нажатие X при непустом буфере — отдельная
+    // ветка (выброс на землю, см. pollGamepad), с этим таймером не пересекается.
+    private float   holdXTimer  = 0f;
+    private boolean holdXFired  = false;
+    private static final float HOLD_X_STACK = 0.5f;
 
     // ── Кэшированная геометрия панели (обновляется каждый render) ────────────
     private float _px = 0, _py = 0;
@@ -251,8 +249,17 @@ public class SystemUI {
         if (activeTab == Tab.INVENTORY) {
             boolean shift = Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_LEFT)
                          || Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_RIGHT);
-            if (shift && draggedItem == null) quickSwapWithEquipped(mx, my);
-            else                              tryInteractAt(mx, my);
+            if (shift && draggedItem == null) {
+                int[] cell = getInvCellAt(mx, my);
+                LinkedHashMap hovered = cell != null ? getItemAt(cell[0], cell[1]) : null;
+                if (hovered != null && com.nicweiss.editor.utils.ItemModifierCatalog.isConsumableType((String) hovered.get("__type__"))) {
+                    quickStackAt(mx, my);
+                } else {
+                    quickSwapWithEquipped(mx, my);
+                }
+            } else {
+                tryInteractAt(mx, my);
+            }
         }
 
         return true;
@@ -271,8 +278,26 @@ public class SystemUI {
         if (rt && !prevRT && isOpen) switchTab(+1);
         if (b  && !prevB  && isOpen) { compareMode = false; cancelDrag(); isOpen = false; }
 
-        // X — выбросить перетаскиваемый предмет на землю
+        // X — выбросить перетаскиваемый предмет на землю (короткое нажатие, буфер не пуст)
         if (bx && !prevBX && isOpen && draggedItem != null) dropDraggedToGround();
+
+        // X — удержание (буфер пуст, вкладка инвентаря): быстрая укладка наведённого предмета
+        // в стек, та же логика, что у шифт-клика мышью (см. quickStackAt).
+        if (isOpen && activeTab == Tab.INVENTORY && draggedItem == null) {
+            if (bx) {
+                holdXTimer += dt;
+                if (!holdXFired && holdXTimer >= HOLD_X_STACK) {
+                    quickStackAt(gpX + CELL * 0.5f, gpY + CELL * 0.5f);
+                    holdXFired = true;
+                }
+            } else {
+                holdXTimer = 0f;
+                holdXFired = false;
+            }
+        } else {
+            holdXTimer = 0f;
+            holdXFired = false;
+        }
 
         // Y — переключить режим сравнения (инвентарь) / скролл вниз (статы)
         if (y && !prevY && isOpen && activeTab == Tab.INVENTORY) compareMode = !compareMode;
@@ -564,7 +589,7 @@ public class SystemUI {
 
         // ── Серые заблокированные слоты артефактов ───────────────────────────
         int availContainers = store.player != null ? store.player.containers : 0;
-        for (int i = 6; i <= 10; i++) {
+        for (int i = 6; i <= 11; i++) {
             if ((i - 6) < availContainers) continue;
             int[] s = EQ_SLOTS[i];
             col(batch, new com.badlogic.gdx.graphics.Color(0.12f, 0.12f, 0.15f, 0.88f));
@@ -572,6 +597,9 @@ public class SystemUI {
                        s[2] * CELL - 2, s[3] * CELL - 2);
         }
         batch.setColor(1, 1, 1, 1);
+
+        // ── Ряд ячеек стека (см. StackManager) ────────────────────────────────
+        drawStackRow(batch, gridX, eqTop);
 
         // ── Подсветка целевых клеток при перетаскивании ───────────────────────
         if (draggedItem != null) {
@@ -602,6 +630,16 @@ public class SystemUI {
                     batch.draw(pixel, gridX + es[0] + 1, eqTop - es[1] - es[3] * CELL + 1,
                                es[2] * CELL - 2, es[3] * CELL - 2);
                     batch.setColor(1, 1, 1, 1);
+                } else {
+                    int stackSlot = getStackSlotAt(curX, curY);
+                    if (stackSlot >= 0) {
+                        boolean ok = StackManager.canPlaceInSlot(stackSlot, draggedItem);
+                        col(batch, ok ? C_HIGHLIGHT_OK : C_HIGHLIGHT_BAD);
+                        float sx = gridX + STACK_X + stackSlot * CELL;
+                        float sy = eqTop - STACK_Y - CELL;
+                        batch.draw(pixel, sx + 1, sy + 1, CELL - 2, CELL - 2);
+                        batch.setColor(1, 1, 1, 1);
+                    }
                 }
             }
         }
@@ -705,6 +743,43 @@ public class SystemUI {
             else
                 batch.setColor(1f, 1f, 1f, 1f);
             batch.draw(icon, x, y, drawW, drawH);
+        }
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    /**
+     * Ряд из 4 ячеек стека (см. StackManager) под поясом: рамка ячейки + иконка первого предмета
+     * в очереди + бейдж "N/ёмкость" в нижнем правом углу — визуально как ячейки артефактов,
+     * но вплотную друг к другу (без зазоров).
+     */
+    private void drawStackRow(SpriteBatch batch, float gridX, float eqTop) {
+        int cap = StackManager.capacityPerSlot();
+        for (int i = 0; i < STACK_COUNT; i++) {
+            drawSlotPx(batch, gridX, eqTop, STACK_X + i * CELL, STACK_Y, 1, 1, null);
+            float sx = gridX + STACK_X + i * CELL;
+            float sy = eqTop - STACK_Y - CELL; // bottom-left, см. drawSlotPx
+
+            ItemStack stack = store.stacks != null && i < store.stacks.length ? store.stacks[i] : null;
+            if (stack == null || stack.items.isEmpty()) continue;
+
+            LinkedHashMap item = stack.items.get(0);
+            Texture icon = loadIcon((String) item.get("__image__"));
+            if (icon != null) {
+                float pad = 5f;
+                float slotSize = CELL - pad * 2;
+                float scale = Math.min(slotSize / icon.getWidth(), slotSize / icon.getHeight());
+                float drawW = icon.getWidth() * scale, drawH = icon.getHeight() * scale;
+                batch.setColor(1f, 1f, 1f, 1f);
+                batch.draw(icon, sx + (CELL - drawW) / 2f, sy + (CELL - drawH) / 2f, drawW, drawH);
+            }
+
+            String countText = stack.items.size() + "/" + cap;
+            layout.setText(font, countText);
+            float tw = layout.width, th = layout.height;
+            col(batch, new com.badlogic.gdx.graphics.Color(0f, 0f, 0f, 0.7f));
+            batch.draw(pixel, sx + CELL - tw - 5f, sy + 2f, tw + 3f, th + 3f);
+            font.setColor(C_TEXT);
+            font.draw(batch, countText, sx + CELL - tw - 3f, sy + th + 3f);
         }
         batch.setColor(1, 1, 1, 1);
     }
@@ -829,6 +904,15 @@ public class SystemUI {
         if (eq >= 0 && store.equipmentSlots[eq] != null) {
             draggedItem = store.equipmentSlots[eq];
             store.equipmentSlots[eq] = null;
+            return;
+        }
+
+        // Клик по занятой ячейке стека — вынимает первый предмет очереди в буфер (без применения
+        // эффекта), дальше с ним работают общие правила переноса (см. StackManager.removeFirst).
+        int stackSlot = getStackSlotAt(cx, cy);
+        if (stackSlot >= 0) {
+            LinkedHashMap item = StackManager.removeFirst(stackSlot);
+            if (item != null) draggedItem = item;
         }
     }
 
@@ -865,12 +949,22 @@ public class SystemUI {
         }
 
         int eq = getEqSlotAt(cx, cy);
-        if (eq >= 0 && canPlaceInEqSlot(eq, draggedItem)) {
-            // Проверяем требования: нельзя надеть если не хватает статов
-            if (store.player != null && !itemMeetsRequirements(draggedItem, store.player)) return;
-            LinkedHashMap existing = store.equipmentSlots[eq];
-            store.equipmentSlots[eq] = draggedItem;
-            draggedItem = existing;
+        if (eq >= 0) {
+            if (canPlaceInEqSlot(eq, draggedItem)) {
+                // Проверяем требования: нельзя надеть если не хватает статов
+                if (store.player != null && !itemMeetsRequirements(draggedItem, store.player)) return;
+                LinkedHashMap existing = store.equipmentSlots[eq];
+                store.equipmentSlots[eq] = draggedItem;
+                draggedItem = existing;
+            }
+            return;
+        }
+
+        // Ячейка стека: кладём, только если по логике стека там есть место (см. canPlaceInSlot).
+        // Свопа нет — если места нет, предмет просто остаётся в буфере (та же семантика, что у eq-слотов).
+        int stackSlot = getStackSlotAt(cx, cy);
+        if (stackSlot >= 0 && StackManager.tryAddToSlot(stackSlot, draggedItem)) {
+            draggedItem = null;
         }
     }
 
@@ -936,7 +1030,10 @@ public class SystemUI {
         p.attackRating = 0; p.physDamage = 0; p.magicDamage = 0;
         p.defence = 0; p.defenceRating = 0;
         p.physDamageReduce = 0; p.magicDamageReduce = 0;
-        p.containers = 0;
+        // По умолчанию доступны BASE_CONTAINERS контейнера-артефакта даже без пояса (см. ТЗ) —
+        // пояс с belt_containers добавляет сверху (см. applyMod).
+        p.containers = BASE_CONTAINERS;
+        p.beltCapacity = 0;
         p.lifeLeech = 0; p.manaLeech = 0;
         p.lifeRegen = 0f; p.manaRegen = 0f;
         p.magicFind = 0f; p.goldFind = 0f;
@@ -950,14 +1047,14 @@ public class SystemUI {
                 applyItemStats(item, p);
         }
 
-        // Фаза 1: всё снаряжение кроме артефактов (слоты 6-10), итеративно
+        // Фаза 1: всё снаряжение кроме артефактов (слоты 6-11), итеративно
         // Нужно сначала получить containers от пояса, чтобы затем решить что делать с артефактами
         boolean[] active = new boolean[store.equipmentSlots.length];
         boolean changed = true;
         while (changed) {
             changed = false;
             for (int i = 0; i < store.equipmentSlots.length; i++) {
-                if (i >= 6 && i <= 10) continue; // артефакты — в фазе 2
+                if (i >= 6 && i <= 11) continue; // артефакты — в фазе 2
                 LinkedHashMap item = store.equipmentSlots[i];
                 if (item == null || item == draggedItem || active[i]) continue;
                 if (itemMeetsRequirements(item, p)) {
@@ -969,7 +1066,7 @@ public class SystemUI {
         }
 
         // Фаза 2: артефакты — только в пределах containers
-        for (int i = 6; i <= 10; i++) {
+        for (int i = 6; i <= 11; i++) {
             LinkedHashMap item = store.equipmentSlots[i];
             if (item == null || item == draggedItem) continue;
             boolean slotUnlocked = (i - 6) < p.containers;
@@ -1002,6 +1099,10 @@ public class SystemUI {
             p.health = Math.min(p.health, p.maxHealth);
             p.mana   = Math.min(p.mana,   p.maxMana);
         }
+
+        // Ёмкость стеков зависит от beltCapacity, только что пересчитанного выше — если пояс
+        // сняли/сменили на менее ёмкий, лишнее из стеков нужно тут же выложить в инвентарь/на землю.
+        StackManager.enforceCapacity();
     }
 
     // 8 очков здоровья за 1 силы, 4 очка маны за 1 магии — см. recomputePlayerStats().
@@ -1027,12 +1128,39 @@ public class SystemUI {
     /** Добавляет бонусы всех статов предмета к Player. */
     private static void applyItemStats(LinkedHashMap item, Player p) {
         Object statsObj = item.get("__stats__");
-        if (!(statsObj instanceof LinkedHashMap)) return;
-        for (Object v : ((LinkedHashMap) statsObj).values()) {
-            if (!(v instanceof LinkedHashMap)) continue;
-            LinkedHashMap stat = (LinkedHashMap) v;
-            applyMod((String) stat.get("__modId__"), toInt(stat.get("__value__")), p);
+        if (statsObj instanceof LinkedHashMap) {
+            for (Object v : ((LinkedHashMap) statsObj).values()) {
+                if (!(v instanceof LinkedHashMap)) continue;
+                LinkedHashMap stat = (LinkedHashMap) v;
+                applyMod((String) stat.get("__modId__"), toInt(stat.get("__value__")), p);
+            }
         }
+        applyMainStat(item, p);
+    }
+
+    /**
+     * Основная характеристика пояса/обуви/перчаток идёт напрямую в стату игрока, а не через
+     * __stats__/applyMod — это не модификатор из каталога (нет ModifierDef), а часть самого
+     * ролла типа предмета (см. ItemGenerator.rollMainStat). У остальных типов __mainStat__ —
+     * это урон/защита, который уже учтён в бою через сравнение предметов, а не как Player-стата.
+     */
+    private static void applyMainStat(LinkedHashMap item, Player p) {
+        if (!item.containsKey("__mainStat__")) return;
+        int v = toInt(item.get("__mainStat__"));
+        String typeKey = (String) item.get("__type__");
+        if (typeKey == null) return;
+        if      ("boots".equals(typeKey))  p.runSpeed     += v;
+        else if ("gloves".equals(typeKey)) p.attackRating += v;
+        else if ("belt".equals(typeKey))   p.beltCapacity += v;
+    }
+
+    /** Подпись __mainStat__ в тултипе — зависит от типа предмета (см. ItemGenerator.rollMainStat). */
+    private static String mainStatLabel(String typeKey) {
+        if ("weapon".equals(typeKey)) return "Урон";
+        if ("belt".equals(typeKey))   return "Ёмкость";
+        if ("boots".equals(typeKey))  return "Скорость передвижения";
+        if ("gloves".equals(typeKey)) return "Рейтинг атаки";
+        return "Защита";
     }
 
     /**
@@ -1101,6 +1229,17 @@ public class SystemUI {
         return -1;
     }
 
+    /** Индекс ячейки стека (0..STACK_COUNT-1) по экранной точке, или -1 — см. drawStackRow. */
+    private int getStackSlotAt(float cx, float cy) {
+        float sy = _eqTop - STACK_Y - CELL;
+        if (cy < sy || cy >= sy + CELL) return -1;
+        for (int i = 0; i < STACK_COUNT; i++) {
+            float sx = _eqGridX + STACK_X + i * CELL;
+            if (cx >= sx && cx < sx + CELL) return i;
+        }
+        return -1;
+    }
+
     /** Предмет в инвентаре, занимающий ячейку (col, row). */
     private LinkedHashMap getItemAt(int col, int row) {
         for (Object v : store.inventory.values()) {
@@ -1120,7 +1259,12 @@ public class SystemUI {
         int[] cell = getInvCellAt(cx, cy);
         if (cell != null) return getItemAt(cell[0], cell[1]);
         int eq = getEqSlotAt(cx, cy);
-        return eq >= 0 ? store.equipmentSlots[eq] : null;
+        if (eq >= 0) return store.equipmentSlots[eq];
+        int stackSlot = getStackSlotAt(cx, cy);
+        if (stackSlot >= 0 && store.stacks != null && !store.stacks[stackSlot].items.isEmpty()) {
+            return store.stacks[stackSlot].items.get(0);
+        }
+        return null;
     }
 
     /** Ключ (uuid) предмета в store.inventory. */
@@ -1189,8 +1333,8 @@ public class SystemUI {
         int[] allowed = allowedEqSlotsForType(type);
         for (int s : allowed) {
             if (s != slotIdx) continue;
-            // Артефактные слоты 6-10: доступны только если containers достаточно
-            if (s >= 6 && s <= 10) {
+            // Артефактные слоты 6-11: доступны только если containers достаточно
+            if (s >= 6 && s <= 11) {
                 int containers = store.player != null ? store.player.containers : 0;
                 return (s - 6) < containers;
             }
@@ -1203,14 +1347,14 @@ public class SystemUI {
         if (type == null) return new int[0];
         switch (type) {
             case "weapon":   return new int[]{0};
-            case "shield":   return new int[]{11};
+            case "shield":   return new int[]{12};
             case "armor":    return new int[]{4};
             case "helmet":   return new int[]{2};
             case "belt":     return new int[]{5};
             case "gloves":   return new int[]{1};
-            case "boots":    return new int[]{12};
+            case "boots":    return new int[]{13};
             case "amulet":   return new int[]{3};
-            case "artifact": return new int[]{6, 7, 8, 9, 10};
+            case "artifact": return new int[]{6, 7, 8, 9, 10, 11};
             default:         return new int[0];
         }
     }
@@ -1249,7 +1393,7 @@ public class SystemUI {
 
     /**
      * Возвращает все надетые предметы, с которыми можно сравнить item.
-     * Для артефактов — все занятые из слотов 6-10 (до 5 штук).
+     * Для артефактов — все занятые из слотов 6-11 (до 6 штук).
      * Для остальных типов — первый занятый совместимый слот (список из 1 элемента или пуст).
      */
     private java.util.List<LinkedHashMap> getComparisonItems(LinkedHashMap item) {
@@ -1270,6 +1414,28 @@ public class SystemUI {
      * Быстрый своп: предмет под курсором ↔ надетый предмет того же типа.
      * Надетый идёт в инвентарь на место выбранного (или в первое свободное, или на землю).
      */
+    /**
+     * Быстрая укладка предмета инвентаря в стек (шифт-клик мышью / удержание X на геймпаде, см.
+     * handleClick/pollGamepad) — та же логика приоритета, что у подбора с земли
+     * (см. StackManager.tryAddToStack). Если в стеке нет места — предмет остаётся в инвентаре как есть.
+     */
+    private void quickStackAt(float cx, float cy) {
+        int[] cell = getInvCellAt(cx, cy);
+        if (cell == null) return;
+        LinkedHashMap inv = getItemAt(cell[0], cell[1]);
+        if (inv == null) return;
+        String invType = (String) inv.get("__type__");
+        if (!com.nicweiss.editor.utils.ItemModifierCatalog.isConsumableType(invType)) return;
+
+        if (StackManager.tryAddToStack(inv)) {
+            int iw = inv.containsKey("__width__")  ? (int) inv.get("__width__")  : 1;
+            int ih = inv.containsKey("__height__") ? (int) inv.get("__height__") : 1;
+            String key = getItemKey(inv);
+            if (key != null) store.inventory.remove(key);
+            clearInvGrid((int) inv.get("__inv_x__"), (int) inv.get("__inv_y__"), iw, ih);
+        }
+    }
+
     private void quickSwapWithEquipped(float cx, float cy) {
         // Курсор над eq-слотом — пытаемся снять предмет в инвентарь
         int eqIdx = getEqSlotAt(cx, cy);
@@ -1449,7 +1615,7 @@ public class SystemUI {
 
         String mainStatLine = null;
         if (item.containsKey("__mainStat__"))
-            mainStatLine = ("weapon".equals(typeKey) ? "Урон" : "Защита") + ": " + item.get("__mainStat__");
+            mainStatLine = mainStatLabel(typeKey) + ": " + item.get("__mainStat__");
 
         java.util.List<String> reqLines = new java.util.ArrayList<>();
         if (item.containsKey("__reqLevel__")    && toInt(item.get("__reqLevel__"))    > 1) reqLines.add("Требуемый уровень: "  + item.get("__reqLevel__"));
@@ -1509,11 +1675,10 @@ public class SystemUI {
             subtypeLabel = com.nicweiss.editor.utils.ItemModifierCatalog.TYPES.get(typeKey).labelForClass(classKey);
         }
 
-        // Основная характеристика (урон/защита)
+        // Основная характеристика (урон/защита/ёмкость/скорость/рейтинг атаки — см. mainStatLabel)
         String mainStatLine = null;
         if (item.containsKey("__mainStat__")) {
-            String statLabel = "weapon".equals(typeKey) ? "Урон" : "Защита";
-            mainStatLine = statLabel + ": " + item.get("__mainStat__");
+            mainStatLine = mainStatLabel(typeKey) + ": " + item.get("__mainStat__");
         }
 
         // Требования

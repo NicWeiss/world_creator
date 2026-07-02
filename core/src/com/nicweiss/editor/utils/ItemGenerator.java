@@ -197,6 +197,86 @@ public class ItemGenerator {
         template.put("__rarity__", rarityKey);
     }
 
+    // ---- Расходники (зелья/свитки) ----
+
+    /**
+     * Назначает предмету тип расходника (см. TypeDef.isConsumable) "с нуля": 1x1, без класса,
+     * редкости и модификаторов, тир по умолчанию x1 (низший). Используется редактором — тир
+     * дальше выбирается вручную через setConsumableTier.
+     */
+    public static void applyConsumableType(LinkedHashMap template, String typeKey) {
+        applyConsumableTypeInternal(template, typeKey, 1);
+    }
+
+    /**
+     * Вариант для рантайм-дропа (см. DropManager): тир роллится по гладкой кривой от уровня
+     * игрока — см. {@link #rollConsumableTier}.
+     */
+    public static void applyConsumableType(LinkedHashMap template, String typeKey, int playerLevel) {
+        TypeDef type = ItemModifierCatalog.TYPES.get(typeKey);
+        int tier = type != null ? rollConsumableTier(type.maxTier, playerLevel) : 1;
+        applyConsumableTypeInternal(template, typeKey, tier);
+    }
+
+    private static void applyConsumableTypeInternal(LinkedHashMap template, String typeKey, int tier) {
+        template.put("__type__", typeKey);
+        template.put("__width__", 1);
+        template.put("__height__", 1);
+        template.remove("__itemClass__");
+        template.remove("__rarity__");
+        template.remove("__stats__"); // расходники без модификаторов — __stats__ им не нужен
+
+        TypeDef type = ItemModifierCatalog.TYPES.get(typeKey);
+        applyDefaultImage(template, type, null);
+
+        // Расходники доступны с любого уровня — требований нет.
+        template.put("__reqLevel__", 1);
+        template.put("__reqStrength__", 0);
+        template.put("__reqMagic__", 0);
+
+        setConsumableTier(template, tier);
+    }
+
+    /**
+     * Ручная/повторная установка тира расходника (x1..maxTier). Пересчитывает __mainStat__ из
+     * TypeDef.tierValues (очки эффекта на этот тир), если для типа они заданы. Для нетировых
+     * расходников (maxTier=1, например свиток) __tier__/__mainStat__ не хранятся вовсе.
+     */
+    public static void setConsumableTier(LinkedHashMap template, int tier) {
+        TypeDef type = currentType(template);
+        if (type == null || !type.isConsumable) return;
+
+        if (type.maxTier <= 1) {
+            template.remove("__tier__");
+            template.remove("__mainStat__");
+            return;
+        }
+
+        tier = clamp(tier, 1, type.maxTier);
+        template.put("__tier__", tier);
+        if (type.tierValues != null && tier - 1 < type.tierValues.length) {
+            template.put("__mainStat__", type.tierValues[tier - 1]);
+        } else {
+            template.remove("__mainStat__");
+        }
+    }
+
+    /**
+     * Гладкий ролл тира расходника (1..maxTier) от уровня игрока (1..100): непрерывная позиция
+     * тира растёт линейно с уровнем, а фактический тир — "дизеринг" вокруг неё (шанс округлить
+     * вверх = дробная часть позиции). Так следующий тир начинает попадаться всё чаще по мере
+     * роста уровня, пока не станет основным, без жёстких уровневых порогов.
+     */
+    public static int rollConsumableTier(int maxTier, int playerLevel) {
+        if (maxTier <= 1) return 1;
+        int level = clamp(playerLevel, 1, 100);
+        double continuousTier = 1.0 + ((level - 1) / 99.0) * (maxTier - 1); // 1..maxTier
+        int lowerTier = clamp((int) Math.floor(continuousTier), 1, maxTier);
+        int upperTier = Math.min(maxTier, lowerTier + 1);
+        double frac = continuousTier - lowerTier;
+        return RANDOM.nextDouble() < frac ? upperTier : lowerTier;
+    }
+
     public static TypeDef currentType(LinkedHashMap template) {
         if (!template.containsKey("__type__")) return null;
         return ItemModifierCatalog.TYPES.get(template.get("__type__"));
@@ -297,16 +377,52 @@ public class ItemGenerator {
     }
 
     /**
-     * Роллит "основную характеристику" (урон/защита — смысл зависит от типа предмета) от уровня
-     * предмета и качества (редкость+уровень): чем выше оба — тем выше показатель.
+     * Роллит "основную характеристику" от уровня предмета и качества (редкость+уровень): чем выше
+     * оба — тем выше показатель. Смысл характеристики зависит от типа предмета:
+     *  - пояс: ёмкость (кратна 4, 4..16) — под стеки (см. SystemUI/стеки);
+     *  - обувь: скорость передвижения (1..40);
+     *  - перчатки: рейтинг атаки (10..500);
+     *  - всё остальное: урон/защита (1..500, старая формула без изменений).
      */
     public static void rollMainStat(LinkedHashMap template) {
         if (currentType(template) == null) return;
-        int itemLevel = currentItemLevel(template);
+        String typeKey = (String) template.get("__type__");
         double quality = currentQuality(template);
-        int base = 4 + Math.round(itemLevel * 1.5f);
-        int value = Math.round(base * (0.6f + (float) quality * 0.8f));
-        template.put("__mainStat__", clamp(value, 1, 500));
+
+        int value;
+        switch (typeKey) {
+            case "belt": {
+                // Ёмкость — всегда кратна 4: тир 1..4 роллится тем же способом, что и обычные
+                // модификаторы (вокруг quality), затем масштабируется на 4 → {4, 8, 12, 16}.
+                int tier = rollRanged(quality, 1, 4);
+                value = tier * 4;
+                break;
+            }
+            case "boots":
+                value = rollRanged(quality, 1, 40);
+                break;
+            case "gloves":
+                value = rollRanged(quality, 10, 500);
+                break;
+            default: {
+                int itemLevel = currentItemLevel(template);
+                int base = 4 + Math.round(itemLevel * 1.5f);
+                value = Math.round(base * (0.6f + (float) quality * 0.8f));
+                value = clamp(value, 1, 500);
+                break;
+            }
+        }
+        template.put("__mainStat__", value);
+    }
+
+    // Роллит целое в [min, max], кучкуясь вокруг quality — та же логика, что и rolledStat,
+    // но без ModifierDef (для __mainStat__ типов с собственным диапазоном).
+    private static int rollRanged(double quality, int min, int max) {
+        if (max <= min) return min;
+        double roll = quality + (RANDOM.nextDouble() - 0.5) * ROLL_SPREAD;
+        roll = Math.max(0.0, Math.min(1.0, roll));
+        int value = min + (int) Math.round((max - min) * roll);
+        return clamp(value, min, max);
     }
 
     public static LinkedHashMap rolledStat(ModifierDef def, double quality, String rarityKey) {

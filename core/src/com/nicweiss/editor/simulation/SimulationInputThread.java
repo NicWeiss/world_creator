@@ -31,6 +31,7 @@ public class SimulationInputThread implements Runnable {
     // ── Геймпад: edge-detect и дебаунс стика для меню ───────────────────────
     private boolean prevLT = false, prevRT = false, prevStart = false;
     private boolean prevDUp = false, prevDDown = false, prevA = false;
+    private boolean prevDLeft = false, prevDRight = false;
     private boolean prevR3 = false;
     private float   stickNavTimer = 0f;
     private static final float STICK_NAV_DELAY = 0.28f;
@@ -108,6 +109,11 @@ public class SimulationInputThread implements Runnable {
             if (keyCode == com.badlogic.gdx.Input.Keys.ENTER && store.debugDropTrigger != null) {
                 store.debugDropTrigger.run();
             }
+            // 1-4 — тратят первый предмет из соответствующей ячейки стека (см. StackManager).
+            if (keyCode == com.badlogic.gdx.Input.Keys.NUM_1) StackManager.consumeFirst(0);
+            if (keyCode == com.badlogic.gdx.Input.Keys.NUM_2) StackManager.consumeFirst(1);
+            if (keyCode == com.badlogic.gdx.Input.Keys.NUM_3) StackManager.consumeFirst(2);
+            if (keyCode == com.badlogic.gdx.Input.Keys.NUM_4) StackManager.consumeFirst(3);
         }
         return true;
     }
@@ -209,19 +215,26 @@ public class SimulationInputThread implements Runnable {
             store.systemUI.pollGamepad(start, lt, rt, safeButton(ctrl, m.buttonB), bx, by, ba, ax, ay);
         }
 
-        // D-pad и A — навигация меню (edge-detect)
-        boolean dUp   = safeButton(ctrl, m.buttonDpadUp);
-        boolean dDown = safeButton(ctrl, m.buttonDpadDown);
-        boolean a     = safeButton(ctrl, m.buttonA);
+        // D-pad и A — навигация меню, когда UI открыт; когда закрыт — D-pad тратит стеки (edge-detect)
+        boolean dUp    = safeButton(ctrl, m.buttonDpadUp);
+        boolean dDown  = safeButton(ctrl, m.buttonDpadDown);
+        boolean dLeft  = safeButton(ctrl, m.buttonDpadLeft);
+        boolean dRight = safeButton(ctrl, m.buttonDpadRight);
+        boolean a      = safeButton(ctrl, m.buttonA);
 
         if (store.systemUI != null && store.systemUI.isOpen()) {
             if (dUp   && !prevDUp)   store.systemUI.gamepadNavigate(-1);
             if (dDown && !prevDDown) store.systemUI.gamepadNavigate(+1);
             // A в инвентаре обрабатывается pollGamepad (различие короткого/долгого нажатия)
             if (a && !prevA && store.systemUI.isMenuOpen()) store.systemUI.gamepadActivate();
-        } else if (a && !prevA) {
-            // UI закрыт: A подбирает предмет в фокусе (см. DropManager.renderLabels).
-            DropManager.tryPickupFocused();
+        } else {
+            // UI закрыт: A подбирает предмет в фокусе (см. DropManager.renderLabels), D-pad —
+            // тратит первый предмет из соответствующей ячейки стека (см. StackManager).
+            if (a && !prevA) DropManager.tryPickupFocused();
+            if (dUp    && !prevDUp)    StackManager.consumeFirst(0);
+            if (dDown  && !prevDDown)  StackManager.consumeFirst(1);
+            if (dLeft  && !prevDLeft)  StackManager.consumeFirst(2);
+            if (dRight && !prevDRight) StackManager.consumeFirst(3);
         }
 
         // R3 (клик правого стика) — отладочный выброс лута+опыта (см. Store.debugDropTrigger,
@@ -234,6 +247,7 @@ public class SimulationInputThread implements Runnable {
 
         prevLT = lt; prevRT = rt; prevStart = start;
         prevDUp = dUp; prevDDown = dDown; prevA = a;
+        prevDLeft = dLeft; prevDRight = dRight;
     }
 
     private boolean safeButton(Controller ctrl, int code) {

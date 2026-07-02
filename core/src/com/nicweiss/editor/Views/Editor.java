@@ -128,8 +128,8 @@ public class Editor extends View{
                 tmp.setTexture(textures[ts].texture);
                 tmp.setTextureId(ts);
 
-                tmp.xPositionOnMap = i+1;
-                tmp.yPositionOnMap = j+1;
+                tmp.xPositionOnMap = i + store.TILE_INDEX_BASE;
+                tmp.yPositionOnMap = j + store.TILE_INDEX_BASE;
                 tmp.generateAndSetUUID();
                 store.objectedMap[i][j] = tmp;
 
@@ -555,7 +555,7 @@ public class Editor extends View{
     public void renderCreations(SpriteBatch batch, int mapI, int mapJ, boolean filterByHeight) {
         for (Creation creation: store.creations) {
             if (creation != null){
-                if (creation.mapCellX != (mapI+1) || creation.mapCellY != (mapJ+1) ){
+                if (creation.mapCellX != (mapI + store.TILE_INDEX_BASE) || creation.mapCellY != (mapJ + store.TILE_INDEX_BASE) ){
                     continue;
                 }
                 if (filterByHeight) {
@@ -571,7 +571,7 @@ public class Editor extends View{
         for (int i = 0; i <= store.buildingCount; i++) {
             Creation b = store.buildings[i];
             if (b != null) {
-                if (b.mapCellX != (mapI+1) || b.mapCellY != (mapJ+1)) { continue; }
+                if (b.mapCellX != (mapI + store.TILE_INDEX_BASE) || b.mapCellY != (mapJ + store.TILE_INDEX_BASE)) { continue; }
                 if (filterByHeight) {
                     MapObject el = store.objectedMap[mapI][mapJ];
                     if (el.getHeight() != 0) { continue; }
@@ -585,7 +585,7 @@ public class Editor extends View{
         for (int i = 0; i <= store.dropCount; i++) {
             com.nicweiss.editor.simulation.Drop drop = store.drops[i];
             if (drop != null) {
-                if (drop.mapCellX != (mapI+1) || drop.mapCellY != (mapJ+1)) { continue; }
+                if (drop.mapCellX != (mapI + store.TILE_INDEX_BASE) || drop.mapCellY != (mapJ + store.TILE_INDEX_BASE)) { continue; }
                 if (filterByHeight) {
                     MapObject el = store.objectedMap[mapI][mapJ];
                     if (el.getHeight() != 0) { continue; }

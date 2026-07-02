@@ -10,6 +10,10 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.nicweiss.editor.Generic.Store;
 
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * HUD игрока в режиме симуляции: здоровье/мана (сферы по бокам), уровень и полоса опыта,
  * плейсхолдеры ячеек навыков/расходников (по центру). Прижат к центру низа экрана,
@@ -48,7 +52,8 @@ public class PlayerHud {
     private static final Color C_HOTKEY_TEXT   = new Color(0.64f, 0.54f, 0.46f, 1f);
     private static final Color C_TEXT          = new Color(0.92f, 0.86f, 0.75f, 1f);
 
-    // Плейсхолдеры — в игре пока нет системы навыков/расходников, ячейки декоративные (см. концепцию прототипа).
+    // Навыков пока нет — ячейки декоративные. Ячейки предметов привязаны к store.stacks (см.
+    // StackManager) — те же 4 ячейки, что и кнопки 1-4/D-pad (см. SimulationInputThread).
     private static final String[] SKILL_KEYS = {"Q", "W", "E", "R", "ЛКМ", "ПКМ"};
     private static final String[] ITEM_KEYS  = {"1", "2", "3", "4"};
 
@@ -56,6 +61,9 @@ public class PlayerHud {
     private final Texture circle; // белый круг на прозрачном фоне — основа сфер и ячеек
     private final BitmapFont fontSmall;
     private final GlyphLayout layout;
+
+    // Иконки предметов из стеков — кешируются по пути картинки, чтобы не грузить Texture каждый кадр.
+    private final Map<String, Texture> itemIconCache = new HashMap<>();
 
     public PlayerHud() {
         Pixmap pm = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
@@ -190,8 +198,9 @@ public class PlayerHud {
         batch.draw(pixel, dividerX, slotY + 6f, 1f, SLOT_SIZE - 12f);
         sx += DIVIDER_GAP;
 
-        for (String key : ITEM_KEYS) {
-            renderSlot(batch, sx, slotY, C_SLOT_ITEM_BG, C_SLOT_ITEM_BORDER, key);
+        for (int i = 0; i < ITEM_KEYS.length; i++) {
+            ItemStack stack = (store.stacks != null && i < store.stacks.length) ? store.stacks[i] : null;
+            renderItemSlot(batch, sx, slotY, ITEM_KEYS[i], stack);
             sx += SLOT_SIZE + SLOT_GAP;
         }
 
@@ -216,6 +225,61 @@ public class PlayerHud {
         fontSmall.draw(batch, hotkey, tagX + 3f, tagY + tagH - 3f);
 
         batch.setColor(1, 1, 1, 1);
+    }
+
+    /** Ячейка стека: иконка первого предмета в очереди + бейдж "N/ёмкость" в нижнем правом углу. */
+    private void renderItemSlot(SpriteBatch batch, float x, float y, String hotkey, ItemStack stack) {
+        col(batch, C_SLOT_ITEM_BORDER);
+        batch.draw(circle, x, y, SLOT_SIZE, SLOT_SIZE);
+        float inset = 3f;
+        col(batch, C_SLOT_ITEM_BG);
+        batch.draw(circle, x + inset, y + inset, SLOT_SIZE - inset * 2, SLOT_SIZE - inset * 2);
+
+        if (stack != null && !stack.items.isEmpty()) {
+            LinkedHashMap first = stack.items.get(0);
+            Texture icon = iconFor((String) first.get("__image__"));
+            if (icon != null) {
+                float iconSize = SLOT_SIZE - inset * 2 - 10f;
+                batch.setColor(1f, 1f, 1f, 1f);
+                batch.draw(icon, x + (SLOT_SIZE - iconSize) / 2f, y + (SLOT_SIZE - iconSize) / 2f, iconSize, iconSize);
+            }
+
+            String countText = stack.items.size() + "/" + StackManager.capacityPerSlot();
+            layout.setText(fontSmall, countText);
+            float badgeW = layout.width + 6f, badgeH = layout.height + 4f;
+            float badgeX = x + SLOT_SIZE - badgeW - 2f;
+            float badgeY = y + 2f;
+            col(batch, C_HOTKEY_BG);
+            batch.draw(pixel, badgeX, badgeY, badgeW, badgeH);
+            fontSmall.setColor(C_TEXT);
+            fontSmall.draw(batch, countText, badgeX + 3f, badgeY + badgeH - 2f);
+        }
+
+        layout.setText(fontSmall, hotkey);
+        float tagW = layout.width + 8f;
+        float tagH = layout.height + 6f;
+        float tagX = x + (SLOT_SIZE - tagW) / 2f;
+        float tagY = y - tagH / 2f;
+        col(batch, C_HOTKEY_BG);
+        batch.draw(pixel, tagX, tagY, tagW, tagH);
+        fontSmall.setColor(C_HOTKEY_TEXT);
+        fontSmall.draw(batch, hotkey, tagX + 3f, tagY + tagH - 3f);
+
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    private Texture iconFor(String imagePath) {
+        if (imagePath == null) return null;
+        Texture t = itemIconCache.get(imagePath);
+        if (t == null) {
+            try {
+                t = new Texture(Gdx.files.absolute(imagePath));
+                itemIconCache.put(imagePath, t);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return t;
     }
 
     private void col(SpriteBatch b, Color c) { b.setColor(c.r, c.g, c.b, c.a); }

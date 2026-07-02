@@ -12,6 +12,7 @@ import com.nicweiss.editor.utils.Uuid;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Random;
@@ -61,6 +62,8 @@ public class DropManager {
         for (int i = 0; i < itemCount; i++) {
             spawnItemDrop(rollItemTemplate(enemyLevel), tileX, tileY);
         }
+
+        rollPotionsAndScroll(tileX, tileY);
     }
 
     // Один дроп (один убитый враг) — общая сумма опыта дробится на случайное число сфер,
@@ -119,12 +122,72 @@ public class DropManager {
         LinkedHashMap template = new LinkedHashMap();
         template.put("__uuid__", Uuid.generate());
 
-        String[] typeKeys = ItemModifierCatalog.TYPES.keySet().toArray(new String[0]);
-        String typeKey = typeKeys[RANDOM.nextInt(typeKeys.length)];
+        // Расходники (зелья/свитки) — отдельная категория лута со своим роллом (см.
+        // rollPotionsAndScroll), сюда, в обычный ролл снаряжения, не попадают.
+        String typeKey = equipmentTypeKeys()[RANDOM.nextInt(equipmentTypeKeys().length)];
 
         int playerLevel = store.player != null ? store.player.level : enemyLevel;
         float magicFind = store.player != null ? store.player.magicFind : 0f;
         ItemGenerator.applyType(template, typeKey, enemyLevel, playerLevel, magicFind);
+        template.put("__name__", ItemModifierCatalog.TYPES.get(typeKey).label);
+        return template;
+    }
+
+    private static String[] equipmentTypeKeysCache;
+    private static String[] equipmentTypeKeys() {
+        if (equipmentTypeKeysCache == null) {
+            List<String> keys = new ArrayList<>();
+            for (String key : ItemModifierCatalog.TYPES.keySet()) {
+                if (!ItemModifierCatalog.isConsumableType(key)) keys.add(key);
+            }
+            equipmentTypeKeysCache = keys.toArray(new String[0]);
+        }
+        return equipmentTypeKeysCache;
+    }
+
+    // ── Зелья и свитки ───────────────────────────────────────────────────────────
+    // Считаются полностью независимо от обычного лута/золота (см. dropLoot). Здоровье/мана —
+    // относительно частые (~раз в 5 врагов, шанс НЕ растёт от MF — в ТЗ это оговорено только для
+    // восстановления и свитка); ставка здоровья явно не задана в ТЗ — принята симметричной мане.
+    // Восстановление и свиток — редкие (~раз в 50), шанс растёт от Magic Find (та же идиома
+    // "* (1 + stat/100)", что и rollGold ниже). Не более MAX_POTIONS_PER_DROP зелий за раз
+    // (любая комбинация типов); свиток роллится отдельно и в этот лимит не входит.
+    private static final float HEALTH_POTION_CHANCE = 0.2f;
+    private static final float MANA_POTION_CHANCE = 0.2f;
+    private static final float RECOVERY_POTION_BASE_CHANCE = 0.02f;
+    private static final float SCROLL_BASE_CHANCE = 0.02f;
+    private static final float MF_SCALED_CHANCE_CAP = 0.5f;
+    private static final int MAX_POTIONS_PER_DROP = 2;
+
+    private static void rollPotionsAndScroll(int tileX, int tileY) {
+        int playerLevel = store.player != null ? store.player.level : 1;
+        float magicFind = store.player != null ? store.player.magicFind : 0f;
+
+        List<String> potionHits = new ArrayList<>();
+        if (RANDOM.nextFloat() < HEALTH_POTION_CHANCE) potionHits.add("potion_health");
+        if (RANDOM.nextFloat() < MANA_POTION_CHANCE) potionHits.add("potion_mana");
+        float recoveryChance = Math.min(MF_SCALED_CHANCE_CAP, RECOVERY_POTION_BASE_CHANCE * (1f + magicFind / 100f));
+        if (RANDOM.nextFloat() < recoveryChance) potionHits.add("potion_recovery");
+
+        if (potionHits.size() > MAX_POTIONS_PER_DROP) {
+            Collections.shuffle(potionHits, RANDOM);
+            potionHits = potionHits.subList(0, MAX_POTIONS_PER_DROP);
+        }
+        for (String typeKey : potionHits) {
+            spawnItemDrop(rollConsumableTemplate(typeKey, playerLevel), tileX, tileY);
+        }
+
+        float scrollChance = Math.min(MF_SCALED_CHANCE_CAP, SCROLL_BASE_CHANCE * (1f + magicFind / 100f));
+        if (RANDOM.nextFloat() < scrollChance) {
+            spawnItemDrop(rollConsumableTemplate("scroll_teleport", playerLevel), tileX, tileY);
+        }
+    }
+
+    /** Роллит шаблон расходника: тир — по гладкой кривой от уровня игрока (см. ItemGenerator). */
+    private static LinkedHashMap rollConsumableTemplate(String typeKey, int playerLevel) {
+        LinkedHashMap template = new LinkedHashMap();
+        template.put("__uuid__", Uuid.generate());
+        ItemGenerator.applyConsumableType(template, typeKey, playerLevel);
         template.put("__name__", ItemModifierCatalog.TYPES.get(typeKey).label);
         return template;
     }
@@ -140,11 +203,45 @@ public class DropManager {
             drop.itemData = itemTemplate;
             drop.setTexture(loadItemTexture(itemTemplate));
 
-            String rarityKey = itemTemplate.containsKey("__rarity__") ? (String) itemTemplate.get("__rarity__") : "common";
-            String name = (String) itemTemplate.get("__name__");
-            // Чёрный полупрозрачный фон у всех предметов, цвет текста — по редкости.
-            drop.setLabel(name != null ? name : "Предмет", ITEM_LABEL_BG, ITEM_LABEL_BG_ALPHA, rarityTextColor(rarityKey));
+            String typeKey = (String) itemTemplate.get("__type__");
+            if (ItemModifierCatalog.isConsumableType(typeKey)) {
+                applyConsumableLabel(drop, itemTemplate, typeKey);
+            } else {
+                String rarityKey = itemTemplate.containsKey("__rarity__") ? (String) itemTemplate.get("__rarity__") : "common";
+                String name = (String) itemTemplate.get("__name__");
+                // Чёрный полупрозрачный фон у всех предметов, цвет текста — по редкости.
+                drop.setLabel(name != null ? name : "Предмет", ITEM_LABEL_BG, ITEM_LABEL_BG_ALPHA, rarityTextColor(rarityKey));
+            }
         });
+    }
+
+    // Лейблы зелий/свитков: символ-маркер (иконка, т.к. используемый шрифт не содержит пиктограмм
+    // ♥/⚡/★, см. Font) + "xN" по объёму; текст/обводка (см. Drop.drawLabelAt) — в цвет иконки.
+    // Свиток — просто текст без объёма (всегда один вариант, см. ItemModifierCatalog).
+    private static final float[] HEALTH_LABEL_COLOR   = {1f, 0.15f, 0.15f};   // ярко-красный
+    private static final float[] MANA_LABEL_COLOR     = {0.15f, 0.5f, 1f};    // ярко-синий
+    private static final float[] RECOVERY_LABEL_COLOR = {0.65f, 0.25f, 0.95f}; // ярко-фиолетовый
+    private static final float[] SCROLL_LABEL_COLOR   = {0.15f, 0.9f, 0.15f};  // зелёный
+
+    private static void applyConsumableLabel(Drop drop, LinkedHashMap itemTemplate, String typeKey) {
+        int tier = itemTemplate.containsKey("__tier__") ? (int) itemTemplate.get("__tier__") : 1;
+        switch (typeKey) {
+            case "potion_health":
+                drop.setLabel("x" + tier, ITEM_LABEL_BG, ITEM_LABEL_BG_ALPHA, HEALTH_LABEL_COLOR, heartIconTexture());
+                break;
+            case "potion_mana":
+                drop.setLabel("x" + tier, ITEM_LABEL_BG, ITEM_LABEL_BG_ALPHA, MANA_LABEL_COLOR, sparkIconTexture());
+                break;
+            case "potion_recovery":
+                drop.setLabel("x" + tier, ITEM_LABEL_BG, ITEM_LABEL_BG_ALPHA, RECOVERY_LABEL_COLOR, starIconTexture());
+                break;
+            case "scroll_teleport":
+                drop.setLabel("Свиток", ITEM_LABEL_BG, ITEM_LABEL_BG_ALPHA, SCROLL_LABEL_COLOR);
+                break;
+            default:
+                String name = (String) itemTemplate.get("__name__");
+                drop.setLabel(name != null ? name : "Предмет", ITEM_LABEL_BG, ITEM_LABEL_BG_ALPHA, new float[]{1f, 1f, 1f});
+        }
     }
 
     public static void spawnGoldDrop(int amount, int tileX, int tileY) {
@@ -352,12 +449,22 @@ public class DropManager {
 
     /**
      * Золото подбирается само наступанием (см. checkPickups), сюда попадают только предметы.
-     * Ищет в инвентаре свободный прямоугольник под размер предмета, сканируя от краёв к центру
-     * (сверху-слева построчно). Если место есть — занимает ячейки и убирает дроп с земли;
-     * если нет — дроп просто подпрыгивает на месте (см. Drop.bounce).
+     * Зелья/свитки сначала пробуют попасть в стек (см. StackManager.tryAddToStack — свободная
+     * ячейка, потом неполная того же семейства); если стеки не приняли (или предмет не расходник) —
+     * обычный инвентарь: ищет свободный прямоугольник под размер предмета, сканируя от краёв к
+     * центру (сверху-слева построчно). Если и там места нет — дроп просто подпрыгивает на месте
+     * (см. Drop.bounce).
      */
     private static void tryPickup(Drop d) {
         if (d == null || !d.isLanded || d.itemData == null) return;
+
+        if (StackManager.tryAddToStack(d.itemData)) {
+            for (int i = 0; i < store.drops.length; i++) {
+                if (store.drops[i] == d) { store.drops[i] = null; break; }
+            }
+            focusedDrop = null;
+            return;
+        }
 
         int w = d.itemData.containsKey("__width__") ? (int) d.itemData.get("__width__") : 1;
         int h = d.itemData.containsKey("__height__") ? (int) d.itemData.get("__height__") : 1;
@@ -470,19 +577,19 @@ public class DropManager {
         int[] target = pickScatterTile(originTileX, originTileY);
 
         // Якорь позиции — тот же, что у тайлов (MapObject.calcPosition) и существ (Creation):
-        // cellIndex_1based * tileSize, без дополнительного центрирования.
+        // cellIndex_1based * tileSize, без дополнительного центрирования (см. Store.TILE_INDEX_BASE).
         float[] startIso = Transform.cartesianToIsometric(
-            (originTileX + 1) * store.tileSizeWidth,
-            (originTileY + 1) * store.tileSizeHeight
+            (originTileX + store.TILE_INDEX_BASE) * store.tileSizeWidth,
+            (originTileY + store.TILE_INDEX_BASE) * store.tileSizeHeight
         );
         float[] endIso = Transform.cartesianToIsometric(
-            (target[0] + 1) * store.tileSizeWidth,
-            (target[1] + 1) * store.tileSizeHeight
+            (target[0] + store.TILE_INDEX_BASE) * store.tileSizeWidth,
+            (target[1] + store.TILE_INDEX_BASE) * store.tileSizeHeight
         );
 
         Drop drop = new Drop();
-        drop.mapCellX = target[0] + 1;
-        drop.mapCellY = target[1] + 1;
+        drop.mapCellX = target[0] + store.TILE_INDEX_BASE;
+        drop.mapCellY = target[1] + store.TILE_INDEX_BASE;
         drop.initThrow(startIso[0], startIso[1], endIso[0], endIso[1]);
 
         store.drops[slot] = drop;
@@ -583,6 +690,70 @@ public class DropManager {
         pmap.fillCircle(s / 2, s / 2, s / 2 - 4);
         pmap.setColor(0.9f, 0.98f, 1f, 1f); // яркое ядро — "неоновый" блик
         pmap.fillCircle(s / 2, s / 2, s / 5);
+        Texture t = new Texture(pmap);
+        pmap.dispose();
+        return t;
+    }
+
+    private static Texture heartIcon, sparkIcon, starIcon;
+
+    /** Иконка-сердце для лейбла зелья здоровья (см. applyConsumableLabel). */
+    private static Texture heartIconTexture() {
+        if (heartIcon == null) heartIcon = buildHeartTexture();
+        return heartIcon;
+    }
+
+    private static Texture buildHeartTexture() {
+        int s = 24;
+        Pixmap pmap = new Pixmap(s, s, Pixmap.Format.RGBA8888);
+        pmap.setColor(0, 0, 0, 0);
+        pmap.fill();
+        pmap.setColor(HEALTH_LABEL_COLOR[0], HEALTH_LABEL_COLOR[1], HEALTH_LABEL_COLOR[2], 1f);
+        pmap.fillCircle(8, 9, 7);
+        pmap.fillCircle(16, 9, 7);
+        pmap.fillTriangle(1, 10, 23, 10, 12, 23);
+        Texture t = new Texture(pmap);
+        pmap.dispose();
+        return t;
+    }
+
+    /** Иконка-искра для лейбла зелья маны (см. applyConsumableLabel). */
+    private static Texture sparkIconTexture() {
+        if (sparkIcon == null) sparkIcon = buildSparkTexture();
+        return sparkIcon;
+    }
+
+    private static Texture buildSparkTexture() {
+        int s = 24;
+        Pixmap pmap = new Pixmap(s, s, Pixmap.Format.RGBA8888);
+        pmap.setColor(0, 0, 0, 0);
+        pmap.fill();
+        pmap.setColor(MANA_LABEL_COLOR[0], MANA_LABEL_COLOR[1], MANA_LABEL_COLOR[2], 1f);
+        // Зигзаг — классический силуэт молнии из двух треугольников.
+        pmap.fillTriangle(14, 1, 5, 13, 13, 13);
+        pmap.fillTriangle(10, 10, 20, 10, 11, 23);
+        Texture t = new Texture(pmap);
+        pmap.dispose();
+        return t;
+    }
+
+    /** Иконка-звезда для лейбла зелья восстановления (см. applyConsumableLabel). */
+    private static Texture starIconTexture() {
+        if (starIcon == null) starIcon = buildStarTexture();
+        return starIcon;
+    }
+
+    private static Texture buildStarTexture() {
+        int s = 24;
+        Pixmap pmap = new Pixmap(s, s, Pixmap.Format.RGBA8888);
+        pmap.setColor(0, 0, 0, 0);
+        pmap.fill();
+        pmap.setColor(RECOVERY_LABEL_COLOR[0], RECOVERY_LABEL_COLOR[1], RECOVERY_LABEL_COLOR[2], 1f);
+        // 4-лучевая "искорка" — два скрещенных ромба (вертикальный + горизонтальный).
+        pmap.fillTriangle(12, 0, 16, 12, 8, 12);
+        pmap.fillTriangle(8, 12, 16, 12, 12, 24);
+        pmap.fillTriangle(12, 8, 24, 12, 12, 16);
+        pmap.fillTriangle(0, 12, 12, 8, 12, 16);
         Texture t = new Texture(pmap);
         pmap.dispose();
         return t;

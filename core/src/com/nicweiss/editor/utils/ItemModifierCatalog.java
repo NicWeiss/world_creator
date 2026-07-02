@@ -132,6 +132,14 @@ public class ItemModifierCatalog {
         public Integer maxModifiers = null; // жёсткий потолок количества модов вне зависимости от редкости
         public String imageFolder; // папка в assets/items/ по умолчанию для типа (если класс не переопределяет)
 
+        // Расходники (зелья/свитки) — не имеют модификаторов/редкости, вместо этого есть тир
+        // (1..maxTier), который определяет "объём"/силу эффекта в очках через tierValues.
+        // См. ItemGenerator.rollConsumableTier. maxTier=1 и tierValues=null — предмет без тиров
+        // (единственный вариант, например свиток телепортации).
+        public boolean isConsumable = false;
+        public int maxTier = 1;
+        public int[] tierValues; // очки эффекта по тирам (index 0 = x1, ...), null = нет значения
+
         public TypeDef(String key, String label) {
             this.key = key;
             this.label = label;
@@ -300,6 +308,24 @@ public class ItemModifierCatalog {
         }
     }
 
+    /**
+     * Расходник (зелье/свиток): 1x1, без модификаторов и редкости. tierValues — очки эффекта по
+     * тирам x1..xN (null для нетировых, например свитка). См. TypeDef.isConsumable.
+     */
+    private static TypeDef consumable(String key, String label, String imageFolder, int maxTier, int[] tierValues) {
+        TypeDef t = type(key, label, new int[][]{{1, 1}});
+        t.isConsumable = true;
+        t.maxTier = maxTier;
+        t.tierValues = tierValues;
+        t.imageFolder = imageFolder;
+        return t;
+    }
+
+    public static boolean isConsumableType(String typeKey) {
+        TypeDef t = TYPES.get(typeKey);
+        return t != null && t.isConsumable;
+    }
+
     public static ModifierDef findModifier(String typeKey, String modKey) {
         TypeDef t = TYPES.get(typeKey);
         if (t == null) return null;
@@ -312,6 +338,11 @@ public class ItemModifierCatalog {
     private static final School PHYSICAL = School.PHYSICAL;
     private static final School MAGIC = School.MAGIC;
     private static final School NEUTRAL = School.NEUTRAL;
+
+    // Очки эффекта по тирам x1..x5 — общий дефолт для всех зелий (см. consumable()). Объявлен
+    // до static-блока ниже, который его использует — порядок полей в файле определяет порядок
+    // инициализации static-полей в Java.
+    private static final int[] DEFAULT_POTION_TIER_VALUES = {50, 120, 190, 250, 400};
 
     static {
         // ───────────────────────── ОРУЖИЕ ─────────────────────────
@@ -530,5 +561,14 @@ public class ItemModifierCatalog {
         // предметов в редакторе, генератор их никогда не роллит.
         mod(charm, "charm_experience", "Увеличение получаемого опыта", 1, 5, "%", NEUTRAL).manualOnly();
         mod(charm, "charm_all_attributes", "Все характеристики", 1, 30, "", NEUTRAL).manualOnly();
+
+        // ───────────────────────── ЗЕЛЬЯ И СВИТКИ (расходники) ─────────────────────────
+        // Значения тиров (x1..x5) сейчас общие для всех зелий, но заданы ОТДЕЛЬНО на каждый тип
+        // (свой int[] через .clone()), чтобы их можно было развести по типам позже без изменения
+        // механики генератора/потребления (см. TypeDef.tierValues).
+        consumable("potion_health",   "Зелье здоровья",      "bottle_of_health", 5, DEFAULT_POTION_TIER_VALUES.clone());
+        consumable("potion_mana",     "Зелье маны",           "bottle_of_mana",   5, DEFAULT_POTION_TIER_VALUES.clone());
+        consumable("potion_recovery", "Зелье восстановления", "bottle_of_heal",   5, DEFAULT_POTION_TIER_VALUES.clone());
+        consumable("scroll_teleport", "Свиток телепортации",  "scroll",           1, null);
     }
 }

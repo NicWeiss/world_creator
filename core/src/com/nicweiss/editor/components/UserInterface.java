@@ -380,8 +380,8 @@ public class UserInterface {
                 tmp.setObjectHeight(tileTextures[textureId].high);
                 tmp.setTextureId(textureId);
                 tmp.isTree = isTree;
-                tmp.xPositionOnMap = i + 1;
-                tmp.yPositionOnMap = j + 1;
+                tmp.xPositionOnMap = i + store.TILE_INDEX_BASE;
+                tmp.yPositionOnMap = j + store.TILE_INDEX_BASE;
                 tmp.setUUID(uuid);
                 if (type.equals("dialog")) tmp.isDialogBind = true;
                 store.objectedMap[i][j] = tmp;

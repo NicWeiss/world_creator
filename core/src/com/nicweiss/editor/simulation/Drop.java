@@ -58,6 +58,9 @@ public class Drop extends BaseObject {
     private float[] labelBgColor = {1f, 1f, 1f};
     private float labelBgAlpha = 1f;
     private float[] labelTextColor = {0f, 0f, 0f};
+    // Маленькая иконка-маркер слева от текста (сердце/искра/звезда у зелий) — см. DropManager.
+    private Texture labelIcon;
+    private static final float LABEL_ICON_GAP = 3f;
 
     /** Подпрыгивает на месте (без бокового смещения) — когда в инвентаре нет места для подбора. */
     public void bounce() {
@@ -103,10 +106,16 @@ public class Drop extends BaseObject {
 
     /** Цвет/прозрачность фона плашки и цвет текста (RGB, 0..1) — см. DropManager. */
     public void setLabel(String text, float[] bgColor, float bgAlpha, float[] textColor) {
+        setLabel(text, bgColor, bgAlpha, textColor, null);
+    }
+
+    /** Вариант с иконкой-маркером слева от текста (сердце/искра/звезда у зелий) — см. DropManager. */
+    public void setLabel(String text, float[] bgColor, float bgAlpha, float[] textColor, Texture icon) {
         labelText = text;
         labelBgColor = bgColor;
         labelBgAlpha = bgAlpha;
         labelTextColor = textColor;
+        labelIcon = icon;
     }
 
     public boolean hasLabel() {
@@ -145,16 +154,12 @@ public class Drop extends BaseObject {
         if (litForCellX == mapCellX && litForCellY == mapCellY) return;
         // Та же формула, что и Light.addColoredPoint для обычных источников (факелы/лампы) —
         // используем её, а не позицию спрайта, чтобы сфера светила ровно так же, как остальные
-        // источники света на карте.
-        //
-        // mapCellX - 2 (а не -1!): по оси X в этом проекте есть давний, задокументированный сдвиг
-        // на один тайл между 1-based индексом ячейки и её реальным декартовым якорем — см.
-        // Player.isCollidingAt(), где для того же массива objectedMap[ai][...] (ai = mi-1) декартовый
-        // X-диапазон тайла — [(ai+2)*tileW, (ai+3)*tileW], а не [(ai+1)*tileW, ...], как по оси Y
-        // (там для objectedMap[...][mj] диапазон честный — [(mj+1)*tileH, ...]). Только X, только
-        // в этом проекте — эмпирически найденная особенность геометрии тайлов, не опечатка здесь.
+        // источники света на карте. mapCellX/Y - TILE_INDEX_BASE даёт честный 0-based индекс тайла,
+        // поверх которого применяется TILE_X/Y_ANCHOR_EXTRA_OFFSET (см. Store) — тот же квирк
+        // геометрии, что и в Player.isCollidingAt() (по Y компенсация всегда 0, но константа заведена парно).
         float[] iso = Transform.cartesianToIsometric(
-            (mapCellX - 2) * store.tileSizeWidth, (mapCellY - 1) * store.tileSizeHeight);
+            (mapCellX - store.TILE_INDEX_BASE - store.TILE_X_ANCHOR_EXTRA_OFFSET) * store.tileSizeWidth,
+            (mapCellY - store.TILE_INDEX_BASE - store.TILE_Y_ANCHOR_EXTRA_OFFSET) * store.tileSizeHeight);
         lightSourcePos[0] = iso[0] + store.tileSizeWidth;
         lightSourcePos[1] = iso[1] + store.tileSizeHeight;
         litForCellX = mapCellX;
@@ -182,12 +187,21 @@ public class Drop extends BaseObject {
 
     public float getLabelWidth() {
         ensureLabelAssets();
-        return labelText == null ? 0f : labelFont.getWidth(labelText) + PAD_X * 2;
+        if (labelText == null) return 0f;
+        float w = labelFont.getWidth(labelText) + PAD_X * 2;
+        if (labelIcon != null) w += labelIconSize() + LABEL_ICON_GAP;
+        return w;
     }
 
     public float getLabelHeight() {
         ensureLabelAssets();
         return labelText == null ? 0f : labelFont.getHeight(labelText) + PAD_Y * 2;
+    }
+
+    // Иконка-маркер — квадрат со стороной в высоту строки текста, чтобы вписаться в плашку без
+    // лишнего вертикального паддинга.
+    private float labelIconSize() {
+        return labelText == null ? 0f : labelFont.getHeight(labelText);
     }
 
     public void draw(SpriteBatch batch) {
@@ -352,11 +366,19 @@ public class Drop extends BaseObject {
         batch.setColor(labelBgColor[0], labelBgColor[1], labelBgColor[2], labelBgAlpha);
         batch.draw(plaqueTexture, plaqueX, plaqueY, plaqueW, plaqueH);
 
+        float textX = plaqueX + PAD_X;
+        if (labelIcon != null) {
+            float iconSize = labelIconSize();
+            batch.setColor(1f, 1f, 1f, 1f);
+            batch.draw(labelIcon, plaqueX + PAD_X, plaqueY + PAD_Y, iconSize, iconSize);
+            textX += iconSize + LABEL_ICON_GAP;
+        }
+
         // BitmapFont печёт цвет вершин из своего внутреннего поля в момент draw() — тинт батча
         // на сам текст не действует, поэтому красим шрифт напрямую (см. Font.setColor).
         batch.setColor(1f, 1f, 1f, 1f);
         labelFont.setColor(new Color(labelTextColor[0], labelTextColor[1], labelTextColor[2], 1f));
-        labelFont.draw(batch, labelText, plaqueX + PAD_X, plaqueY + PAD_Y);
+        labelFont.draw(batch, labelText, textX, plaqueY + PAD_Y);
         batch.setColor(1, 1, 1, 1);
     }
 

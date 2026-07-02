@@ -3,6 +3,7 @@ package com.nicweiss.editor.Generic;
 import com.nicweiss.editor.creations.Creation;
 import com.nicweiss.editor.objects.MapObject;
 import com.nicweiss.editor.simulation.Drop;
+import com.nicweiss.editor.simulation.ItemStack;
 import com.nicweiss.editor.simulation.Player;
 import com.nicweiss.editor.simulation.PlayerHud;
 import com.nicweiss.editor.simulation.PlayerUI;
@@ -111,6 +112,26 @@ public class Store {
 
     public static float tileSizeWidth, tileSizeHeight;
 
+    // Тайловые индексы в этом проекте хранятся 1-based ("cellIndex_1based" — mapCellX/Y у Drop и
+    // Creation, xPositionOnMap/yPositionOnMap у MapObject.calcPosition): индекс массива objectedMap
+    // при переводе в декартовый якорь тайла умножается на (idx + TILE_INDEX_BASE), а не на idx.
+    // Это отдельная, "чистая" конвенция — не путать с TILE_X/Y_ANCHOR_EXTRA_OFFSET ниже (тот —
+    // дополнительный квирк геометрии поверх этой базовой конвенции, только на X).
+    public static final int TILE_INDEX_BASE = 1;
+
+    // Геометрия тайлов в этом проекте асимметрична: индекс массива objectedMap[X][...] (первое
+    // измерение) соответствует декартовому/изо-якорю тайла со сдвигом на ОДИН ТАЙЛ БОЛЬШЕ, чем
+    // objectedMap[...][Y] (второе измерение) — "чистая" 1-based конвенция (idx+1)*tileSize держит
+    // и для X, и для Y (см. MapObject.calcPosition, Light.addColoredPoint), но некоторым местам,
+    // которые сами вычисляют якорь тайла из его позиции/индекса (а не берут его из calcPosition),
+    // требуется на X ещё +1 компенсация сверху — эмпирически найденная особенность геометрии,
+    // не опечатка (см. Player.isCollidingAt, Drop.ensureLightSourcePos). НЕ применять к раскастам
+    // препятствий (MapObject.calcLight — там другая механика, offsets по X/Y одинаковые, это не тот
+    // же квирк). X и Y всегда идут парой в местах, где используется эта компенсация — Y-константа
+    // ниже равна 0 (компенсация не нужна), заведена намеренно, чтобы не потерять ось при правках.
+    public static final int TILE_X_ANCHOR_EXTRA_OFFSET = 1;
+    public static final int TILE_Y_ANCHOR_EXTRA_OFFSET = 0;
+
     public static int shiftX, shiftY;
     public static int tileDownScale = 3;
 
@@ -146,6 +167,15 @@ public class Store {
     // Режим ввода: true = геймпад, false = клавиатура/мышь (переключается автоматически).
     public static boolean isGamepadMode = false;
 
-    // Предметы в слотах снаряжения (индексы совпадают с EQ_SLOTS в SystemUI).
-    public static LinkedHashMap[] equipmentSlots = new LinkedHashMap[13];
+    // Предметы в слотах снаряжения (индексы совпадают с EQ_SLOTS в SystemUI). 14 слотов:
+    // оружие/перчатки/шлем/амулет/броня/пояс/6 артефактов(3+3)/щит/сапоги.
+    public static LinkedHashMap[] equipmentSlots = new LinkedHashMap[14];
+
+    // 4 стека зелий/свитков (см. StackManager) — ёмкость каждой ячейки зависит от __mainStat__
+    // надетого пояса (Player.beltCapacity). Индексы совпадают с кнопками 1-4 / D-pad (см.
+    // SimulationInputThread) и с 4 ячейками быстрого применения в PlayerHud.
+    public static ItemStack[] stacks = new ItemStack[4];
+    static {
+        for (int i = 0; i < stacks.length; i++) stacks[i] = new ItemStack();
+    }
 }

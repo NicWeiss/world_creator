@@ -121,6 +121,10 @@ public class Player extends BaseObject {
     // Контейнеры для артефактов (из пояса)
     public int containers   = 0;  // сколько слотов артефактов доступно (0-5)
 
+    // Ёмкость пояса (__mainStat__ надетого пояса, 0/4/8/12/16) — увеличивает вместимость ячеек
+    // стека: +beltCapacity/4 к каждой из 4 ячеек стека (см. SystemUI applyMainStat / стеки).
+    public int beltCapacity  = 0;
+
     // Личи
     public int lifeLeech    = 0;
     public int manaLeech    = 0;
@@ -264,10 +268,12 @@ public class Player extends BaseObject {
         int maxJ = (int) Math.floor((py + r) / tileH) - 1;
 
         for (int mi = Math.max(0, minI); mi <= Math.min(store.mapHeight - 1, maxI); mi++) {
-            int ai = mi - 1; // эмпирически найденный корректный индекс массива для данной геометрии тайлов
+            int ai = mi - store.TILE_X_ANCHOR_EXTRA_OFFSET; // см. Store.TILE_X_ANCHOR_EXTRA_OFFSET
             if (ai < 0 || ai >= store.mapHeight) continue;
             for (int mj = Math.max(0, minJ); mj <= Math.min(store.mapWidth - 1, maxJ); mj++) {
-                if (store.objectedMap[ai][mj].objectHeight < blockHeight) continue;
+                int aj = mj - store.TILE_Y_ANCHOR_EXTRA_OFFSET; // см. Store.TILE_Y_ANCHOR_EXTRA_OFFSET (=0)
+                if (aj < 0 || aj >= store.mapWidth) continue;
+                if (store.objectedMap[ai][aj].objectHeight < blockHeight) continue;
 
                 float tx1 = (mi + 1) * tileW;
                 float tx2 = (mi + 2) * tileW;
