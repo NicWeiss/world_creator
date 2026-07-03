@@ -582,6 +582,7 @@ public class Editor extends View{
     }
 
     public void renderDrops(SpriteBatch batch, int mapI, int mapJ, boolean filterByHeight) {
+        if (!store.isSimulationMode) return; // дропы существуют только в симуляции, редактору не нужны
         for (int i = 0; i <= store.dropCount; i++) {
             com.nicweiss.editor.simulation.Drop drop = store.drops[i];
             if (drop != null) {

@@ -38,7 +38,9 @@ public class SystemUI {
     // ── Размеры ───────────────────────────────────────────────────────────────
     // PANEL_W подобрана под EQ_TOTAL_W=550 (см. EQ_SLOTS) с запасом ~16px на сторону.
     private static final float PANEL_W  = 582f;
-    private static final float PANEL_H  = 725f;
+    // Подобрана так, чтобы отступ от ячейки золота до нижнего края панели равнялся PAD —
+    // тому же отступу, что сверху между вкладками и слотами снаряжения (см. renderGoldPocket).
+    private static final float PANEL_H  = 798f;
     private static final float TAB_H    = 44f;
     private static final float BTN_W    = 240f;
     private static final float BTN_H    = 44f;
@@ -50,6 +52,11 @@ public class SystemUI {
     private static final int INV_ROWS = 4;
     private static final int INV_GAP  = 40;  // отступ от снаряжения до инвентаря
     private static final int PAD      = 18;  // внутренний отступ панели
+
+    // ── Ячейка золота (под сеткой инвентаря) ────────────────────────────────
+    private static final float GOLD_CELL_W = 3 * CELL;
+    private static final float GOLD_CELL_H = CELL;
+    private static final float GOLD_GAP    = 18f; // отступ от сетки инвентаря (= PAD, для ритма)
 
     /**
      * Слоты снаряжения в пиксельных координатах: {xPx, yPx, wCells, hCells}.
@@ -566,6 +573,9 @@ public class SystemUI {
             }
         }
 
+        // ── Ячейка золота (под сеткой инвентаря) ────────────────────────────
+        renderGoldPocket(batch, invGridX, invTop);
+
         // ── Серые заблокированные слоты артефактов ───────────────────────────
         int availContainers = store.player != null ? store.player.containers : 0;
 
@@ -822,6 +832,38 @@ public class SystemUI {
                     y + (sh + layout.height) / 2f);
             }
         }
+    }
+
+    /** Отдельная ячейка золота под сеткой инвентаря — иконка монеты (см. DropManager.goldTexture) + сумма. */
+    // Тот же янтарный, что у лейбла золота на земле (см. DropManager.GOLD_LABEL_COLOR).
+    private static final float[] GOLD_TEXT_COLOR = {0.95f, 0.78f, 0.15f};
+
+    private void renderGoldPocket(SpriteBatch batch, float invGridX, float invTop) {
+        float invBottom = invTop - INV_ROWS * CELL;
+        float gx = invGridX + (INV_COLS * CELL - GOLD_CELL_W) / 2f;
+        float gy = invBottom - GOLD_GAP - GOLD_CELL_H;
+
+        col(batch, C_SLOT_BG);
+        batch.draw(pixel, gx + 1, gy + 1, GOLD_CELL_W - 2, GOLD_CELL_H - 2);
+        col(batch, C_SLOT_LINE);
+        batch.draw(pixel, gx, gy, GOLD_CELL_W, 1);
+        batch.draw(pixel, gx, gy + GOLD_CELL_H - 1, GOLD_CELL_W, 1);
+        batch.draw(pixel, gx, gy, 1, GOLD_CELL_H);
+        batch.draw(pixel, gx + GOLD_CELL_W - 1, gy, 1, GOLD_CELL_H);
+
+        int gold = store.player != null ? store.player.gold : 0;
+        Texture icon = DropManager.goldTexture();
+        float iconSize = (GOLD_CELL_H - 12f) / 2f;
+        String text = String.valueOf(gold);
+        layout.setText(font, text);
+        float contentW = iconSize + 8f + layout.width;
+        float startX = gx + (GOLD_CELL_W - contentW) / 2f;
+
+        batch.setColor(1f, 1f, 1f, 1f);
+        batch.draw(icon, startX, gy + (GOLD_CELL_H - iconSize) / 2f, iconSize, iconSize);
+        font.setColor(GOLD_TEXT_COLOR[0], GOLD_TEXT_COLOR[1], GOLD_TEXT_COLOR[2], 1f);
+        font.draw(batch, text, startX + iconSize + 8f, gy + (GOLD_CELL_H + layout.height) / 2f);
+        batch.setColor(1, 1, 1, 1);
     }
 
     // ── Приватные утилиты ─────────────────────────────────────────────────────

@@ -345,11 +345,19 @@ public class DropManager {
 
         Drop iconHovered = findHovered(visible);
 
+        // shown — всё, что РИСУЕМ (revealAll расширяет этот список чисто визуально).
+        // interactable — из чего считаем hover/focus для подбора (клик/кнопка A) — специально
+        // НЕ зависит от revealAll, иначе Alt/L1 (показать все подписи) начинает подмешивать
+        // далёкие предметы в расчёт фокуса и ломает подбор того, что реально под курсором/рядом
+        // с игроком (см. запрос пользователя: "подсветка всех лейблов не должна мешать кнопкам").
         boolean revealAll = store.revealAllDropLabels;
         List<Drop> shown = new ArrayList<>();
+        java.util.Set<Drop> interactable = new java.util.HashSet<>();
         for (Drop d : visible) {
             boolean near = playerReady && isWithinProximity(d, playerScreenX, playerScreenY);
-            if (revealAll || near || d == iconHovered) shown.add(d);
+            boolean isIconHovered = d == iconHovered;
+            if (revealAll || near || isIconHovered) shown.add(d);
+            if (near || isIconHovered) interactable.add(d);
         }
         if (shown.isEmpty()) return;
 
@@ -408,18 +416,19 @@ public class DropManager {
         float curY = store.playerPositionY;
         Drop hoverCandidate = null;
         for (int i = 0; i < n; i++) {
+            if (!interactable.contains(shown.get(i))) continue; // см. комментарий выше про revealAll
             if (curX >= lx[i] && curX <= lx[i] + lw[i] &&
                 curY >= ly[i] && curY <= ly[i] + lh[i]) {
                 hoverCandidate = shown.get(i);
                 break;
             }
         }
-        if (hoverCandidate == null) hoverCandidate = iconHovered != null && shown.contains(iconHovered) ? iconHovered : null;
+        if (hoverCandidate == null) hoverCandidate = iconHovered != null && interactable.contains(iconHovered) ? iconHovered : null;
 
         Drop focus = hoverCandidate;
         if (focus == null && playerReady) {
             float best = Float.MAX_VALUE;
-            for (Drop d : shown) {
+            for (Drop d : interactable) {
                 float dx = playerScreenX - d.getIconScreenCenterX();
                 float dy = playerScreenY - d.getIconScreenCenterY();
                 float dist = dx * dx + dy * dy;
@@ -687,7 +696,8 @@ public class DropManager {
     }
 
     private static Texture goldTexture;
-    private static Texture goldTexture() {
+    /** Иконка монеты — переиспользуется в инвентаре для ячейки золота (см. SystemUI.renderGoldPocket). */
+    public static Texture goldTexture() {
         if (goldTexture == null) goldTexture = buildGoldTexture();
         return goldTexture;
     }
