@@ -7,6 +7,7 @@ import com.nicweiss.editor.simulation.ItemStack;
 import com.nicweiss.editor.simulation.Player;
 import com.nicweiss.editor.simulation.PlayerHud;
 import com.nicweiss.editor.simulation.PlayerUI;
+import com.nicweiss.editor.simulation.SimCreature;
 import com.nicweiss.editor.simulation.SimulationInputThread;
 import com.nicweiss.editor.simulation.SystemUI;
 import com.nicweiss.editor.simulation.WeatherRenderer;
@@ -119,16 +120,27 @@ public class Store {
     // дополнительный квирк геометрии поверх этой базовой конвенции, только на X).
     public static final int TILE_INDEX_BASE = 1;
 
-    // Геометрия тайлов в этом проекте асимметрична: индекс массива objectedMap[X][...] (первое
-    // измерение) соответствует декартовому/изо-якорю тайла со сдвигом на ОДИН ТАЙЛ БОЛЬШЕ, чем
-    // objectedMap[...][Y] (второе измерение) — "чистая" 1-based конвенция (idx+1)*tileSize держит
-    // и для X, и для Y (см. MapObject.calcPosition, Light.addColoredPoint), но некоторым местам,
-    // которые сами вычисляют якорь тайла из его позиции/индекса (а не берут его из calcPosition),
-    // требуется на X ещё +1 компенсация сверху — эмпирически найденная особенность геометрии,
-    // не опечатка (см. Player.isCollidingAt, Drop.ensureLightSourcePos). НЕ применять к раскастам
-    // препятствий (MapObject.calcLight — там другая механика, offsets по X/Y одинаковые, это не тот
-    // же квирк). X и Y всегда идут парой в местах, где используется эта компенсация — Y-константа
-    // ниже равна 0 (компенсация не нужна), заведена намеренно, чтобы не потерять ось при правках.
+    // ИСТОРИЯ ПРАВОК (важно не наступать на те же грабли третий раз):
+    // 1) Изначально константа применялась к рендер-позиции NPC/объектов — оказалось лишним (+1 не туда).
+    // 2) Убрали компенсацию совсем — стало НЕ ХВАТАТЬ ровно тайла по X (проверено на скриншоте:
+    //    спавнер, созданный через контекстное меню строго по центру между 4 кострами, рендерился
+    //    внутри одного из костров — т.е. смещён на целый тайл по X относительно сохранённых координат).
+    // 3) Корень найден: Editor.calcPositionCursor присваивает store.selectedTileX/Y асимметрично —
+    //    `selectedTileX = floor(dotX/tileSizeX) - 1`, а `selectedTileY = floor(dotY/tileSizeY)` БЕЗ
+    //    "-1". Через store.selectedTileX/Y создаются NPC/объекты по контекстному меню (и всё, что от
+    //    них наследуется — mapCellX/Y хранится как есть). Поэтому РЕНДЕР позиции этих сущностей
+    //    (Drop/Creation.setPosition, MapObject.calcPosition-подобная формула) ТРЕБУЕТ такую же
+    //    компенсацию на X, что и сравнение со store.lightPoints — обе цепочки корнями упираются в
+    //    один и тот же асимметричный "-1" на X в Editor.calcPositionCursor.
+    // Итог: TILE_X_ANCHOR_EXTRA_OFFSET нужен И для store.lightPoints (Lighting.tileLightAnchor,
+    // Player.isCollidingAt), И для рендер-позиции сущностей, чей mapCellX/Y пришёл из
+    // store.selectedTileX/Y (NpcEditorWindow/ObjectEditorWindow/UserInterface.buildEntities/
+    // SpawnManager — там ДОБАВЛЯЕТСЯ +TILE_X_ANCHOR_EXTRA_OFFSET к X при рендере, mapCellX/Y при
+    // этом хранится БЕЗ сдвига, как и раньше). К MapObject.calcPosition (сами тайлы, xPositionOnMap
+    // выставляется напрямую как arrayIndex+1 при генерации карты, БЕЗ похода через selectedTileX)
+    // отношения не имеет — там компенсация не нужна и не применяется. Не применять и к раскастам
+    // препятствий (MapObject.calcLight — offsets по X/Y одинаковые, не тот же квирк). Y-константа
+    // ниже равна 0 (компенсация на Y не нужна), заведена намеренно, чтобы не потерять ось при правках.
     public static final int TILE_X_ANCHOR_EXTRA_OFFSET = 1;
     public static final int TILE_Y_ANCHOR_EXTRA_OFFSET = 0;
 
@@ -150,9 +162,23 @@ public class Store {
     public static Creation[] buildings = new Creation[100];
     public static int buildingCount = -1;
     public static LinkedHashMap<String, Object> buildingNames = new LinkedHashMap<>();
+    // Тип объекта (ключ ObjectCatalog) + персональные настройки конкретного здания-объекта
+    // (спавнер: уровень/макс.кол-во, сундук: награды, источник: восстановление, портал: цель) —
+    // uuid → LinkedHashMap с dunder-полями (__objectType__ обязателен, остальное по типу).
+    // См. ObjectEditorWindow, сериализуется в buildings.json (см. FileManager).
+    public static LinkedHashMap<String, LinkedHashMap> buildingSettings = new LinkedHashMap<>();
 
     public static Creation[] creations = new Creation[100];
     public static int creationCount = -1;
+    // Тип статично расставленного NPC (ключ NpcCatalog.TYPES) — uuid → ключ. Заполняется в
+    // NpcEditorWindow, сериализуется в npcs.json. Отсутствие записи = тип не задан (легаси-сейвы).
+    public static LinkedHashMap<String, String> npcTypes = new LinkedHashMap<>();
+
+    // Runtime боевые NPC, порождённые спавнерами в симуляции (см. SpawnManager) — ОТДЕЛЬНО от
+    // Store.creations: существуют только в симуляции, не сохраняются, не в списке NpcEditorWindow,
+    // не редактируемы. Аналог Store.drops по духу (runtime-only список игровых объектов).
+    public static SimCreature[] simCreatures = new SimCreature[600];
+    public static int simCreatureCount = -1;
 
     // Слоты снаряжения, требования которых не выполнены — рисуются тёмно-красными (см. SystemUI).
     public static java.util.Set<LinkedHashMap> inactiveEquipment = new java.util.HashSet<>();

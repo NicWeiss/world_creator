@@ -101,7 +101,7 @@ public class UserInterface {
         white = new Texture("white.png");
 
         tileSelectorWindow = new TileSelectorWindow(lightObjectIds);
-        mapContextMenuWindow = new MapContextMenuWindow(dialogEditorWindow, mapRedirectWindow);
+        mapContextMenuWindow = new MapContextMenuWindow(dialogEditorWindow, npcEditorWindow, objectEditorWindow);
     }
 
     public void build() throws Exception {
@@ -428,26 +428,32 @@ public class UserInterface {
         }
     }
 
-    /** Создаёт Creation-объекты с текстурами на GL-потоке */
+    /** Создаёт Creation-объекты с текстурами на GL-потоке. Текстура берётся по типу
+     *  (NpcCatalog/ObjectCatalog), с кэшем на тип — раньше все NPC/здания в файле делили ОДНУ
+     *  текстуру независимо от типа, теперь разные типы получают свои картинки. */
     private void buildEntities() {
-        com.badlogic.gdx.graphics.Texture npcTex      = null;
-        com.badlogic.gdx.graphics.Texture buildingTex = null;
+        java.util.Map<String, com.badlogic.gdx.graphics.Texture> npcTexCache      = new java.util.HashMap<>();
+        java.util.Map<String, com.badlogic.gdx.graphics.Texture> buildingTexCache = new java.util.HashMap<>();
 
         store.creationCount = -1;
         for (java.util.Map<String, Object> d : fileManager.pendingNpcs) {
             String uuid = (String) d.get("uuid");
             int x = (int) d.get("x");
             int y = (int) d.get("y");
-
-            if (npcTex == null) npcTex = new com.badlogic.gdx.graphics.Texture("creations/creation.png");
+            String typeKey = (String) d.get("type"); // может отсутствовать в старых сохранениях
 
             store.creationCount++;
             com.nicweiss.editor.creations.Creation cr = new com.nicweiss.editor.creations.Creation();
             cr.setUUID(uuid);
             cr.setCell(x, y);
-            cr.setTexture(npcTex);
+            cr.setTexture(resolveNpcTexture(typeKey, npcTexCache));
+            if (com.nicweiss.editor.utils.NpcCatalog.get(typeKey) != null) {
+                cr.targetMaxScreenSize = store.tileSizeWidth * com.nicweiss.editor.utils.NpcCatalog.NPC_SIZE_TILE_MULT;
+            }
+            // Рендер-позиция — +TILE_X_ANCHOR_EXTRA_OFFSET на X (подтверждено эмпирически, см.
+            // NpcEditorWindow.createNpcAt) — x/y пришли из сохранённого mapCellX/Y, конвенция та же.
             float[] iso = Transform.cartesianToIsometric(
-                (int)(x * store.tileSizeWidth), (int)(y * store.tileSizeHeight)
+                (int)((x + store.TILE_X_ANCHOR_EXTRA_OFFSET) * store.tileSizeWidth), (int)(y * store.tileSizeHeight)
             );
             cr.setPosition(iso[0], iso[1]);
             store.creations[store.creationCount] = cr;
@@ -458,20 +464,57 @@ public class UserInterface {
             String uuid = (String) d.get("uuid");
             int x = (int) d.get("x");
             int y = (int) d.get("y");
-
-            if (buildingTex == null) buildingTex = new com.badlogic.gdx.graphics.Texture("objects/default_object.png");
+            java.util.LinkedHashMap settings = store.buildingSettings.get(uuid);
 
             store.buildingCount++;
             com.nicweiss.editor.creations.Creation b = new com.nicweiss.editor.creations.Creation();
             b.setUUID(uuid);
             b.setCell(x, y);
-            b.setTexture(buildingTex);
+            b.setTexture(resolveBuildingTexture(settings, buildingTexCache));
+            String objType = settings != null ? (String) settings.get("__objectType__") : null;
+            if (com.nicweiss.editor.utils.ObjectCatalog.get(objType) != null) {
+                b.targetMaxScreenSize = store.tileSizeWidth * com.nicweiss.editor.utils.ObjectCatalog.targetSizeTileMult(objType);
+            }
+            // См. выше (NPC) — рендер-позиция, +TILE_X_ANCHOR_EXTRA_OFFSET на X.
             float[] iso = Transform.cartesianToIsometric(
-                (int)(x * store.tileSizeWidth), (int)(y * store.tileSizeHeight)
+                (int)((x + store.TILE_X_ANCHOR_EXTRA_OFFSET) * store.tileSizeWidth), (int)(y * store.tileSizeHeight)
             );
             b.setPosition(iso[0], iso[1]);
             store.buildings[store.buildingCount] = b;
         }
+    }
+
+    private com.badlogic.gdx.graphics.Texture resolveNpcTexture(
+            String typeKey, java.util.Map<String, com.badlogic.gdx.graphics.Texture> cache) {
+        com.nicweiss.editor.utils.NpcCatalog.TypeDef type = com.nicweiss.editor.utils.NpcCatalog.get(typeKey);
+        String folder = type != null ? type.imageFolder : null;
+        String cacheKey = folder != null ? folder : "__default__";
+
+        com.badlogic.gdx.graphics.Texture cached = cache.get(cacheKey);
+        if (cached != null) return cached;
+
+        com.badlogic.gdx.graphics.Texture tex = folder != null
+            ? new com.badlogic.gdx.graphics.Texture("creations/" + folder + "/default.png")
+            : new com.badlogic.gdx.graphics.Texture("creations/creation.png");
+        cache.put(cacheKey, tex);
+        return tex;
+    }
+
+    private com.badlogic.gdx.graphics.Texture resolveBuildingTexture(
+            java.util.LinkedHashMap settings, java.util.Map<String, com.badlogic.gdx.graphics.Texture> cache) {
+        String typeKey = settings != null ? (String) settings.get("__objectType__") : null;
+        com.nicweiss.editor.utils.ObjectCatalog.TypeDef type = com.nicweiss.editor.utils.ObjectCatalog.get(typeKey);
+        String image = type != null ? type.defaultImage : null;
+        String cacheKey = image != null ? image : "__default__";
+
+        com.badlogic.gdx.graphics.Texture cached = cache.get(cacheKey);
+        if (cached != null) return cached;
+
+        com.badlogic.gdx.graphics.Texture tex = image != null
+            ? new com.badlogic.gdx.graphics.Texture(image)
+            : new com.badlogic.gdx.graphics.Texture("objects/default_object.png");
+        cache.put(cacheKey, tex);
+        return tex;
     }
 
     private void saveMap(){
@@ -509,6 +552,8 @@ public class UserInterface {
         store.stopSimulationAction  = () -> com.badlogic.gdx.Gdx.app.postRunnable(this::toggleSimulation);
         // Enter/R3 (см. SimulationInputThread) — отладочный выброс лута+опыта у ног игрока.
         store.debugDropTrigger      = () -> newDaemon(this::debugSpawnDrops, "DropDebugThread").start();
+        // Сброс runtime-списка боевых NPC спавнеров (см. SpawnManager, CreationThread.update).
+        com.nicweiss.editor.simulation.SpawnManager.init();
 
         // Player, PlayerUI, SystemUI и WeatherRenderer создаются на GL-потоке
         com.badlogic.gdx.Gdx.app.postRunnable(() -> {
@@ -572,6 +617,7 @@ public class UserInterface {
         store.windMultiplier = 1f;
         store.windGustSpeed  = 1f;
         store.lightningFlash = 0f;
+        com.nicweiss.editor.simulation.SpawnManager.clear();
 
         if (creationThread != null) creationThread.interrupt();
         if (weatherThread  != null) weatherThread.interrupt();

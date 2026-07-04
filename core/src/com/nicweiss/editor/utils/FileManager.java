@@ -232,6 +232,9 @@ public class FileManager {
             npc.put("name", store.npcs.containsKey(uuid) ? store.npcs.get(uuid).toString() : "NPC");
             npc.put("x", cr.mapCellX);
             npc.put("y", cr.mapCellY);
+            // Тип из NpcCatalog (см. NpcEditorWindow) — может отсутствовать в старых сохранениях.
+            String type = store.npcTypes.get(uuid);
+            if (type != null) npc.put("type", type);
             list.add(npc);
         }
         return JSONValue.toJSONString(list).getBytes(StandardCharsets.UTF_8);
@@ -254,9 +257,12 @@ public class FileManager {
                 entry.put("name", m.get("name"));
                 entry.put("x",    ((Number) m.get("x")).intValue());
                 entry.put("y",    ((Number) m.get("y")).intValue());
+                Object type = m.get("type"); // может отсутствовать в старых сохранениях
+                if (type != null) entry.put("type", type.toString());
                 pendingNpcs.add(entry);
-                // имена фиксируем сразу — нет GL-вызовов
+                // имена/типы фиксируем сразу — нет GL-вызовов
                 store.npcs.put((String) entry.get("uuid"), entry.get("name").toString());
+                if (type != null) store.npcTypes.put((String) entry.get("uuid"), type.toString());
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -279,6 +285,10 @@ public class FileManager {
                 ? store.buildingNames.get(uuid).toString() : "Объект");
             building.put("x", b.mapCellX);
             building.put("y", b.mapCellY);
+            // Тип (ObjectCatalog) + персональные настройки (см. ObjectEditorWindow) — dunder-ключи,
+            // тот же принцип, что у itemTemplates. Может отсутствовать, если тип не выбран.
+            LinkedHashMap settings = store.buildingSettings.get(uuid);
+            if (settings != null) building.put("settings", settings);
             list.add(building);
         }
         return JSONValue.toJSONString(list).getBytes(StandardCharsets.UTF_8);
@@ -299,6 +309,15 @@ public class FileManager {
                 entry.put("y",    ((Number) m.get("y")).intValue());
                 pendingBuildings.add(entry);
                 store.buildingNames.put((String) entry.get("uuid"), entry.get("name").toString());
+
+                // Настройки объекта — может отсутствовать в старых сохранениях/если тип не выбран.
+                // fixNumbers переводит Long→Integer (см. её JavaDoc) так же, как для itemTemplates.
+                Object rawSettings = m.get("settings");
+                if (rawSettings instanceof Map) {
+                    LinkedHashMap<String, Object> settings = fixNumbers((Map<?, ?>) rawSettings);
+                    entry.put("settings", settings);
+                    store.buildingSettings.put((String) entry.get("uuid"), settings);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -389,7 +408,9 @@ public class FileManager {
         store.quests.clear();
         store.itemTemplates.clear();
         store.npcs.clear();
+        store.npcTypes.clear();
         store.buildingNames.clear();
+        store.buildingSettings.clear();
         store.creationCount  = -1;
         store.buildingCount  = -1;
         mapFormatVersion     = 1; // default: старый формат, пока не прочитан manifest

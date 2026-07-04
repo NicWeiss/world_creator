@@ -1,7 +1,6 @@
 package com.nicweiss.editor.components.windows;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.graphics.Texture;
 import com.nicweiss.editor.Generic.ContextMenuWindow;
 import com.nicweiss.editor.Generic.Store;
 import com.nicweiss.editor.components.ButtonCommon;
@@ -11,15 +10,25 @@ import com.nicweiss.editor.objects.MapObject;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Контекстное меню клика по карте (правая кнопка). Часть про NPC/объекты работает по клетке:
+ *  - клетка свободна (нет ни NPC, ни объекта) → кнопки "Добавить NPC"/"Добавить объект";
+ *  - на клетке есть NPC и/или объект → добавление скрыто, только "Редактировать <имя>" на каждого —
+ *    открывает NpcEditorWindow/ObjectEditorWindow с этим NPC/объектом сразу в правой панели.
+ * Взаимодействие тайла (диалог) — отдельная, не связанная с NPC/объектами часть, не тронута.
+ */
 public class MapContextMenuWindow extends ContextMenuWindow {
     public static Store store;
     public DialogEditorWindow dialogEditorWindow;
-    public MapRedirectWindow mapRedirectWindow;
+    public NpcEditorWindow npcEditorWindow;
+    public ObjectEditorWindow objectEditorWindow;
 
     public MapContextMenuWindow(DialogEditorWindow dialogEditorWindow,
-                                MapRedirectWindow mapRedirectWindow) {
+                                NpcEditorWindow npcEditorWindow,
+                                ObjectEditorWindow objectEditorWindow) {
         this.dialogEditorWindow = dialogEditorWindow;
-        this.mapRedirectWindow = mapRedirectWindow;
+        this.npcEditorWindow = npcEditorWindow;
+        this.objectEditorWindow = objectEditorWindow;
     }
 
     @Override
@@ -34,31 +43,38 @@ public class MapContextMenuWindow extends ContextMenuWindow {
 
         List<ButtonCommon> list = new ArrayList<>();
 
-        list.add(createOptionButton(MapContextMenuWindow.class, "createCreation", "Создать сущность"));
-        list.add(createOptionButton(MapContextMenuWindow.class, "createBuilding",  "Добавить недвижимость"));
-        list.add(createOptionButton(MapContextMenuWindow.class, "openTileDialog",  "Ред. взаимодействие тайла"));
-        list.add(createOptionButton(MapContextMenuWindow.class, "deleteDialog",    "Удалить взаимодействие тайла"));
-
-        // Динамические кнопки для NPC на данной клетке
+        List<Creation> npcsHere = new ArrayList<>();
         for (int i = 0; i <= store.creationCount; i++) {
             Creation cr = store.creations[i];
-            if (cr != null && cr.mapCellX == tx && cr.mapCellY == ty) {
-                String uuid = cr.getUUID();
-                String name = store.npcs.containsKey(uuid) ? store.npcs.get(uuid).toString() : "NPC";
-                list.add(createDynamicButton("openNpcInteraction", "Ред. взаим. с " + name, uuid));
-            }
+            if (cr != null && cr.mapCellX == tx && cr.mapCellY == ty) npcsHere.add(cr);
         }
-
-        // Динамические кнопки для зданий на данной клетке
+        List<Creation> buildingsHere = new ArrayList<>();
         for (int i = 0; i <= store.buildingCount; i++) {
             Creation b = store.buildings[i];
-            if (b != null && b.mapCellX == tx && b.mapCellY == ty) {
+            if (b != null && b.mapCellX == tx && b.mapCellY == ty) buildingsHere.add(b);
+        }
+
+        if (npcsHere.isEmpty() && buildingsHere.isEmpty()) {
+            // Клетка свободна — можно добавить.
+            list.add(createOptionButton(MapContextMenuWindow.class, "addNpcHere",    "Добавить NPC"));
+            list.add(createOptionButton(MapContextMenuWindow.class, "addObjectHere", "Добавить объект"));
+        } else {
+            // Клетка занята — добавление скрыто, только редактирование того, что уже есть.
+            for (Creation cr : npcsHere) {
+                String uuid = cr.getUUID();
+                String name = store.npcs.containsKey(uuid) ? store.npcs.get(uuid).toString() : "NPC";
+                list.add(createDynamicButton("editNpcHere", "Редактировать NPC: " + name, uuid));
+            }
+            for (Creation b : buildingsHere) {
                 String uuid = b.getUUID();
                 String name = store.buildingNames.containsKey(uuid)
                     ? store.buildingNames.get(uuid).toString() : "Объект";
-                list.add(createDynamicButton("openBuildingInteraction", "Ред. взаим. с " + name, uuid));
+                list.add(createDynamicButton("editBuildingHere", "Редактировать объект: " + name, uuid));
             }
         }
+
+        list.add(createOptionButton(MapContextMenuWindow.class, "openTileDialog",  "Ред. взаимодействие тайла"));
+        list.add(createOptionButton(MapContextMenuWindow.class, "deleteDialog",    "Удалить взаимодействие тайла"));
 
         buttons = list.toArray(new ButtonCommon[0]);
         menuHeight = -1;
@@ -85,31 +101,29 @@ public class MapContextMenuWindow extends ContextMenuWindow {
         return super.checkTouch(isDragged, isTouchUp, button);
     }
 
-    // ── Статические действия ──────────────────────────────────────────────────
+    // ── NPC/объекты: добавить (клетка свободна) ────────────────────────────────
 
-    public void createCreation() {
-        store.creationCount++;
-        Creation cr = new Creation();
-        String uuid = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        cr.setUUID(uuid);
-        cr.setPosition(store.playerPositionX - store.shiftX, store.playerPositionY - store.shiftY);
-        cr.setCell((int) store.selectedTileX, (int) store.selectedTileY);
-        cr.setTexture(new Texture("creations/creation.png"));
-        store.creations[store.creationCount] = cr;
-        store.npcs.put(uuid, "NPC");
+    public void addNpcHere() {
+        npcEditorWindow.addNpcAt((int) store.selectedTileX, (int) store.selectedTileY);
     }
 
-    public void createBuilding() {
-        store.buildingCount++;
-        Creation b = new Creation();
-        String uuid = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        b.setUUID(uuid);
-        b.setPosition(store.playerPositionX - store.shiftX, store.playerPositionY - store.shiftY);
-        b.setCell((int) store.selectedTileX, (int) store.selectedTileY);
-        b.setTexture(new Texture("objects/default_object.png"));
-        store.buildings[store.buildingCount] = b;
-        store.buildingNames.put(uuid, "Объект");
+    public void addObjectHere() {
+        objectEditorWindow.addObjectAt((int) store.selectedTileX, (int) store.selectedTileY);
     }
+
+    // ── NPC/объекты: редактировать (клетка занята) ─────────────────────────────
+
+    public void editNpcHere(String uuid) {
+        npcEditorWindow.show();
+        npcEditorWindow.selectNpcCallback(uuid);
+    }
+
+    public void editBuildingHere(String uuid) {
+        objectEditorWindow.show();
+        objectEditorWindow.selectObjectCallback(uuid);
+    }
+
+    // ── Взаимодействие тайла (не связано с NPC/объектами) ──────────────────────
 
     public void openTileDialog() {
         MapObject mapObject = store.objectedMap[(int) store.selectedTileX - 1][(int) store.selectedTileY - 1];
@@ -125,22 +139,5 @@ public class MapContextMenuWindow extends ContextMenuWindow {
         String uuid = mapObject.getUUID();
         mapObject.isDialogBind = false;
         Gdx.app.log("Debug", "Удалить взаимодействие для " + uuid);
-    }
-
-    // ── Динамические обработчики ──────────────────────────────────────────────
-
-    // Открывает редактор диалога для конкретного NPC
-    public void openNpcInteraction(String uuid) {
-        dialogEditorWindow.setRoot("NPC_" + uuid);
-        dialogEditorWindow.setUUID(uuid);
-        dialogEditorWindow.show();
-    }
-
-    // Открывает окно перенаправления для конкретного здания
-    public void openBuildingInteraction(String uuid) {
-        String name = store.buildingNames.containsKey(uuid)
-            ? store.buildingNames.get(uuid).toString() : "Объект";
-        mapRedirectWindow.configure(name, uuid);
-        mapRedirectWindow.show();
     }
 }

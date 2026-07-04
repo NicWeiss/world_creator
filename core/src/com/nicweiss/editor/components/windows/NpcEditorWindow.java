@@ -7,6 +7,7 @@ import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.Interfaces.BaseCallBack.CallBack;
 import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.creations.Creation;
+import com.nicweiss.editor.utils.NpcCatalog;
 import com.nicweiss.editor.utils.Transform;
 import com.nicweiss.editor.utils.Uuid;
 
@@ -121,11 +122,34 @@ public class NpcEditorWindow extends Window implements CallBack {
 
     public void addNpcCallback() {
         int[] center = getCenterTile();
+        String uuid = createNpcAt(center[0], center[1]);
+        prepareNpcListView();
+        prepareNpcInteractionView(uuid);
+    }
+
+    /**
+     * Создаёт NPC на конкретном тайле и сразу открывает окно с ним, выбранным в правой панели —
+     * используется контекстным меню карты (см. MapContextMenuWindow.addNpcHere), где NPC должен
+     * появиться ровно на выбранной клетке, а не в центре камеры (как addNpcCallback).
+     */
+    public void addNpcAt(int tileX, int tileY) {
+        String uuid = createNpcAt(tileX, tileY);
+        show();
+        prepareNpcListView();
+        prepareNpcInteractionView(uuid);
+    }
+
+    private String createNpcAt(int tileX, int tileY) {
         String uuid = Uuid.generate();
 
+        // Рендер-позиция — подтверждено эмпирически (см. Store.TILE_X_ANCHOR_EXTRA_OFFSET):
+        // tileX/Y приходят из store.selectedTileX/Y (см. Editor.calcPositionCursor — там для X
+        // заложена своя доп. компенсация, для Y её нет), поэтому здесь нужна симметричная
+        // компенсация ПРИ РЕНДЕРЕ — ровно на X, чтобы попасть на ту же клетку, где эта сущность
+        // потом находится через контекстное меню/список (mapCellX/Y хранятся как есть, без сдвига).
         float[] isoPos = Transform.cartesianToIsometric(
-            (int)(center[0] * store.tileSizeWidth),
-            (int)(center[1] * store.tileSizeHeight)
+            (int)((tileX + store.TILE_X_ANCHOR_EXTRA_OFFSET) * store.tileSizeWidth),
+            (int)(tileY * store.tileSizeHeight)
         );
 
         store.creationCount++;
@@ -133,12 +157,10 @@ public class NpcEditorWindow extends Window implements CallBack {
         cr.setUUID(uuid);
         cr.setTexture(new com.badlogic.gdx.graphics.Texture("creations/creation.png"));
         cr.setPosition(isoPos[0], isoPos[1]);
-        cr.setCell(center[0], center[1]);
+        cr.setCell(tileX, tileY);
         store.creations[store.creationCount] = cr;
         store.npcs.put(uuid, "Новый NPC");
-
-        prepareNpcListView();
-        prepareNpcInteractionView(uuid);
+        return uuid;
     }
 
     public void selectNpcCallback(String uuid) {
@@ -164,6 +186,7 @@ public class NpcEditorWindow extends Window implements CallBack {
             }
         }
         store.npcs.remove(uuid);
+        store.npcTypes.remove(uuid);
         npcDetails = new ButtonCommon[0];
         prepareNpcListView();
     }
@@ -246,6 +269,58 @@ public class NpcEditorWindow extends Window implements CallBack {
         dialogEditorWindow.show();
     }
 
+    // ── Тип NPC (NpcCatalog) ─────────────────────────────────────────────────
+
+    public void prepareNpcTypePickerView(String uuid) {
+        npcDetails = new ButtonCommon[1000];
+        int i = 0;
+        String selType = store.npcTypes.get(uuid);
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "selectNpcCallback", new String[]{uuid});
+        npcDetails[i++] = button;
+
+        for (String typeKey : NpcCatalog.TYPES.keySet()) {
+            NpcCatalog.TypeDef type = NpcCatalog.TYPES.get(typeKey);
+            boolean selected = typeKey.equals(selType);
+            button = new ButtonCommon();
+            button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
+            button.setIcon(npcIcon);
+            button.setText(font, type.label + (selected ? "  <" : ""));
+            button.registerCallBack(this, "setNpcType", new String[]{uuid, typeKey});
+            npcDetails[i++] = button;
+        }
+
+        npcDetails = Arrays.copyOfRange(npcDetails, 0, i);
+    }
+
+    // Смена типа переставляет текстуру на дефолтную для типа, если для него задана папка
+    // (см. NpcCatalog.TypeDef.imageFolder) — у нейтральных папки нет, текстура не трогается.
+    public void setNpcType(String uuid, String typeKey) {
+        store.npcTypes.put(uuid, typeKey);
+
+        NpcCatalog.TypeDef type = NpcCatalog.get(typeKey);
+        Creation cr = findCreation(uuid);
+        if (type != null && cr != null) {
+            if (type.imageFolder != null) {
+                cr.setTexture(new com.badlogic.gdx.graphics.Texture(
+                    "creations/" + type.imageFolder + "/default.png"));
+            }
+            // NPC не больше деревьев (лучше — меньше), см. Creation.targetMaxScreenSize.
+            cr.targetMaxScreenSize = store.tileSizeWidth * NpcCatalog.NPC_SIZE_TILE_MULT;
+        }
+
+        prepareNpcInteractionView(uuid);
+    }
+
+    private String getNpcTypeLabel(String uuid) {
+        String typeKey = store.npcTypes.get(uuid);
+        NpcCatalog.TypeDef type = NpcCatalog.get(typeKey);
+        return type != null ? type.label : "Не выбран";
+    }
+
     // ── Редактор взаимодействия (правая панель) ───────────────────────────────
 
     public void prepareNpcInteractionView(String uuid) {
@@ -261,6 +336,13 @@ public class NpcEditorWindow extends Window implements CallBack {
         button.setIcon(nameIcon);
         button.setText(font, "Имя: " + getNpcName(uuid));
         button.registerCallBack(this, "editNpcName", new String[]{uuid});
+        npcDetails[i++] = button;
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(npcIcon);
+        button.setText(font, "Тип: " + getNpcTypeLabel(uuid));
+        button.registerCallBack(this, "prepareNpcTypePickerView", new String[]{uuid});
         npcDetails[i++] = button;
 
         if (cr != null) {
@@ -343,8 +425,9 @@ public class NpcEditorWindow extends Window implements CallBack {
         int finalX = newX >= 0 ? newX : cr.mapCellX;
         int finalY = newY >= 0 ? newY : cr.mapCellY;
         cr.setCell(finalX, finalY);
+        // См. createNpcAt — рендер-позиция, +TILE_X_ANCHOR_EXTRA_OFFSET на X (подтверждено эмпирически).
         float[] isoPos = Transform.cartesianToIsometric(
-            (int)(finalX * store.tileSizeWidth),
+            (int)((finalX + store.TILE_X_ANCHOR_EXTRA_OFFSET) * store.tileSizeWidth),
             (int)(finalY * store.tileSizeHeight)
         );
         cr.setPosition(isoPos[0], isoPos[1]);

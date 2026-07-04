@@ -676,7 +676,10 @@ public class DropManager {
 
     private static boolean isLandable(int tx, int ty) {
         if (tx < 0 || ty < 0 || tx >= store.mapHeight || ty >= store.mapWidth) return false;
-        return store.objectedMap[tx][ty].getHeight() < MAX_SURFACE_HEIGHT;
+        // objectHeight — игровая "высота препятствия" тайла, а не getHeight() (унаследован от
+        // BaseObject — пиксельный размер спрайта, ~50-120px, почти всегда >= MAX_SURFACE_HEIGHT
+        // для уже отрисованных тайлов — см. тот же баг, найденный и исправленный в SpawnManager).
+        return store.objectedMap[tx][ty].objectHeight < MAX_SURFACE_HEIGHT;
     }
 
     private static Texture loadItemTexture(LinkedHashMap itemTemplate) {

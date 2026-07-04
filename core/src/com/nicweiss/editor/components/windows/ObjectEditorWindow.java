@@ -7,10 +7,12 @@ import com.nicweiss.editor.Generic.Window;
 import com.nicweiss.editor.Interfaces.BaseCallBack.CallBack;
 import com.nicweiss.editor.components.ButtonCommon;
 import com.nicweiss.editor.creations.Creation;
+import com.nicweiss.editor.utils.ObjectCatalog;
 import com.nicweiss.editor.utils.Transform;
 import com.nicweiss.editor.utils.Uuid;
 
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 
 public class ObjectEditorWindow extends Window implements CallBack {
     public static Store store;
@@ -26,6 +28,9 @@ public class ObjectEditorWindow extends Window implements CallBack {
     ButtonCommon button;
 
     private String objectSearchQuery = "";
+    // Хранит имя редактируемого поля настроек объекта между открытием TextInputWindow и коллбэком
+    // (см. editSettingsNumericField/editSettingsTextField).
+    private String pendingSettingsField;
 
     public ObjectEditorWindow(DialogEditorWindow dialogEditorWindow) {
         super();
@@ -116,11 +121,32 @@ public class ObjectEditorWindow extends Window implements CallBack {
 
     public void addObjectCallback() {
         int[] center = getCenterTile();
+        String uuid = createObjectAt(center[0], center[1]);
+        prepareObjectListView();
+        prepareObjectInteractionView(uuid);
+    }
+
+    /**
+     * Создаёт объект на конкретном тайле и сразу открывает окно с ним, выбранным в правой панели —
+     * используется контекстным меню карты (см. MapContextMenuWindow.addObjectHere), где объект
+     * должен появиться ровно на выбранной клетке, а не в центре камеры (как addObjectCallback).
+     */
+    public void addObjectAt(int tileX, int tileY) {
+        String uuid = createObjectAt(tileX, tileY);
+        show();
+        prepareObjectListView();
+        prepareObjectInteractionView(uuid);
+    }
+
+    private String createObjectAt(int tileX, int tileY) {
         String uuid = Uuid.generate();
 
+        // Рендер-позиция — подтверждено эмпирически (см. Store.TILE_X_ANCHOR_EXTRA_OFFSET):
+        // tileX/Y из store.selectedTileX/Y (см. Editor.calcPositionCursor — для X там своя доп.
+        // компенсация, для Y её нет) — нужна симметричная компенсация на X при рендере.
         float[] isoPos = Transform.cartesianToIsometric(
-            (int)(center[0] * store.tileSizeWidth),
-            (int)(center[1] * store.tileSizeHeight)
+            (int)((tileX + store.TILE_X_ANCHOR_EXTRA_OFFSET) * store.tileSizeWidth),
+            (int)(tileY * store.tileSizeHeight)
         );
 
         store.buildingCount++;
@@ -128,12 +154,10 @@ public class ObjectEditorWindow extends Window implements CallBack {
         b.setUUID(uuid);
         b.setTexture(new Texture("objects/default_object.png"));
         b.setPosition(isoPos[0], isoPos[1]);
-        b.setCell(center[0], center[1]);
+        b.setCell(tileX, tileY);
         store.buildings[store.buildingCount] = b;
         store.buildingNames.put(uuid, "Новый объект");
-
-        prepareObjectListView();
-        prepareObjectInteractionView(uuid);
+        return uuid;
     }
 
     public void selectObjectCallback(String uuid) {
@@ -158,6 +182,7 @@ public class ObjectEditorWindow extends Window implements CallBack {
             }
         }
         store.buildingNames.remove(uuid);
+        store.buildingSettings.remove(uuid);
         objectDetails = new ButtonCommon[0];
         prepareObjectListView();
     }
@@ -257,6 +282,13 @@ public class ObjectEditorWindow extends Window implements CallBack {
         button.registerCallBack(this, "editObjectName", new String[]{uuid});
         objectDetails[i++] = button;
 
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(objectIcon);
+        button.setText(font, "Тип: " + getObjectTypeLabel(uuid));
+        button.registerCallBack(this, "prepareObjectTypePickerView", new String[]{uuid});
+        objectDetails[i++] = button;
+
         if (b != null) {
             // Выбрать тайл
             button = new ButtonCommon();
@@ -288,21 +320,85 @@ public class ObjectEditorWindow extends Window implements CallBack {
             objectDetails[i++] = button;
         }
 
-        // ── ВЗАИМОДЕЙСТВИЕ ──
-        objectDetails[i++] = makeSectionHeader("── ВЗАИМОДЕЙСТВИЕ ──");
+        // ── ПЕРСОНАЛЬНЫЕ НАСТРОЙКИ (зависят от типа, см. ObjectCatalog) ──
+        String objType = getObjectType(uuid);
+        if (objType != null) {
+            LinkedHashMap settings = getOrCreateSettings(uuid, objType);
+            objectDetails[i++] = makeSectionHeader("── НАСТРОЙКИ ──");
 
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBG, buttonBGHover);
-        button.setIcon(objectIcon);
-        button.setText(font, "Редактировать переход");
-        button.registerCallBack(this, "openInteractionEditor", new String[]{uuid});
-        objectDetails[i++] = button;
+            if (ObjectCatalog.isSpawner(objType)) {
+                i = addNumericSetting(uuid, settings, i, "Уровень спавна", "__level__", 1);
+                i = addNumericSetting(uuid, settings, i, "Макс. количество", "__maxCount__", 1);
+            } else if ("chest".equals(objType)) {
+                boolean useLevelFromPlayer = toBool(settings.get("__useRewardLevelFromPlayer__"), true);
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(coordIcon);
+                button.setText(font, "Уровень наград: " + (useLevelFromPlayer ? "Соответствует уровню игрока" : "кастомный"));
+                button.registerCallBack(this, "toggleSettingsBool", new String[]{uuid, "__useRewardLevelFromPlayer__"});
+                objectDetails[i++] = button;
+                if (!useLevelFromPlayer) i = addNumericSetting(uuid, settings, i, "Кастомный уровень наград", "__rewardLevel__", 1);
 
-        // Заглушка перехода на карту
-        button = new ButtonCommon();
-        button.setBackgrounds(buttonBGHover, buttonBGHover);
-        button.setText(font, "Переход на карту: (не реализовано)");
-        objectDetails[i++] = button;
+                boolean useMfFromPlayer = toBool(settings.get("__useMagicFindFromPlayer__"), true);
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(coordIcon);
+                button.setText(font, "Поиск предметов: " + (useMfFromPlayer ? "Соответствует уровню игрока" : "кастомный"));
+                button.registerCallBack(this, "toggleSettingsBool", new String[]{uuid, "__useMagicFindFromPlayer__"});
+                objectDetails[i++] = button;
+                if (!useMfFromPlayer) i = addNumericSetting(uuid, settings, i, "Кастомный поиск предметов, %", "__magicFindLevel__", 1);
+
+                boolean randomCount = toBool(settings.get("__useDropCountRandom__"), true);
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(coordIcon);
+                button.setText(font, "Количество дропа: " + (randomCount ? "Случайное" : "заданный диапазон"));
+                button.registerCallBack(this, "toggleSettingsBool", new String[]{uuid, "__useDropCountRandom__"});
+                objectDetails[i++] = button;
+                if (!randomCount) {
+                    i = addNumericSetting(uuid, settings, i, "Минимум дропа", "__dropCountMin__", 1);
+                    i = addNumericSetting(uuid, settings, i, "Максимум дропа", "__dropCountMax__", 1);
+                }
+            } else if ("source".equals(objType)) {
+                boolean isMana = "mana".equals(settings.get("__resourceType__"));
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(coordIcon);
+                button.setText(font, "Ресурс: " + (isMana ? "Мана" : "Здоровье"));
+                button.registerCallBack(this, "toggleResourceType", new String[]{uuid});
+                objectDetails[i++] = button;
+
+                boolean regenerates = toBool(settings.get("__regenerates__"), true);
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(coordIcon);
+                button.setText(font, "Восстанавливается: " + (regenerates ? "Да" : "Нет"));
+                button.registerCallBack(this, "toggleSettingsBool", new String[]{uuid, "__regenerates__"});
+                objectDetails[i++] = button;
+                if (regenerates) i = addNumericSetting(uuid, settings, i, "Скорость восстановления, сек", "__regenSpeed__", 1);
+
+                i = addNumericSetting(uuid, settings, i, "Количество использований", "__uses__", 1);
+                i = addNumericSetting(uuid, settings, i, "Восстановление за использование", "__amountPerUse__", 1);
+            } else if ("portal".equals(objType)) {
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBG, buttonBGHover);
+                button.setIcon(coordIcon);
+                Object targetMap = settings.get("__targetMap__");
+                String targetMapStr = targetMap != null && !targetMap.toString().isEmpty() ? targetMap.toString() : "(не задана)";
+                button.setText(font, "Целевая карта: " + targetMapStr);
+                button.registerCallBack(this, "editSettingsTextField", new String[]{uuid, "__targetMap__"});
+                objectDetails[i++] = button;
+
+                i = addNumericSetting(uuid, settings, i, "Целевая точка X", "__targetX__", 1);
+                i = addNumericSetting(uuid, settings, i, "Целевая точка Y", "__targetY__", 1);
+
+                // Мульти-карт системы пока нет — переход настраивается, но ведёт в заглушку.
+                button = new ButtonCommon();
+                button.setBackgrounds(buttonBGHover, buttonBGHover);
+                button.setText(font, "(Переход пока не активируется — нет системы мульти-карт)");
+                objectDetails[i++] = button;
+            }
+        }
 
         button = new ButtonCommon();
         button.setBackgrounds(buttonBG, buttonBGHover);
@@ -312,6 +408,175 @@ public class ObjectEditorWindow extends Window implements CallBack {
         objectDetails[i++] = button;
 
         objectDetails = Arrays.copyOfRange(objectDetails, 0, i);
+    }
+
+    // ── Тип объекта (ObjectCatalog) ──────────────────────────────────────────
+
+    public void prepareObjectTypePickerView(String uuid) {
+        objectDetails = new ButtonCommon[1000];
+        int i = 0;
+        String selType = getObjectType(uuid);
+
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setText(font, "<--");
+        button.registerCallBack(this, "selectObjectCallback", new String[]{uuid});
+        objectDetails[i++] = button;
+
+        for (String typeKey : ObjectCatalog.TYPES.keySet()) {
+            ObjectCatalog.TypeDef type = ObjectCatalog.TYPES.get(typeKey);
+            boolean selected = typeKey.equals(selType);
+            button = new ButtonCommon();
+            button.setBackgrounds(selected ? buttonBGHover : buttonBG, buttonBGHover);
+            button.setIcon(objectIcon);
+            button.setText(font, type.label + (selected ? "  <" : ""));
+            button.registerCallBack(this, "setObjectType", new String[]{uuid, typeKey});
+            objectDetails[i++] = button;
+        }
+
+        objectDetails = Arrays.copyOfRange(objectDetails, 0, i);
+    }
+
+    // Смена типа: ставит дефолтную текстуру типа (см. ObjectCatalog.TypeDef.defaultImage) и
+    // дефолтные значения его персональных настроек (только если их ещё нет — переключение туда-
+    // обратно между типами не теряет уже введённые значения).
+    public void setObjectType(String uuid, String typeKey) {
+        LinkedHashMap settings = getOrCreateSettings(uuid, typeKey);
+        settings.put("__objectType__", typeKey);
+        applyTypeDefaults(settings, typeKey);
+
+        ObjectCatalog.TypeDef type = ObjectCatalog.get(typeKey);
+        Creation b = findBuilding(uuid);
+        if (type != null && b != null) {
+            if (type.defaultImage != null) b.setTexture(new Texture(type.defaultImage));
+            // Спавнер/сундук/источник — размером с тайл, переход — размером с дерево
+            // (см. ObjectCatalog.targetSizeTileMult, Creation.targetMaxScreenSize).
+            b.targetMaxScreenSize = store.tileSizeWidth * ObjectCatalog.targetSizeTileMult(typeKey);
+        }
+
+        prepareObjectInteractionView(uuid);
+    }
+
+    private String getObjectType(String uuid) {
+        LinkedHashMap settings = store.buildingSettings.get(uuid);
+        return settings != null ? (String) settings.get("__objectType__") : null;
+    }
+
+    private String getObjectTypeLabel(String uuid) {
+        ObjectCatalog.TypeDef type = ObjectCatalog.get(getObjectType(uuid));
+        return type != null ? type.label : "Не выбран";
+    }
+
+    private LinkedHashMap getOrCreateSettings(String uuid, String typeKeyForDefaults) {
+        LinkedHashMap settings = store.buildingSettings.get(uuid);
+        if (settings == null) {
+            settings = new LinkedHashMap();
+            store.buildingSettings.put(uuid, settings);
+        }
+        if (typeKeyForDefaults != null) applyTypeDefaults(settings, typeKeyForDefaults);
+        return settings;
+    }
+
+    // Дефолтные значения персональных настроек по типу — выставляются один раз (putIfAbsent),
+    // не перетирают уже введённые пользователем значения при повторных вызовах.
+    @SuppressWarnings("unchecked")
+    private void applyTypeDefaults(LinkedHashMap settings, String typeKey) {
+        if (ObjectCatalog.isSpawner(typeKey)) {
+            settings.putIfAbsent("__level__", 1);
+            settings.putIfAbsent("__maxCount__", 3);
+        } else if ("chest".equals(typeKey)) {
+            settings.putIfAbsent("__useRewardLevelFromPlayer__", true);
+            settings.putIfAbsent("__rewardLevel__", 1);
+            settings.putIfAbsent("__useMagicFindFromPlayer__", true);
+            settings.putIfAbsent("__magicFindLevel__", 0);
+            settings.putIfAbsent("__useDropCountRandom__", true);
+            settings.putIfAbsent("__dropCountMin__", 1);
+            settings.putIfAbsent("__dropCountMax__", 3);
+        } else if ("source".equals(typeKey)) {
+            settings.putIfAbsent("__resourceType__", "health");
+            settings.putIfAbsent("__regenerates__", true);
+            settings.putIfAbsent("__regenSpeed__", 5);
+            settings.putIfAbsent("__uses__", 10);
+            settings.putIfAbsent("__amountPerUse__", 20);
+        } else if ("portal".equals(typeKey)) {
+            settings.putIfAbsent("__targetMap__", "");
+            settings.putIfAbsent("__targetX__", 0);
+            settings.putIfAbsent("__targetY__", 0);
+        }
+    }
+
+    // ── Персональные настройки: числовые/текстовые/булевы поля ─────────────────
+
+    @SuppressWarnings("unchecked")
+    private int addNumericSetting(String uuid, LinkedHashMap settings, int i, String label, String fieldKey, int minValue) {
+        int value = toInt(settings.get(fieldKey), minValue);
+        button = new ButtonCommon();
+        button.setBackgrounds(buttonBG, buttonBGHover);
+        button.setIcon(coordIcon);
+        button.setText(font, label + ": " + value);
+        button.registerCallBack(this, "editSettingsNumericField", new String[]{uuid, fieldKey});
+        objectDetails[i++] = button;
+        return i;
+    }
+
+    public void editSettingsNumericField(String uuid, String fieldName) {
+        if (tiw.isShowWindow || !isWindowActive) return;
+        LinkedHashMap settings = getOrCreateSettings(uuid, getObjectType(uuid));
+        pendingSettingsField = fieldName;
+        Object raw = settings.get(fieldName);
+        tiw.registerCallBack(this, "editSettingsNumericFieldDone", new String[]{uuid, ""});
+        tiw.setText(raw != null ? raw.toString() : "0");
+        tiw.show();
+    }
+
+    @SuppressWarnings("unchecked")
+    public void editSettingsNumericFieldDone(String uuid, String value) {
+        LinkedHashMap settings = getOrCreateSettings(uuid, getObjectType(uuid));
+        value = value.replaceAll("[^0-9\\-]", "");
+        if (value.isEmpty()) value = "0";
+        settings.put(pendingSettingsField, Integer.parseInt(value));
+        prepareObjectInteractionView(uuid);
+    }
+
+    public void editSettingsTextField(String uuid, String fieldName) {
+        if (tiw.isShowWindow || !isWindowActive) return;
+        LinkedHashMap settings = getOrCreateSettings(uuid, getObjectType(uuid));
+        pendingSettingsField = fieldName;
+        Object raw = settings.get(fieldName);
+        tiw.registerCallBack(this, "editSettingsTextFieldDone", new String[]{uuid, ""});
+        tiw.setText(raw != null ? raw.toString() : "");
+        tiw.show();
+    }
+
+    @SuppressWarnings("unchecked")
+    public void editSettingsTextFieldDone(String uuid, String value) {
+        LinkedHashMap settings = getOrCreateSettings(uuid, getObjectType(uuid));
+        settings.put(pendingSettingsField, value);
+        prepareObjectInteractionView(uuid);
+    }
+
+    @SuppressWarnings("unchecked")
+    public void toggleSettingsBool(String uuid, String fieldName) {
+        LinkedHashMap settings = getOrCreateSettings(uuid, getObjectType(uuid));
+        boolean cur = toBool(settings.get(fieldName), false);
+        settings.put(fieldName, !cur);
+        prepareObjectInteractionView(uuid);
+    }
+
+    @SuppressWarnings("unchecked")
+    public void toggleResourceType(String uuid) {
+        LinkedHashMap settings = getOrCreateSettings(uuid, getObjectType(uuid));
+        boolean isMana = "mana".equals(settings.get("__resourceType__"));
+        settings.put("__resourceType__", isMana ? "health" : "mana");
+        prepareObjectInteractionView(uuid);
+    }
+
+    private int toInt(Object o, int fallback) {
+        return o instanceof Number ? ((Number) o).intValue() : fallback;
+    }
+
+    private boolean toBool(Object o, boolean fallback) {
+        return o instanceof Boolean ? (Boolean) o : fallback;
     }
 
     // ── Вспомогательные методы ────────────────────────────────────────────────
@@ -336,8 +601,9 @@ public class ObjectEditorWindow extends Window implements CallBack {
         int finalX = newX >= 0 ? newX : b.mapCellX;
         int finalY = newY >= 0 ? newY : b.mapCellY;
         b.setCell(finalX, finalY);
+        // См. createObjectAt — рендер-позиция, +TILE_X_ANCHOR_EXTRA_OFFSET на X (подтверждено эмпирически).
         float[] isoPos = Transform.cartesianToIsometric(
-            (int)(finalX * store.tileSizeWidth),
+            (int)((finalX + store.TILE_X_ANCHOR_EXTRA_OFFSET) * store.tileSizeWidth),
             (int)(finalY * store.tileSizeHeight)
         );
         b.setPosition(isoPos[0], isoPos[1]);

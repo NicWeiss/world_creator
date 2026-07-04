@@ -23,6 +23,10 @@ public class CreationThread implements Runnable {
                     DropManager.update(dt);
                 }
 
+                if (store.isSimulationMode) {
+                    SpawnManager.update(dt);
+                }
+
                 // TODO: NPC AI — передвижение, реакции, патрули
                 Thread.sleep(16);
             } catch (InterruptedException e) {

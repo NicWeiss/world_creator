@@ -507,6 +507,7 @@ public class Editor extends View{
                 renderCreations(batch, mapI, mapJ, false);
                 renderBuildings(batch, mapI, mapJ, false);
                 renderDrops(batch, mapI, mapJ, false);
+                renderSimCreatures(batch, mapI, mapJ, false);
 
 //                Рисуем игрока в его тайловой позиции (как creations)
                 if (store.isSimulationMode && store.player != null && store.player.isInitialized()) {
@@ -524,6 +525,8 @@ public class Editor extends View{
                 renderBuildings(batch, mapI+1, mapJ, true);
                 renderDrops(batch, mapI, mapJ+1, true);
                 renderDrops(batch, mapI+1, mapJ, true);
+                renderSimCreatures(batch, mapI, mapJ+1, true);
+                renderSimCreatures(batch, mapI+1, mapJ, true);
             }
         }
 
@@ -592,6 +595,23 @@ public class Editor extends View{
                     if (el.getHeight() != 0) { continue; }
                 }
                 drop.draw(batch);
+            }
+        }
+    }
+
+    // Боевые NPC спавнеров (см. SpawnManager) — только в симуляции, не редактируются, не
+    // сохраняются, отдельно от store.creations (статичные NPC редактора).
+    public void renderSimCreatures(SpriteBatch batch, int mapI, int mapJ, boolean filterByHeight) {
+        if (!store.isSimulationMode) return;
+        for (int i = 0; i <= store.simCreatureCount; i++) {
+            com.nicweiss.editor.simulation.SimCreature creature = store.simCreatures[i];
+            if (creature != null) {
+                if (creature.mapCellX != (mapI + store.TILE_INDEX_BASE) || creature.mapCellY != (mapJ + store.TILE_INDEX_BASE)) { continue; }
+                if (filterByHeight) {
+                    MapObject el = store.objectedMap[mapI][mapJ];
+                    if (el.getHeight() != 0) { continue; }
+                }
+                creature.draw(batch);
             }
         }
     }
