@@ -57,11 +57,24 @@ public class TileSelectorWindow extends Window {
                 dayNight, 0,0, 70, 70, "", 0
         );
 
-        allTiles = new BaseObject[textureObjects.length];
-        for (int i = 0; i<textureObjects.length;  i++) {
-            allTiles[i] = bo_helper.constructObject(
-                    textureObjects[i].texture, renderUIFrom + (i * menuTileSpace) + 3,5, menuTileWidth,
-                    menuTileHeight, String.valueOf(i), i
+        // Дорожка (см. Editor: PATH_PICKER_ID=14, автотайлинг по соседям) — в пикере только ОДИН
+        // видимый инструмент вместо 11 отдельных спрайтов-вариантов поворотов/пересечений; сами
+        // варианты (13, 15..23) остаются полноценными текстурами — просто не показываются как
+        // отдельные, самостоятельно выбираемые тайлы (Editor подставляет их автоматически).
+        int[] hiddenFromPicker = { 13, 15, 16, 17, 18, 19, 20, 21, 22, 23 };
+        java.util.List<Integer> visibleIds = new java.util.ArrayList<>();
+        for (int i = 0; i < textureObjects.length; i++) {
+            if (!ArrayUtils.checkIntInArray(i, hiddenFromPicker)) {
+                visibleIds.add(i);
+            }
+        }
+
+        allTiles = new BaseObject[visibleIds.size()];
+        for (int idx = 0; idx < visibleIds.size(); idx++) {
+            int id = visibleIds.get(idx);
+            allTiles[idx] = bo_helper.constructObject(
+                    textureObjects[id].texture, renderUIFrom + (idx * menuTileSpace) + 3,5, menuTileWidth,
+                    menuTileHeight, String.valueOf(id), id
             );
         }
 

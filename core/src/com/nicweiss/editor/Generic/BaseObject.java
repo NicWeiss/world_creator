@@ -21,6 +21,10 @@ public class BaseObject implements Cloneable {
     protected int height = 0;
     protected Texture img, bgImg, surfaceImg;
     protected float rotation = 0;
+    // Отражение по осям при отрисовке объекта (см. Editor auto-tiling дорожек) — безопасная
+    // альтернатива повороту на 90°/270° для НЕквадратных изометрических тайлов (318×350): поворот
+    // на такой угол исказил бы пропорции спрайта, а отражение — нет, всегда в исходных пропорциях.
+    public boolean flipX = false, flipY = false;
     protected float opacity = 1;
     protected boolean deleted = false;
     protected String objectId;
@@ -98,7 +102,7 @@ public class BaseObject implements Cloneable {
                 rotation,
                 0, 0,
                 img.getWidth(), img.getHeight(),
-                false, false);
+                flipX, flipY);
         }
     }
 
@@ -230,6 +234,10 @@ public class BaseObject implements Cloneable {
 
     public int getTextureId() {
         return textureId;
+    }
+
+    public int getSurfaceId() {
+        return surfaceId;
     }
 
     public void setObjectId(String objectId) {

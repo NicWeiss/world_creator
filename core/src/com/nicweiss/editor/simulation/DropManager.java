@@ -34,6 +34,10 @@ public class DropManager {
     private static final Random RANDOM = new Random();
     // "Падать можно только на поверхности или на совсем низкие предметы" — порог высоты тайла.
     private static final int MAX_SURFACE_HEIGHT = 3;
+    // Вода (см. Editor.WATER_TEXTURE_ID) и мостик (gp_12.png, см. Player.BRIDGE_TEXTURE_ID) — лут
+    // не должен падать в воду, куда игрок не может дойти (кроме как по мостику).
+    private static final int WATER_TEXTURE_ID  = 10;
+    private static final int BRIDGE_TEXTURE_ID = 12;
     // Дальность разлёта в тайлах: база 1.5, +60% по требованию.
     private static final float MIN_SCATTER_TILES = 0.6f;
     private static final float MAX_SCATTER_TILES = 1.5f * 1.6f;
@@ -676,10 +680,15 @@ public class DropManager {
 
     private static boolean isLandable(int tx, int ty) {
         if (tx < 0 || ty < 0 || tx >= store.mapHeight || ty >= store.mapWidth) return false;
+        com.nicweiss.editor.objects.MapObject tile = store.objectedMap[tx][ty];
         // objectHeight — игровая "высота препятствия" тайла, а не getHeight() (унаследован от
         // BaseObject — пиксельный размер спрайта, ~50-120px, почти всегда >= MAX_SURFACE_HEIGHT
         // для уже отрисованных тайлов — см. тот же баг, найденный и исправленный в SpawnManager).
-        return store.objectedMap[tx][ty].objectHeight < MAX_SURFACE_HEIGHT;
+        if (tile.objectHeight >= MAX_SURFACE_HEIGHT) return false;
+        // Вода — не место для дропа, если до неё нельзя дойти (см. Player.isCollidingAt — то же
+        // правило: мостик на воде делает её проходимой, значит и годной для приземления лута).
+        if (tile.getSurfaceId() == WATER_TEXTURE_ID && tile.getTextureId() != BRIDGE_TEXTURE_ID) return false;
+        return true;
     }
 
     private static Texture loadItemTexture(LinkedHashMap itemTemplate) {

@@ -377,12 +377,24 @@ public class UserInterface {
                 String savedHeight = pendingMap[i][j][4];
                 // isRiverWater — с v4, чисто для water-шейдера (течение у реки vs волны у озера).
                 boolean isRiverWater = "river".equals(pendingMap[i][j][5]);
+                // surfaceId/surfaceDepth — с v5: земля/вода строго ПОВЕРХНОСТЬ, независимая от
+                // объектного слоя (см. класс-комментарий в MapObject). null в старых сейвах — их
+                // формат хранил воду В ОБЪЕКТНОМ слое (textureId==10, старая архитектура), поэтому
+                // для миграции: если textureId==10 (вода) и surfaceId не сохранён, переносим воду
+                // на поверхность сами (см. WATER_TEXTURE_ID в Editor — тот же id=10 здесь).
+                String savedSurfaceId    = pendingMap[i][j][6];
+                String savedSurfaceDepth = pendingMap[i][j][7];
+                boolean isOldFormatWater = savedSurfaceId == null && textureId == 10;
+                int surfaceId    = savedSurfaceId != null ? Integer.parseInt(savedSurfaceId) : (isOldFormatWater ? 10 : 1);
+                int surfaceDepth = savedSurfaceDepth != null ? Integer.parseInt(savedSurfaceDepth)
+                    : (isOldFormatWater && savedHeight != null ? Integer.parseInt(savedHeight) : 0);
 
                 MapObject tmp = new MapObject();
-                tmp.setSurfaceTexture(tileTextures[1].texture);
-                tmp.setSurfaceId(1);
+                tmp.setSurfaceTexture(tileTextures[surfaceId].texture);
+                tmp.setSurfaceId(surfaceId);
+                tmp.surfaceDepth = surfaceDepth;
                 tmp.setTexture(tileTextures[textureId].texture);
-                tmp.setObjectHeight(savedHeight != null ? Integer.parseInt(savedHeight) : tileTextures[textureId].high);
+                tmp.setObjectHeight(savedHeight != null && !isOldFormatWater ? Integer.parseInt(savedHeight) : tileTextures[textureId].high);
                 tmp.setTextureId(textureId);
                 tmp.isTree = isTree;
                 tmp.isRiverWater = isRiverWater;
@@ -404,7 +416,11 @@ public class UserInterface {
         if (buildCursor < store.mapWidth) {
             com.badlogic.gdx.Gdx.app.postRunnable(this::buildMapChunk);
         } else {
-            // Карта построена — пересчёт освещения
+            // Карта построена — берег (см. Editor.markShores) не персистится, дёшево пересчитать
+            // сразу после загрузки. Дорожки (см. Editor.recalcAllPaths) — тоже: flipX/flipY не
+            // персистятся, полностью выводятся из соседей, как и isShore.
+            com.nicweiss.editor.Views.Editor.markShores();
+            com.nicweiss.editor.Views.Editor.recalcAllPaths();
             lightCursor = 0;
             loadingWindow.setStep(9, 9, "Расчёт освещения", 0);
             com.badlogic.gdx.Gdx.app.postRunnable(this::calcLightChunk);

@@ -23,7 +23,10 @@ import java.util.Random;
 
 public class Editor extends View{
     Texture hintUp, hintDown;
-    TextureObject[] textures;
+    // static — что бы recalcPathTile/recalcAllPaths (см. ниже) можно было вызывать статически из
+    // UserInterface после загрузки карты, как и markShores(); Editor — синглтон, textures
+    // выставляются один раз в конструкторе, безопасно.
+    static TextureObject[] textures;
 
     Light light;
     UserInterface userInterface;
@@ -33,13 +36,12 @@ public class Editor extends View{
     int selectedTileX, selectedTileY;
     int mouseX, mouseY;
     float cm = 0.01f;
-    int[] lightObjectIds, surfacesIds;
+    int[] lightObjectIds;
     boolean isImmediatelyReleaseKey = false;
     boolean isUiTouched = false;
 
     public Editor(){
         lightObjectIds = new int[] {11};
-        surfacesIds = new int [] {1, 10};
 
         hintUp = new Texture("tile_hint_up.png");
         hintDown = new Texture("tile_hint_down.png");
@@ -87,6 +89,185 @@ public class Editor extends View{
     // Индекс текстуры воды в textures[] (gp_10.png) — раньше был заведён, но ничем не заполнялся
     // генератором (просто лежал неиспользуемым). Теперь — единственный тайл для рек, см. generateRivers.
     private static final int WATER_TEXTURE_ID = 10;
+
+    // Земля/трава (1) и вода (WATER_TEXTURE_ID) — единственные типы, допустимые НА УРОВНЕ
+    // ПОВЕРХНОСТИ (см. touchDown): они не могут существовать в объектном слое и наоборот. Всё
+    // остальное (деревья, камни, мостики, здания...) — объекты, независимые от поверхности под ними.
+    private static final int[] GROUND_TILE_IDS = { 1, WATER_TEXTURE_ID };
+
+    // Объекты с высотой ниже этого порога (мостик, дорожка, мелкие камешки) считаются "плоскими" —
+    // рисуются вместе с поверхностями (см. render()), а НЕ в проходе "Объекты", что бы порядок
+    // сканирования тайлов не мог случайно нарисовать их поверх игрока/существ — у плоского объекта
+    // физически нет высоты, что бы кого-то реально загораживать.
+    private static final int FLAT_OBJECT_HEIGHT = 10;
+
+    // ── Автотайлинг дорожек ─────────────────────────────────────────────────────────────────
+    //
+    // В пикере — ОДИН тайл-инструмент "дорожка" (PATH_PICKER_ID), а не 11 отдельных вариантов
+    // поворотов/пересечений по отдельности (см. TileSelectorWindow). При установке (и при
+    // затирании соседней дорожки другим объектом) клетка и её 4 соседа-дорожки пересчитываются:
+    // по битовой маске "какие из 4 соседей тоже дорожка" выбирается нужный спрайт.
+    //
+    // Полный набор готовых тайлов (13..23), КАЖДЫЙ используется КАК ЕСТЬ — БЕЗ поворота и БЕЗ
+    // отражения (art-пак уже содержит все нужные ориентации отдельными спрайтами):
+    //   13           — перекрёсток 4 дорог (все 4 соседа)
+    //   14, 15       — прямая дорога (2 спрайта — по одному на каждую из 2 осей)
+    //   16, 17, 18, 19 — ПОВОРОТЫ на 90° (все 4 ориентации угла — 2 соседа под прямым углом)
+    //   20, 21, 22, 23 — T-перекрёсток (3 соседа, один спрайт на каждую "недостающую" сторону)
+    // Отдельного тайла-тупика (1 сосед) в наборе НЕТ — используется прямая (14/15) подходящей оси.
+    //
+    // Если поверхность под дорожкой — вода, ставится МОСТИК (gp_12) вместо дорожки: у мостика пока
+    // нет вариаций художественно, поэтому автотайлинг на него не распространяется — фиксированный
+    // спрайт независимо от соседей.
+
+    private static final int PATH_PICKER_ID = 14; // видимый в пикере тайл — он же "первая дорожка" (изолированная, без соседей)
+    private static final int PATH_CROSS       = 13;
+    private static final int PATH_STRAIGHT_NS = 14;
+    private static final int PATH_STRAIGHT_EW = 15;
+    // Ориентации проверены аналитически: 4 контрольные точки — середины рёбер ромба, выведенные
+    // из формулы Transform.cartesianToIsometric (S=i+1 → верх-право экрана, N=i-1 → низ-лево,
+    // E=j+1 → верх-лево, W=j-1 → низ-право; проверено сверкой с фактическим наклоном спрайтов
+    // gp_14/gp_15), и подтверждены проверкой прозрачности каждого спрайта в этих точках.
+    private static final int PATH_CORNER_NE = 18;
+    private static final int PATH_CORNER_NW = 16;
+    private static final int PATH_CORNER_SE = 17;
+    private static final int PATH_CORNER_SW = 19;
+    private static final int PATH_T_MISSING_N = 20;
+    private static final int PATH_T_MISSING_E = 21;
+    private static final int PATH_T_MISSING_S = 22;
+    private static final int PATH_T_MISSING_W = 23;
+    private static final int[] PATH_TILE_IDS = {
+        PATH_CROSS, PATH_STRAIGHT_NS, PATH_STRAIGHT_EW,
+        PATH_CORNER_NE, PATH_CORNER_NW, PATH_CORNER_SE, PATH_CORNER_SW,
+        PATH_T_MISSING_N, PATH_T_MISSING_S, PATH_T_MISSING_E, PATH_T_MISSING_W
+    };
+    private static final int BRIDGE_TEXTURE_ID = 12;
+
+    private static boolean isPathTile(int textureId) {
+        return ArrayUtils.checkIntInArray(textureId, PATH_TILE_IDS);
+    }
+
+    /**
+     * Мостик (без вариаций — фиксированный спрайт) тем не менее должен СЧИТАТЬСЯ соседом для
+     * автотайлинга дорожки: дорожка, упирающаяся в мостик у воды, должна плавно "втекать" в него
+     * (прямая/угол), а не обрываться тупиком, будто мостика тут нет. Сам мостик при этом никогда
+     * не пересчитывается (recalcPathTile ниже использует именно isPathTile, а не эту функцию, для
+     * guard-проверки "это вообще дорожка?") — его спрайт остаётся неизменным.
+     */
+    private static boolean isPathOrBridgeTile(int textureId) {
+        return isPathTile(textureId) || textureId == BRIDGE_TEXTURE_ID;
+    }
+
+    /**
+     * Пересчитывает спрайт дорожки в клетке (i,j) по битовой маске из 4 соседей (тоже дорожка,
+     * мостик, или нет) — см. класс-комментарий выше про соответствие маски и спрайта. Ничего не
+     * делает, если клетка сейчас не дорожка (например, её только что затёрли другим объектом, или
+     * это сам мостик — у него нет вариаций, см. isPathOrBridgeTile).
+     */
+    private static void recalcPathTile(int i, int j) {
+        if (i < 0 || i >= store.mapHeight || j < 0 || j >= store.mapWidth) return;
+        MapObject tile = store.objectedMap[i][j];
+        if (!isPathTile(tile.getTextureId())) return;
+
+        boolean n = i > 0                      && isPathOrBridgeTile(store.objectedMap[i - 1][j].getTextureId());
+        boolean s = i < store.mapHeight - 1     && isPathOrBridgeTile(store.objectedMap[i + 1][j].getTextureId());
+        boolean w = j > 0                      && isPathOrBridgeTile(store.objectedMap[i][j - 1].getTextureId());
+        boolean e = j < store.mapWidth - 1      && isPathOrBridgeTile(store.objectedMap[i][j + 1].getTextureId());
+
+        int id;
+        int neighborCount = (n ? 1 : 0) + (s ? 1 : 0) + (e ? 1 : 0) + (w ? 1 : 0);
+
+        if (neighborCount == 0) {
+            id = PATH_STRAIGHT_NS; // изолированная дорожка — "первая дорожка", см. PATH_PICKER_ID
+        } else if (neighborCount == 4) {
+            id = PATH_CROSS;
+        } else if (neighborCount == 3) {
+            id = !n ? PATH_T_MISSING_N : !s ? PATH_T_MISSING_S : !e ? PATH_T_MISSING_E : PATH_T_MISSING_W;
+        } else if (neighborCount == 1) {
+            // Отдельного тайла-тупика в наборе нет — используем прямую подходящей оси (см. класс-
+            // комментарий выше): визуально дорожка просто "обрывается" прямым сегментом.
+            id = (n || s) ? PATH_STRAIGHT_NS : PATH_STRAIGHT_EW;
+        } else { // neighborCount == 2
+            if (n && s) {
+                id = PATH_STRAIGHT_NS;
+            } else if (e && w) {
+                id = PATH_STRAIGHT_EW;
+            } else if (n && e) {
+                id = PATH_CORNER_NE;
+            } else if (n && w) {
+                id = PATH_CORNER_NW;
+            } else if (s && e) {
+                id = PATH_CORNER_SE;
+            } else {
+                id = PATH_CORNER_SW;
+            }
+        }
+
+        tile.setTexture(textures[id].texture);
+        tile.setTextureId(id);
+        tile.setObjectHeight(textures[id].high);
+        tile.flipX = false;
+        tile.flipY = false;
+    }
+
+    /**
+     * Пересчитывает ВСЮ связную сеть дорожек, содержащую клетку (i,j) или её 4 соседей (BFS) —
+     * после установки/затирания дорожки. Раньше пересчитывался только 1 шаг (клетка + её
+     * непосредственные соседи) — при определённом порядке расстановки часть сети могла остаться с
+     * устаревшим видом (например, при сборке кольца из 4 клеток обновление не докатывалось до
+     * дальней клетки, и вместо угла оставался крест/неверный вариант). Сеть дорожек обычно
+     * небольшая (участок дороги, не вся карта) — полный пересчёт компонента дёшев.
+     */
+    private static void recalcPathAround(int i, int j) {
+        java.util.ArrayDeque<int[]> queue = new java.util.ArrayDeque<>();
+        java.util.Set<Long> queued = new java.util.HashSet<>();
+
+        int[] seedI = { i, i - 1, i + 1, i,     i     };
+        int[] seedJ = { j, j,     j,     j - 1, j + 1 };
+        for (int s = 0; s < seedI.length; s++) {
+            enqueuePathTile(seedI[s], seedJ[s], queue, queued);
+        }
+
+        while (!queue.isEmpty()) {
+            int[] c = queue.poll();
+            recalcPathTile(c[0], c[1]);
+
+            enqueuePathTile(c[0] - 1, c[1], queue, queued);
+            enqueuePathTile(c[0] + 1, c[1], queue, queued);
+            enqueuePathTile(c[0], c[1] - 1, queue, queued);
+            enqueuePathTile(c[0], c[1] + 1, queue, queued);
+        }
+    }
+
+    private static void enqueuePathTile(int i, int j, java.util.ArrayDeque<int[]> queue, java.util.Set<Long> queued) {
+        if (i < 0 || i >= store.mapHeight || j < 0 || j >= store.mapWidth) return;
+        // Мостик тоже ставим в очередь — что бы BFS "прошёл сквозь" него и пересчитал дорожку по
+        // ДРУГУЮ сторону воды тоже (recalcPathTile сам не тронет мостик — у него нет вариаций).
+        if (!isPathOrBridgeTile(store.objectedMap[i][j].getTextureId())) return;
+
+        long key = ((long) i << 32) | (j & 0xFFFFFFFFL);
+        if (!queued.add(key)) return; // уже в очереди/обработана
+
+        queue.add(new int[] { i, j });
+    }
+
+    /**
+     * Пересчитывает ВСЕ дорожки на карте — вызывается после загрузки сохранённой карты (см.
+     * UserInterface.buildMapChunk). flipX/flipY НЕ персистятся (см. FileManager) — они полностью
+     * выводятся из соседей (тот же принцип, что и isShore/markShores), поэтому дешевле пересчитать
+     * заново, чем тянуть в формат сохранения ещё одно поле.
+     */
+    public static void recalcAllPaths() {
+        for (int i = 0; i < store.mapHeight; i++) {
+            for (int j = 0; j < store.mapWidth; j++) {
+                recalcPathTile(i, j);
+            }
+        }
+    }
+
+    private static boolean isGroundTile(int textureId) {
+        return ArrayUtils.checkIntInArray(textureId, GROUND_TILE_IDS);
+    }
 
     void defineMap() {
         Random rand = new Random();
@@ -155,8 +336,94 @@ public class Editor extends View{
         int[] lakeIdCounter = { LAKE_ID_BASE };
         java.util.List<Lake> lakes = generateLakes(rand, elevation, waterOwner, lakeIdCounter);
         generateRivers(rand, elevation, waterOwner, lakes, lakeIdCounter);
+        markShores();
 
 //        light.recalcOnMap();
+    }
+
+    /**
+     * Берег — суша, граничащая с водой. Вода — строго ПОВЕРХНОСТЬ (см. getSurfaceId(), не
+     * getTextureId() — объектный слой независим от того, вода там или земля, см. класс-комментарий
+     * про surfaceDepth в MapObject): помечает MapObject.isShore у всех тайлов, у которых хотя бы
+     * один из 4 соседей — вода-поверхность. Отдельных спрайтов берега нет — граница читается через
+     * тонирование (MapObject.calcLitColor) и лёгкую shore-подсветку при рендере (см.
+     * Editor.drawSurfaceTile), а не через новые тайлы/auto-tiling — на карте пока только один
+     * плоский тайл воды (gp_10.png), без спрайтов "уголок берега"/"прямой берег"/"мыс" под Wang
+     * tiling. Вызывается и после процедурной генерации, и после загрузки сохранённой карты (см.
+     * UserInterface.buildMapChunk) — isShore не персистится (дёшево пересчитать, не тянуть в v5).
+     */
+    public static void markShores() {
+        for (int i = 0; i < store.mapHeight; i++) {
+            for (int j = 0; j < store.mapWidth; j++) {
+                MapObject tile = store.objectedMap[i][j];
+                if (tile.getSurfaceId() == WATER_TEXTURE_ID) {
+                    tile.isShore = false;
+                    continue;
+                }
+
+                boolean nearWater =
+                    (i > 0                      && store.objectedMap[i - 1][j].getSurfaceId() == WATER_TEXTURE_ID) ||
+                    (i < store.mapHeight - 1     && store.objectedMap[i + 1][j].getSurfaceId() == WATER_TEXTURE_ID) ||
+                    (j > 0                      && store.objectedMap[i][j - 1].getSurfaceId() == WATER_TEXTURE_ID) ||
+                    (j < store.mapWidth - 1      && store.objectedMap[i][j + 1].getSurfaceId() == WATER_TEXTURE_ID);
+
+                tile.isShore = nearWater;
+            }
+        }
+    }
+
+    /** Локальное обновление isShore вокруг ОДНОЙ клетки (см. touchDown) — без прохода по всей карте. */
+    private void updateShoreAround(int i, int j) {
+        boolean isWater = store.objectedMap[i][j].getSurfaceId() == WATER_TEXTURE_ID;
+        store.objectedMap[i][j].isShore = !isWater && hasWaterNeighbor(i, j);
+
+        int[] dI = { -1, 1, 0, 0 };
+        int[] dJ = { 0, 0, -1, 1 };
+        for (int d = 0; d < 4; d++) {
+            int ni = i + dI[d], nj = j + dJ[d];
+            if (ni < 0 || ni >= store.mapHeight || nj < 0 || nj >= store.mapWidth) continue;
+            MapObject neighbor = store.objectedMap[ni][nj];
+            if (neighbor.getSurfaceId() != WATER_TEXTURE_ID) {
+                neighbor.isShore = hasWaterNeighbor(ni, nj);
+            }
+        }
+    }
+
+    private boolean hasWaterNeighbor(int i, int j) {
+        return
+            (i > 0                  && store.objectedMap[i - 1][j].getSurfaceId() == WATER_TEXTURE_ID) ||
+            (i < store.mapHeight - 1 && store.objectedMap[i + 1][j].getSurfaceId() == WATER_TEXTURE_ID) ||
+            (j > 0                  && store.objectedMap[i][j - 1].getSurfaceId() == WATER_TEXTURE_ID) ||
+            (j < store.mapWidth - 1  && store.objectedMap[i][j + 1].getSurfaceId() == WATER_TEXTURE_ID);
+    }
+
+    private static final int   MANUAL_WATER_MAX_SEARCH_RADIUS = 20; // дальше не ищем — считаем максимальной глубиной
+    private static final float MANUAL_WATER_DEPTH_PER_TILE    = 3f;
+    private static final int   MANUAL_WATER_MAX_DEPTH         = 30;
+
+    /**
+     * Глубина для тайла воды, поставленного вручную в редакторе — растёт с расстоянием до
+     * ближайшего "берега" (не-водной ПОВЕРХНОСТИ или края карты), подобно тому, как глубина озера
+     * плавно спадает от центра к краю при процедурной генерации (см. generateLakes). Кольцевой
+     * поиск (по Чебышёву) от центра наружу — как только встретили не-воду, это и есть расстояние.
+     */
+    private int computeManualWaterDepth(int i, int j) {
+        for (int r = 1; r <= MANUAL_WATER_MAX_SEARCH_RADIUS; r++) {
+            for (int di = -r; di <= r; di++) {
+                for (int dj = -r; dj <= r; dj++) {
+                    if (Math.max(Math.abs(di), Math.abs(dj)) != r) continue; // только кольцо радиуса r
+
+                    int ni = i + di, nj = j + dj;
+                    boolean isShoreHere = ni < 0 || ni >= store.mapHeight || nj < 0 || nj >= store.mapWidth
+                        || store.objectedMap[ni][nj].getSurfaceId() != WATER_TEXTURE_ID;
+
+                    if (isShoreHere) {
+                        return -Math.min(MANUAL_WATER_MAX_DEPTH, Math.round(r * MANUAL_WATER_DEPTH_PER_TILE));
+                    }
+                }
+            }
+        }
+        return -MANUAL_WATER_MAX_DEPTH; // всё в радиусе поиска — вода, дальше не проверяем
     }
 
     // ── Рельеф, озёра и реки ────────────────────────────────────────────────────────────────
@@ -534,31 +801,43 @@ public class Editor extends View{
     }
 
     /**
-     * Превращает тайл в воду заданной глубины (objectHeight, ОТРИЦАТЕЛЬНАЯ). Если тайл уже вода
-     * от другого прохода (река/озеро) — дно НЕ поднимается, остаётся более глубокое из значений.
-     * isRiver — чисто визуальный флаг для water-шейдера (течение у реки vs волны у озера/пруда,
-     * см. Editor.drawTile), на геймплей не влияет.
+     * Превращает тайл в воду заданной глубины (surfaceDepth, ОТРИЦАТЕЛЬНАЯ) — уровень ПОВЕРХНОСТИ.
+     * Используется ТОЛЬКО процедурной генерацией (реки/озёра/пруды) — в отличие от РУЧНОЙ
+     * установки воды в редакторе (см. touchDown), тут объектный слой ВСЕГДА очищается под водой:
+     * река/озеро "смывает" деревья/камни, которые оказались на пути её генерации, а не оставляет
+     * их торчать посреди воды. При ручной установке — наоборот, пользователь управляет этим сам
+     * (объект, если стоял, остаётся стоять на новой воде) — это осознанный выбор, а не
+     * автоматический побочный эффект генерации.
      */
     private void writeWaterTile(int i, int j, int depth, boolean isRiver) {
         MapObject tile = store.objectedMap[i][j];
         tile.isRiverWater = isRiver;
 
-        if (tile.getTextureId() == WATER_TEXTURE_ID) {
-            tile.setObjectHeight(Math.min(tile.objectHeight, depth));
-            return;
+        if (tile.getSurfaceId() == WATER_TEXTURE_ID) {
+            tile.surfaceDepth = Math.min(tile.surfaceDepth, depth);
+        } else {
+            tile.setSurfaceTexture(textures[WATER_TEXTURE_ID].texture);
+            tile.setSurfaceId(WATER_TEXTURE_ID);
+            tile.surfaceDepth = depth;
         }
 
-        tile.setSurfaceTexture(textures[1].texture);
-        tile.setSurfaceId(1);
+        // Объектный слой — всегда синхронизирован с поверхностью (both = вода): что бы там ни
+        // стояло (дерево/камень из первичной генерации ландшафта), река/озеро это "смывает".
         tile.setTexture(textures[WATER_TEXTURE_ID].texture);
         tile.setTextureId(WATER_TEXTURE_ID);
-        tile.isTree = false; // вода не качается ветром, даже если тут раньше стояло дерево
-        tile.setObjectHeight(depth);
+        tile.setObjectHeight(textures[WATER_TEXTURE_ID].high); // сброс высоты — не осталась от смытого объекта
+        tile.isTree = false;
     }
 
     @Override
     public boolean touchDown(int screenX, int screenY, int pointer, int button) {
         storeKey(button);
+        // button != -1 — настоящее НОВОЕ нажатие (не продолжение протаскивания, см.
+        // View.touchDragged), начинаем новый "мазок" — сбрасываем точку, от которой достраивается
+        // линия Брезенхэма (см. bresenhamLine ниже), что бы не тянуть отрезок от прошлого мазка.
+        if (button != -1) {
+            lastPaintedTileX = Integer.MIN_VALUE;
+        }
         lastTouchedButton = button == -1 ? lastTouchedButton : button;
 
         mouseMoved(screenX,screenY);
@@ -605,44 +884,148 @@ public class Editor extends View{
             arrPointY < store.mapWidth &&
             store.selectedTailId > 0
         ) {
-//                Очистка света
-            int previousTextureId = store.objectedMap[arrPointX][arrPointY].getTextureId();
-            int newTextureId = store.selectedTailId;
-
-            if (!ArrayUtils.checkIntInArray(newTextureId, lightObjectIds) && ArrayUtils.checkIntInArray(previousTextureId, lightObjectIds)) {
-                light.removePoint(arrPointX, arrPointY);
-                light.recalcOnMapFromPoint(arrPointX, arrPointY);
+            // View.touchDragged(...) зовёт touchDown(...,-1) на КАЖДОЕ событие движения мыши при
+            // зажатой кнопке — но эти события не гарантированно приходят на каждый пройденный
+            // тайл: при быстром протаскивании курсор может "перепрыгнуть" сразу через несколько
+            // клеток между двумя последовательными событиями, оставляя пропущенные клетки
+            // нетронутыми — отсюда разрывы в нарисованной линии (см. баг-репорт со скриншотом).
+            // Достраиваем отрезок от предыдущей закрашенной клетки до текущей (алгоритм
+            // Брезенхэма) — все клетки на пути получают то же самое размещение.
+            if (lastPaintedTileX != Integer.MIN_VALUE) {
+                bresenhamLine(lastPaintedTileX, lastPaintedTileY, arrPointX, arrPointY, this::placeTileAt);
+            } else {
+                placeTileAt(arrPointX, arrPointY);
             }
-
-//                Обновление элемента карты
-            store.objectedMap[arrPointX][arrPointY].setTexture(textures[newTextureId].texture);
-            store.objectedMap[arrPointX][arrPointY].setTextureId(newTextureId);
-
-            if (ArrayUtils.checkIntInArray(newTextureId, surfacesIds)){
-                store.objectedMap[arrPointX][arrPointY].setSurfaceTexture(textures[newTextureId].texture);
-                store.objectedMap[arrPointX][arrPointY].setSurfaceId(newTextureId);
-            }
-
-            store.objectedMap[arrPointX][arrPointY].setObjectHeight(textures[newTextureId].high);
-            store.objectedMap[arrPointX][arrPointY].isTree = textures[newTextureId].isTree;
-            store.objectedMap[arrPointX][arrPointY].setWidth(textures[newTextureId].texture.getWidth() / store.tileDownScale);
-            store.objectedMap[arrPointX][arrPointY].setHeight(textures[newTextureId].texture.getHeight() / store.tileDownScale);
-
-//                Уствновка света
-            if (ArrayUtils.checkIntInArray(newTextureId, lightObjectIds)) {
-                light.addPoint(arrPointX, arrPointY);
-            }
-
-            light.recalcOnMapFromPoint(arrPointX, arrPointY);
+            lastPaintedTileX = arrPointX;
+            lastPaintedTileY = arrPointY;
         }
 
         return false;
+    }
+
+    // ── Достройка линии протаскивания (см. touchDown выше) ──────────────────────────────────
+    private int lastPaintedTileX = Integer.MIN_VALUE, lastPaintedTileY = Integer.MIN_VALUE;
+
+    private interface TileVisitor {
+        void visit(int i, int j);
+    }
+
+    /** Целочисленный алгоритм Брезенхэма — вызывает visitor на каждой клетке отрезка (i0,j0)-(i1,j1). */
+    private static void bresenhamLine(int i0, int j0, int i1, int j1, TileVisitor visitor) {
+        int di = Math.abs(i1 - i0), dj = -Math.abs(j1 - j0);
+        int si = i0 < i1 ? 1 : -1, sj = j0 < j1 ? 1 : -1;
+        int err = di + dj;
+        int i = i0, j = j0;
+
+        while (true) {
+            visitor.visit(i, j);
+            if (i == i1 && j == j1) break;
+            int e2 = 2 * err;
+            if (e2 >= dj) { err += dj; i += si; }
+            if (e2 <= di) { err += di; j += sj; }
+        }
+    }
+
+    /** Устанавливает выбранный в пикере тайл в клетку (arrPointX,arrPointY) — см. touchDown. */
+    private void placeTileAt(int arrPointX, int arrPointY) {
+        if (arrPointX < 0 || arrPointX >= store.mapHeight || arrPointY < 0 || arrPointY >= store.mapWidth) return;
+
+//                Очистка света
+        MapObject tile = store.objectedMap[arrPointX][arrPointY];
+        int previousTextureId = tile.getTextureId();
+        int newTextureId = store.selectedTailId;
+
+        if (!ArrayUtils.checkIntInArray(newTextureId, lightObjectIds) && ArrayUtils.checkIntInArray(previousTextureId, lightObjectIds)) {
+            light.removePoint(arrPointX, arrPointY);
+            light.recalcOnMapFromPoint(arrPointX, arrPointY);
+        }
+
+//                Обновление элемента карты — строгое разделение слоёв (см. GROUND_TILE_IDS):
+        // земля и вода — ИСКЛЮЧИТЕЛЬНО поверхность, они не могут "просочиться" в объектный
+        // слой и наоборот. Объект (дерево/камень/мостик/здание), НАОБОРОТ, ставится НЕЗАВИСИМО
+        // от того, что сейчас на поверхности — вода под ним никогда не трогается и не теряется
+        // (дерево может стоять прямо в воде, см. touchDown ниже). А вот ручная установка
+        // ЗЕМЛИ/ВОДЫ, наоборот, полностью ОЧИЩАЕТ объектный слой — что бы там ни стояло
+        // (дерево/камень/мостик/дорожка), тайл становится "чистой" поверхностью без отдельного
+        // объекта (по требованию пользователя — иначе руками закрашивая поверхность, легко
+        // случайно оставить "мусорные" объекты под ней).
+        if (isGroundTile(newTextureId)) {
+            tile.setSurfaceTexture(textures[newTextureId].texture);
+            tile.setSurfaceId(newTextureId);
+            tile.surfaceDepth = newTextureId == WATER_TEXTURE_ID ? computeManualWaterDepth(arrPointX, arrPointY) : 0;
+            tile.isRiverWater = false; // волны, не течение — разумный вид для произвольно нарисованной формы
+
+            boolean wasPath = isPathOrBridgeTile(previousTextureId); // включая мостик, что бы соседи пересчитались при его сносе тоже
+
+            // Синхронизируем объектный слой с новой поверхностью (см. BaseObject.draw()'s
+            // оптимизацию surfaceId==textureId — объектный слой не дублирует отрисовку).
+            tile.setTexture(textures[newTextureId].texture);
+            tile.setTextureId(newTextureId);
+            tile.isTree = false;
+            tile.flipX = false;
+            tile.flipY = false;
+            tile.setObjectHeight(textures[newTextureId].high);
+            tile.setWidth(textures[newTextureId].texture.getWidth() / store.tileDownScale);
+            tile.setHeight(textures[newTextureId].texture.getHeight() / store.tileDownScale);
+
+            if (wasPath) {
+                // Затёрли дорожку — соседние дорожки могли потерять связь, пересчитываем их вид.
+                recalcPathAround(arrPointX, arrPointY);
+            }
+        } else if (newTextureId == PATH_PICKER_ID) {
+            // Дорожка — единственный видимый в пикере инструмент вместо 11 отдельных
+            // спрайтов-вариантов (см. класс-комментарий про автотайлинг выше). Если поверхность
+            // под ней — вода, ставим МОСТИК (фиксированный спрайт, без вариаций); иначе —
+            // дорожку-плейсхолдер, её точный вид пересчитает recalcPathAround ниже по соседям.
+            boolean onWater = tile.getSurfaceId() == WATER_TEXTURE_ID;
+            int placedId = onWater ? BRIDGE_TEXTURE_ID : PATH_STRAIGHT_NS;
+            tile.setTexture(textures[placedId].texture);
+            tile.setTextureId(placedId);
+            tile.setObjectHeight(textures[placedId].high);
+            tile.isTree = false;
+            tile.flipX = false;
+            tile.flipY = false;
+            tile.setWidth(textures[placedId].texture.getWidth() / store.tileDownScale);
+            tile.setHeight(textures[placedId].texture.getHeight() / store.tileDownScale);
+            // Пересчитываем и для мостика тоже — сам он не изменится (recalcPathTile трогает
+            // только настоящие дорожки, см. isPathOrBridgeTile), но соседние дорожки теперь видят
+            // в нём связанного соседа и должны "втечь" в него, а не остаться тупиком у кромки воды.
+            recalcPathAround(arrPointX, arrPointY);
+        } else {
+            boolean wasPath = isPathOrBridgeTile(previousTextureId); // включая мостик, что бы соседи пересчитались при его сносе тоже
+            tile.setTexture(textures[newTextureId].texture);
+            tile.setTextureId(newTextureId);
+            tile.setObjectHeight(textures[newTextureId].high);
+            tile.isTree = textures[newTextureId].isTree;
+            tile.flipX = false;
+            tile.flipY = false;
+            tile.setWidth(textures[newTextureId].texture.getWidth() / store.tileDownScale);
+            tile.setHeight(textures[newTextureId].texture.getHeight() / store.tileDownScale);
+            if (wasPath) {
+                // Затёрли дорожку другим объектом — соседние дорожки могли потерять связь,
+                // пересчитываем их вид (сама клетка recalcPathTile корректно пропустит — она
+                // больше не дорожка).
+                recalcPathAround(arrPointX, arrPointY);
+            }
+        }
+
+//                Уствновка света
+        if (ArrayUtils.checkIntInArray(newTextureId, lightObjectIds)) {
+            light.addPoint(arrPointX, arrPointY);
+        }
+
+        // Берег (см. markShores) — локальное обновление вокруг только что изменённой клетки,
+        // без пересчёта всей карты (дорого при рисовании воды перетаскиванием мыши).
+        updateShoreAround(arrPointX, arrPointY);
+
+        light.recalcOnMapFromPoint(arrPointX, arrPointY);
     }
 
     @Override
     public boolean touchUp(int screenX, int screenY, int pointer, int button) {
         releaseKey(button);
         isUiTouched = userInterface.checkTouch(isDragged, true, button);
+        lastPaintedTileX = Integer.MIN_VALUE; // конец "мазка" (см. touchDown/bresenhamLine)
         return super.touchUp(screenX, screenY, pointer, button);
     }
 
@@ -653,7 +1036,13 @@ public class Editor extends View{
         store.mouseY = mouseY = (int) store.uiHeightOriginal - screenY;
 
         if (!userInterface.getMouseMoveBlockStatus()){
-            calcPositionCursor();
+            // Координаты САМОГО СОБЫТИЯ (screenX/screenY), а не calcPositionCursor()'s обычный
+            // "живой" опрос Gdx.input.getX/getY() — на клике/касании важно посчитать именно ТУ
+            // точку, где произошло событие: если между постановкой события в очередь и его
+            // обработкой Gdx.input успел обновиться (курсор чуть сдвинулся, доп. потоки в проекте —
+            // SimulationInputThread/PhysicThread и т.д.), "живой" опрос даст УЖЕ ДРУГУЮ клетку, чем
+            // та, по которой реально кликнули — отсюда "кликал на один тайл, ставится на другой".
+            calcPositionCursor(screenX, screenY);
         }
 
         userInterface.onMouseMoved();
@@ -661,8 +1050,14 @@ public class Editor extends View{
         return false;
     }
 
+    /** Пересчёт по "живой" текущей позиции мыши — для случаев без конкретного события (клавиатура, зум). */
     public void calcPositionCursor(){
-        Vector3 v = Main.viewport.getCamera().unproject(new Vector3(Gdx.input.getX(), Gdx.input.getY(), 0));
+        calcPositionCursor(Gdx.input.getX(), Gdx.input.getY());
+    }
+
+    /** Пересчёт по ТОЧНЫМ координатам конкретного события (клик/движение мыши) — см. mouseMoved. */
+    public void calcPositionCursor(int rawScreenX, int rawScreenY){
+        Vector3 v = Main.viewport.getCamera().unproject(new Vector3(rawScreenX, rawScreenY, 0));
         float mouseInViewportX = v.x - store.shiftX - (float)(10 / store.tileDownScale) ;
         float mouseInViewportY = v.y - store.shiftY + (float)(60 / store.tileDownScale);
         float[] dotPoint = transform.isometricToCartesian(mouseInViewportX, mouseInViewportY);
@@ -854,7 +1249,20 @@ public class Editor extends View{
                     continue;
                 }
 
-                store.objectedMap[mapI][mapJ].drawSurface(batch);
+                drawSurfaceTile(batch, store.objectedMap[mapI][mapJ]);
+
+                // Плоские объекты (мостик/дорожка/мелкие камешки — objectHeight < FLAT_OBJECT_HEIGHT)
+                // рисуем ЗДЕСЬ, вместе с поверхностями, а НЕ в проходе "Объекты" ниже — тот
+                // чередует отрисовку объектов с игроком/существами строго по порядку сканирования
+                // тайлов, и когда сканирование доходит до такого объекта ПОСЛЕ игрока, он рисуется
+                // поверх — хотя у плоского объекта нет высоты, что бы реально загораживать
+                // стоящего персонажа (см. баг-репорт: "мостик и дорожка перекрывают игрока").
+                // Высокие объекты (деревья и т.д.) сознательно ОСТАЮТСЯ в проходе "Объекты" — им
+                // нужна честная изометрическая сортировка по глубине относительно игрока/существ.
+                if (store.objectedMap[mapI][mapJ].objectHeight < FLAT_OBJECT_HEIGHT) {
+                    drawTile(batch, store.objectedMap[mapI][mapJ]);
+                }
+
                 store.objectedMap[mapI][mapJ].isPlayerInside = false;
                 store.objectedMap[mapI][mapJ].isRenderLighAndNigth = true;
             }
@@ -911,8 +1319,11 @@ public class Editor extends View{
                         store.objectedMap[mapI][mapJ].isRenderLighAndNigth = false;
                     }
 
-//                Рисуем карту
-                    drawTile(batch, store.objectedMap[mapI][mapJ]);
+//                Рисуем карту — плоские объекты (мостик/дорожка/мелкие камешки) уже нарисованы
+                    // выше, в проходе поверхностей (см. FLAT_OBJECT_HEIGHT) — не дублируем.
+                    if (store.objectedMap[mapI][mapJ].objectHeight >= FLAT_OBJECT_HEIGHT) {
+                        drawTile(batch, store.objectedMap[mapI][mapJ]);
+                    }
                     store.objectedMap[mapI][mapJ].isPlayerInside = false;
                     store.objectedMap[mapI][mapJ].isRenderLighAndNigth = true;
                 }
@@ -970,21 +1381,35 @@ public class Editor extends View{
     }
 
     /**
-     * Рисует один тайл карты — обычным шейдером SpriteBatch, либо (для воды) с шейдером искажения
-     * поверхности (см. ShaderLibrary.water(), assets/shaders/water.*).
+     * Рисует ОБЪЕКТНЫЙ слой одного тайла (дерево/камень/мостик/здание...) — всегда обычным
+     * шейдером SpriteBatch. Земля и вода — строго ПОВЕРХНОСТЬ (см. GROUND_TILE_IDS/drawSurfaceTile
+     * ниже), поэтому water/shore-шейдеры сюда не относятся в принципе: объект существует
+     * независимо от того, что под ним (дерево может стоять прямо в воде).
+     */
+    private void drawTile(SpriteBatch batch, MapObject tile) {
+        tile.draw(batch);
+    }
+
+    /**
+     * Рисует ПОВЕРХНОСТЬ одного тайла (земля/вода) — обычным шейдером, либо (для воды) с шейдером
+     * искажения поверхности, либо (для берега) с лёгкой анимированной подсветкой кромки (см.
+     * ShaderLibrary.water()/shore(), assets/shaders/water.*|shore.frag). Земля и вода строго на
+     * уровне ПОВЕРХНОСТИ (см. GROUND_TILE_IDS) — поэтому шейдеры теперь привязаны к
+     * drawSurface(), а не к объектному слою (см. drawTile) — иначе они бы никогда не применялись
+     * к тайлам, где поверхность и объект совпадают (BaseObject.draw() пропускает отрисовку
+     * объектного слоя в этом случае, см. историю правок).
      *
      * ВАЖНО про порядок вызовов: раньше здесь сначала вызывался waterShader.bind() (это НАПРЯМУЮ
      * дёргает glUseProgram, минуя SpriteBatch), и только потом batch.setShader(...). Из-за этого
      * GL-программа переключалась на water-шейдер ДО того, как батч успевал сбросить (flush) уже
-     * накопленные в буфере, ещё не отрисованные спрайты обычных тайлов/подложек/деревьев — и они
-     * реально уходили на GPU уже ЧЕРЕЗ water-шейдер ("шейдер накладывается на всё подряд", хотя
-     * код и выглядел так, будто применяется только к воде). Правильный порядок — сначала
-     * batch.setShader(...) (он сам сбросит накопленное СТАРЫМ шейдером, и только потом привяжет
-     * новый), и лишь после этого выставлять юниформы новому шейдеру.
+     * накопленные в буфере, ещё не отрисованные спрайты обычных тайлов — и они реально уходили на
+     * GPU уже ЧЕРЕЗ water-шейдер ("шейдер накладывается на всё подряд"). Правильный порядок —
+     * сначала batch.setShader(...) (он сам сбросит накопленное СТАРЫМ шейдером, и только потом
+     * привяжет новый), и лишь после этого выставлять юниформы новому шейдеру.
      */
-    private void drawTile(SpriteBatch batch, MapObject tile) {
+    private void drawSurfaceTile(SpriteBatch batch, MapObject tile) {
         com.badlogic.gdx.graphics.glutils.ShaderProgram waterShader =
-            tile.getTextureId() == WATER_TEXTURE_ID ? com.nicweiss.editor.utils.ShaderLibrary.water() : null;
+            tile.getSurfaceId() == WATER_TEXTURE_ID ? com.nicweiss.editor.utils.ShaderLibrary.water() : null;
 
         if (waterShader != null) {
             batch.setShader(waterShader); // флашит всё накопленное обычным шейдером, потом бинднт water-шейдер
@@ -994,14 +1419,37 @@ public class Editor extends View{
             waterShader.setUniformf("u_time", store.cloudTime);
             // Позиция тайла В СЕТКЕ КАРТЫ (не локальные 0..1 UV спрайта) — что бы фаза волны была
             // связной между соседями и рябь складывалась в один общий узор, а не дёргалась на
-            // каждом тайле независимо (см. water.frag). БЕЗ модуля на этот раз (в прошлый раз
-            // модуль по 64 давал периодическую решётку) — сейчас безопасность края текстуры
-            // обеспечивает alpha-фолбэк в шейдере, а не ограничение диапазона координаты.
+            // каждом тайле независимо (см. water.frag).
             waterShader.setUniformf("u_worldPos", tile.xPositionOnMap, tile.yPositionOnMap);
-            tile.draw(batch);
+
+            // Настоящая бесшовная рефракция — цвет воды читается из ОТДЕЛЬНОЙ, реально бесшовной
+            // (repeat-wrap) фотографии water_pattern.jpg по мировым координатам, а не из маленького
+            // изолированного спрайта тайла (см. ShaderLibrary.waterPattern(), water.frag). Второй
+            // текстурный юнит — SpriteBatch сам биндит свою (спрайтовую) текстуру в юнит 0 и этого
+            // не знает, поэтому явно возвращаем активный юнит на 0 после бинда паттерна.
+            com.badlogic.gdx.graphics.Texture pattern = com.nicweiss.editor.utils.ShaderLibrary.waterPattern();
+            if (pattern != null) {
+                pattern.bind(1);
+                waterShader.setUniformi("u_waterPattern", 1);
+                com.badlogic.gdx.Gdx.gl.glActiveTexture(com.badlogic.gdx.graphics.GL20.GL_TEXTURE0);
+            }
+
+            tile.drawSurface(batch);
             batch.setShader(null); // флашит водный тайл, потом возвращает обычный шейдер батча
+            return;
+        }
+
+        com.badlogic.gdx.graphics.glutils.ShaderProgram shoreShader =
+            tile.isShore ? com.nicweiss.editor.utils.ShaderLibrary.shore() : null;
+
+        if (shoreShader != null) {
+            batch.setShader(shoreShader);
+            shoreShader.setUniformf("u_time", store.cloudTime); // как и у воды — идёт только в симуляции
+            shoreShader.setUniformf("u_worldPos", tile.xPositionOnMap, tile.yPositionOnMap);
+            tile.drawSurface(batch);
+            batch.setShader(null);
         } else {
-            tile.draw(batch);
+            tile.drawSurface(batch);
         }
     }
 

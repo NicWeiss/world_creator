@@ -167,8 +167,15 @@ public class FileManager {
                 // нужна ПЕР-ТАЙЛОВАЯ глубина (отрицательная), а не единая высота на весь тип текстуры.
                 dos.writeShort(tile.objectHeight);
                 // isRiverWater — с v4, чисто визуальный флаг для water-шейдера (течение у реки vs
-                // волны у озера/пруда, см. Editor.drawTile) — на геймплей не влияет.
+                // волны у озера/пруда, см. Editor.drawSurfaceTile) — на геймплей не влияет.
                 dos.writeBoolean(tile.isRiverWater);
+                // surfaceId/surfaceDepth — с v5: земля/вода строго ПОВЕРХНОСТЬ, независимая от
+                // объектного слоя (textureId — теперь только дерево/камень/мостик/здание и т.д.,
+                // см. класс-комментарий в MapObject). Без этого при загрузке surfaceId всегда
+                // сбрасывался бы на "трава" (см. старый UserInterface.buildMapChunk) — вода и
+                // расстановка поверхностей терялись бы при перезагрузке карты.
+                dos.writeShort(tile.getSurfaceId());
+                dos.writeShort(tile.surfaceDepth);
                 byte[] uuid = tile.getUUID().getBytes(StandardCharsets.UTF_8);
                 dos.writeShort(uuid.length);
                 dos.write(uuid);
@@ -192,8 +199,9 @@ public class FileManager {
             mapHeight = height;
 
             // Слот [4] — objectHeight (см. v3). Слот [5] — isRiverWater (см. v4, чисто для
-            // water-шейдера). Оба остаются null/"lake" для старых сохранений.
-            String[][][] result = new String[height][width][6];
+            // water-шейдера). Слоты [6]/[7] — surfaceId/surfaceDepth (см. v5). Все остаются
+            // null/дефолт для старых сохранений (см. UserInterface.buildMapChunk).
+            String[][][] result = new String[height][width][8];
 
             for (int i = 0; i < height; i++) {
                 for (int j = 0; j < width; j++) {
@@ -216,6 +224,12 @@ public class FileManager {
                     if (mapFormatVersion >= 4) {
                         isRiverWater = dis.readBoolean();
                     }
+                    Integer surfaceId    = null;
+                    Integer surfaceDepth = null;
+                    if (mapFormatVersion >= 5) {
+                        surfaceId    = dis.readShort() & 0xFFFF;
+                        surfaceDepth = (int) dis.readShort();
+                    }
                     int uuidLen      = dis.readShort() & 0xFFFF;
                     byte[] uuidBytes = new byte[uuidLen];
                     dis.readFully(uuidBytes);
@@ -226,6 +240,8 @@ public class FileManager {
                     result[i][j][3] = isTree ? "tree" : "notree";
                     result[i][j][4] = objectHeight != null ? String.valueOf(objectHeight) : null;
                     result[i][j][5] = isRiverWater ? "river" : "lake";
+                    result[i][j][6] = surfaceId != null ? String.valueOf(surfaceId) : null;
+                    result[i][j][7] = surfaceDepth != null ? String.valueOf(surfaceDepth) : null;
                 }
             }
 
@@ -355,8 +371,10 @@ public class FileManager {
     private byte[] buildManifest(int width, int height) {
         Map<String, Object> m = new LinkedHashMap<>();
         // v2: добавлен isTree в map.bin; v3: добавлен objectHeight (глубина рек);
-        // v4: добавлен isRiverWater (течение vs волны у water-шейдера, см. Editor.drawTile)
-        m.put("version", 4);
+        // v4: добавлен isRiverWater (течение vs волны у water-шейдера);
+        // v5: добавлены surfaceId/surfaceDepth (земля/вода — строго поверхность, независимая
+        // от объектного слоя, см. класс-комментарий в MapObject и Editor.drawSurfaceTile)
+        m.put("version", 5);
         m.put("width",  width);
         m.put("height", height);
         return JSONValue.toJSONString(m).getBytes(StandardCharsets.UTF_8);

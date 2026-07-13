@@ -14,6 +14,12 @@ import com.nicweiss.editor.Generic.BaseObject;
  */
 public class Player extends BaseObject {
 
+    // Вода (см. Editor.WATER_TEXTURE_ID) и мостик (gp_12.png) — по воде ходить нельзя, кроме как
+    // по мостику, стоящему НА ней (объектный слой). Дублируем константы тут (не тянем зависимость
+    // на Editor) — по тому же принципу, что и derive-логика старых форматов в FileManager.
+    private static final int WATER_TEXTURE_ID  = 10;
+    private static final int BRIDGE_TEXTURE_ID = 12;
+
     // ── Мировая позиция (декартовые пиксели) ──────────────────────────────────
     public volatile float worldX = -1f;
     public volatile float worldY = -1f;
@@ -273,7 +279,10 @@ public class Player extends BaseObject {
             for (int mj = Math.max(0, minJ); mj <= Math.min(store.mapWidth - 1, maxJ); mj++) {
                 int aj = mj - store.TILE_Y_ANCHOR_EXTRA_OFFSET; // см. Store.TILE_Y_ANCHOR_EXTRA_OFFSET (=0)
                 if (aj < 0 || aj >= store.mapWidth) continue;
-                if (store.objectedMap[ai][aj].objectHeight < blockHeight) continue;
+                com.nicweiss.editor.objects.MapObject tile = store.objectedMap[ai][aj];
+                boolean blockedByHeight = tile.objectHeight >= blockHeight;
+                boolean blockedByWater  = tile.getSurfaceId() == WATER_TEXTURE_ID && tile.getTextureId() != BRIDGE_TEXTURE_ID;
+                if (!blockedByHeight && !blockedByWater) continue;
 
                 float tx1 = (mi + 1) * tileW;
                 float tx2 = (mi + 2) * tileW;

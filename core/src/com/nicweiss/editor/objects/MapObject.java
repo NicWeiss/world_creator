@@ -12,11 +12,24 @@ public class MapObject  extends BaseObject {
 
     public int xPositionOnMap = 0, yPositionOnMap = 0;
     public boolean isRenderLighAndNigth = true;
+    // Высота ОБЪЕКТА (дерево/камень/здание — коллизии, см. Player.isCollidingAt/isLandable).
+    // НЕ имеет отношения к воде — глубина воды теперь отдельно, см. surfaceDepth ниже. Земля и
+    // вода — строго ПОВЕРХНОСТЬ (surfaceId/surfaceTexture), объект (textureId/texture) — то, что
+    // стоит НА поверхности (дерево, камень, мостик...) и существует независимо от неё: например,
+    // дерево может стоять посреди воды, вода при этом остаётся видна под ним.
     public int objectHeight;
     public boolean isTree = false;
+    // Глубина ВОДЫ КАК ПОВЕРХНОСТИ (getSurfaceId()==WATER_TEXTURE_ID) — ОТРИЦАТЕЛЬНАЯ, чем глубже,
+    // тем меньше значение (см. Editor.writeWaterTile). Раньше эту роль ошибочно выполнял
+    // objectHeight, из-за чего вода не могла сосуществовать с объектом на ней (дерево на воде
+    // "съедало" её глубину/шейдер) — теперь это независимые поля.
+    public int surfaceDepth = 0;
     // Река (течение) vs озеро (волны) — только для выбора поведения water-шейдера при рендере
-    // (см. Editor.drawTile/ShaderLibrary, assets/shaders/water.frag), на геймплей не влияет.
+    // (см. Editor.drawSurfaceTile/ShaderLibrary, assets/shaders/water.frag), на геймплей не влияет.
     public boolean isRiverWater = false;
+    // Берег — суша, граничащая с водой (см. Editor.markShores). Чисто визуально: тонирование в
+    // calcLitColor + лёгкая анимированная подсветка через shore-шейдер (Editor.drawSurfaceTile).
+    public boolean isShore = false;
     public float additionalDarkCoeff = 1;
     private float nearestLightDist = 999999;
     public boolean isDialogBind = false;
@@ -493,16 +506,27 @@ public class MapObject  extends BaseObject {
         float finalG = Math.min(1f, Math.max(shadedG, lg));
         float finalB = Math.min(1f, Math.max(shadedB, lb));
 
-        // Затемнение по глубине (см. систему высот — objectHeight < 0 = вода, см.
-        // Editor.generateRivers): чем глубже, тем темнее тайл, плавно до DEPTH_DARKEN_MIN, но
-        // итоговая просадка яркости смягчена в DEPTH_DARKEN_SOFTEN раз — на полной глубине (у
-        // самого дна рек/озёр) раньше получалась почти ночь, теперь то же дно заметно светлее.
-        if (objectHeight < 0) {
-            float rawFactor = Math.max(DEPTH_DARKEN_MIN, 1f + objectHeight / DEPTH_DARKEN_RANGE);
+        // Затемнение по глубине (см. surfaceDepth < 0 = вода-поверхность, см. Editor.writeWaterTile):
+        // чем глубже, тем темнее тайл, плавно до DEPTH_DARKEN_MIN, но итоговая просадка яркости
+        // смягчена в DEPTH_DARKEN_SOFTEN раз — на полной глубине (у самого дна рек/озёр) раньше
+        // получалась почти ночь, теперь то же дно заметно светлее. Независимо от objectHeight —
+        // объект (например, дерево) может стоять НА воде, не влияя на её собственную глубину/цвет.
+        if (surfaceDepth < 0) {
+            float rawFactor = Math.max(DEPTH_DARKEN_MIN, 1f + surfaceDepth / DEPTH_DARKEN_RANGE);
             float depthFactor = 1f - (1f - rawFactor) * DEPTH_DARKEN_SOFTEN;
             finalR *= depthFactor;
             finalG *= depthFactor;
             finalB *= depthFactor;
+        }
+
+        // Берег (см. Editor.markShores) — суша, граничащая с водой: чуть темнее и холоднее
+        // (влажная земля/трава), что бы русло реки/побережье озера читалось визуально без
+        // отдельных спрайтов берега — динамическую "искру" волны на кромке добавляет отдельный
+        // shore-шейдер поверх этого статичного тонирования (см. Editor.drawSurfaceTile).
+        if (isShore) {
+            finalR *= SHORE_TINT_R;
+            finalG *= SHORE_TINT_G;
+            finalB *= SHORE_TINT_B;
         }
 
         TMP_COLOR.set(finalR, finalG, finalB, a);
@@ -515,6 +539,10 @@ public class MapObject  extends BaseObject {
     private static final float DEPTH_DARKEN_RANGE  = 40f;
     private static final float DEPTH_DARKEN_MIN    = 0.35f; // даже в самой глубокой точке не чёрное
     private static final float DEPTH_DARKEN_SOFTEN = 1f / 3f; // смягчает итоговую просадку яркости в 3 раза
+
+    private static final float SHORE_TINT_R = 0.82f;
+    private static final float SHORE_TINT_G = 0.88f;
+    private static final float SHORE_TINT_B = 0.95f; // чуть холоднее (сине-серый оттенок влажной земли)
 
     // ── Процедурные облака на основе градиентного шума ──────────────────────
     // Шум сэмплируется в мировых координатах + смещение ветром → облака

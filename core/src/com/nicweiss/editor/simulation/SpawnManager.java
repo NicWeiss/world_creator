@@ -35,6 +35,10 @@ public class SpawnManager {
     private static final float TICK_SECONDS = 1f;
     private static final int SPAWN_RADIUS_TILES = 5; // было 2 — по просьбе пользователя разброс шире
     private static final int MAX_SURFACE_HEIGHT = 3; // тот же порог, что DropManager.MAX_SURFACE_HEIGHT
+    // Вода/мостик — та же логика проходимости, что у игрока (см. Player.isCollidingAt) и лута
+    // (см. DropManager.isLandable): существа не должны спавниться в воде, куда не может дойти игрок.
+    private static final int WATER_TEXTURE_ID  = 10;
+    private static final int BRIDGE_TEXTURE_ID = 12;
 
     private static float tickTimer = 0f;
 
@@ -193,7 +197,10 @@ public class SpawnManager {
         // (унаследован от BaseObject) — это ПИКСЕЛЬНЫЙ размер спрайта тайла (~50-120px), а не она;
         // сравнение с ним всегда false для уже отрисованных тайлов — из-за этого спавн валился
         // в резервный фолбэк (точка спавнера) практически каждый раз, отсюда "все в одной точке".
-        return store.objectedMap[tx][ty].objectHeight < MAX_SURFACE_HEIGHT;
+        com.nicweiss.editor.objects.MapObject tile = store.objectedMap[tx][ty];
+        if (tile.objectHeight >= MAX_SURFACE_HEIGHT) return false;
+        if (tile.getSurfaceId() == WATER_TEXTURE_ID && tile.getTextureId() != BRIDGE_TEXTURE_ID) return false;
+        return true;
     }
 
     private static final Map<String, Texture> TYPE_TEXTURE_CACHE = new HashMap<>();

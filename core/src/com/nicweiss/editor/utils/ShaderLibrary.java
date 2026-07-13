@@ -1,6 +1,7 @@
 package com.nicweiss.editor.utils;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 
 /**
@@ -13,6 +14,12 @@ import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 public class ShaderLibrary {
     private static ShaderProgram water;
     private static boolean waterLoadAttempted = false;
+
+    private static ShaderProgram shore;
+    private static boolean shoreLoadAttempted = false;
+
+    private static Texture waterPattern;
+    private static boolean waterPatternLoadAttempted = false;
 
     private ShaderLibrary() {}
 
@@ -38,5 +45,49 @@ public class ShaderLibrary {
             }
         }
         return water;
+    }
+
+    /** Шейдер лёгкой анимированной подсветки берега (см. Editor.markShores/drawTile). */
+    public static ShaderProgram shore() {
+        if (!shoreLoadAttempted) {
+            shoreLoadAttempted = true;
+            ShaderProgram.pedantic = false;
+            ShaderProgram program = new ShaderProgram(
+                Gdx.files.internal("shaders/water.vert"), // тот же passthrough-вертексник, что и у воды
+                Gdx.files.internal("shaders/shore.frag")
+            );
+            if (program.isCompiled()) {
+                shore = program;
+            } else {
+                Gdx.app.error("ShaderLibrary", "Не удалось скомпилировать shore-шейдер: " + program.getLog());
+                program.dispose();
+                shore = null; // рендер тайлов берега просто откатится на обычный шейдер (см. Editor)
+            }
+        }
+        return shore;
+    }
+
+    /**
+     * Реальная фотография поверхности воды (assets/shaders/water_pattern.jpg) — источник цвета
+     * для настоящей бесшовной рефракции в water.frag. Repeat-wrap по обеим осям: читается в
+     * НЕПРЕРЫВНЫХ мировых координатах карты, а не в локальных 0..1 UV конкретного тайла-спрайта —
+     * поэтому у неё в принципе нет края, о который могло бы "запнуться" искажение (в отличие от
+     * маленького изолированного ромба gp_10.png, из-за которого раньше и были все проблемы со
+     * швами/зазорами/деформацией).
+     */
+    public static Texture waterPattern() {
+        if (!waterPatternLoadAttempted) {
+            waterPatternLoadAttempted = true;
+            try {
+                Texture t = new Texture(Gdx.files.internal("shaders/water_pattern.jpg"));
+                t.setWrap(Texture.TextureWrap.Repeat, Texture.TextureWrap.Repeat);
+                t.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+                waterPattern = t;
+            } catch (Exception e) {
+                Gdx.app.error("ShaderLibrary", "Не удалось загрузить water_pattern.jpg: " + e.getMessage());
+                waterPattern = null;
+            }
+        }
+        return waterPattern;
     }
 }
