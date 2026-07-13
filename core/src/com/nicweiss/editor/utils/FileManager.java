@@ -163,6 +163,12 @@ public class FileManager {
                 dos.writeShort(tile.getTextureId());
                 dos.writeBoolean(tile.isDialogBind);
                 dos.writeBoolean(tile.isTree);
+                // objectHeight — с v3, отдельно от textureId: рекам (см. Editor.generateRivers)
+                // нужна ПЕР-ТАЙЛОВАЯ глубина (отрицательная), а не единая высота на весь тип текстуры.
+                dos.writeShort(tile.objectHeight);
+                // isRiverWater — с v4, чисто визуальный флаг для water-шейдера (течение у реки vs
+                // волны у озера/пруда, см. Editor.drawTile) — на геймплей не влияет.
+                dos.writeBoolean(tile.isRiverWater);
                 byte[] uuid = tile.getUUID().getBytes(StandardCharsets.UTF_8);
                 dos.writeShort(uuid.length);
                 dos.write(uuid);
@@ -185,7 +191,9 @@ public class FileManager {
             mapWidth  = width;
             mapHeight = height;
 
-            String[][][] result = new String[height][width][4];
+            // Слот [4] — objectHeight (см. v3). Слот [5] — isRiverWater (см. v4, чисто для
+            // water-шейдера). Оба остаются null/"lake" для старых сохранений.
+            String[][][] result = new String[height][width][6];
 
             for (int i = 0; i < height; i++) {
                 for (int j = 0; j < width; j++) {
@@ -198,6 +206,16 @@ public class FileManager {
                         // Старый формат: derive из textureId
                         isTree = (textureId == 2 || textureId == 3 || textureId == 4);
                     }
+                    // objectHeight — signed, readShort() уже возвращает знаковое значение (в
+                    // отличие от textureId/uuidLen выше — те беззнаковые, отсюда маска &0xFFFF).
+                    Integer objectHeight = null;
+                    if (mapFormatVersion >= 3) {
+                        objectHeight = (int) dis.readShort();
+                    }
+                    boolean isRiverWater = false;
+                    if (mapFormatVersion >= 4) {
+                        isRiverWater = dis.readBoolean();
+                    }
                     int uuidLen      = dis.readShort() & 0xFFFF;
                     byte[] uuidBytes = new byte[uuidLen];
                     dis.readFully(uuidBytes);
@@ -206,6 +224,8 @@ public class FileManager {
                     result[i][j][1] = String.valueOf(textureId);
                     result[i][j][2] = dialog ? "dialog" : "common";
                     result[i][j][3] = isTree ? "tree" : "notree";
+                    result[i][j][4] = objectHeight != null ? String.valueOf(objectHeight) : null;
+                    result[i][j][5] = isRiverWater ? "river" : "lake";
                 }
             }
 
@@ -334,7 +354,9 @@ public class FileManager {
 
     private byte[] buildManifest(int width, int height) {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("version", 2); // v2: добавлен isTree в map.bin
+        // v2: добавлен isTree в map.bin; v3: добавлен objectHeight (глубина рек);
+        // v4: добавлен isRiverWater (течение vs волны у water-шейдера, см. Editor.drawTile)
+        m.put("version", 4);
         m.put("width",  width);
         m.put("height", height);
         return JSONValue.toJSONString(m).getBytes(StandardCharsets.UTF_8);

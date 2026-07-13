@@ -14,6 +14,9 @@ public class MapObject  extends BaseObject {
     public boolean isRenderLighAndNigth = true;
     public int objectHeight;
     public boolean isTree = false;
+    // Река (течение) vs озеро (волны) — только для выбора поведения water-шейдера при рендере
+    // (см. Editor.drawTile/ShaderLibrary, assets/shaders/water.frag), на геймплей не влияет.
+    public boolean isRiverWater = false;
     public float additionalDarkCoeff = 1;
     private float nearestLightDist = 999999;
     public boolean isDialogBind = false;
@@ -486,14 +489,32 @@ public class MapObject  extends BaseObject {
         float shadedB = dayB * cloud;
 
         // Итог: max(затенённый_день, источник_света)
-        TMP_COLOR.set(
-            Math.min(1f, Math.max(shadedR, lr)),
-            Math.min(1f, Math.max(shadedG, lg)),
-            Math.min(1f, Math.max(shadedB, lb)),
-            a
-        );
+        float finalR = Math.min(1f, Math.max(shadedR, lr));
+        float finalG = Math.min(1f, Math.max(shadedG, lg));
+        float finalB = Math.min(1f, Math.max(shadedB, lb));
+
+        // Затемнение по глубине (см. систему высот — objectHeight < 0 = вода, см.
+        // Editor.generateRivers): чем глубже, тем темнее тайл, плавно до DEPTH_DARKEN_MIN, но
+        // итоговая просадка яркости смягчена в DEPTH_DARKEN_SOFTEN раз — на полной глубине (у
+        // самого дна рек/озёр) раньше получалась почти ночь, теперь то же дно заметно светлее.
+        if (objectHeight < 0) {
+            float rawFactor = Math.max(DEPTH_DARKEN_MIN, 1f + objectHeight / DEPTH_DARKEN_RANGE);
+            float depthFactor = 1f - (1f - rawFactor) * DEPTH_DARKEN_SOFTEN;
+            finalR *= depthFactor;
+            finalG *= depthFactor;
+            finalB *= depthFactor;
+        }
+
+        TMP_COLOR.set(finalR, finalG, finalB, a);
         return TMP_COLOR;
     }
+
+    // Глубина, на которой темнение по глубине достигает своего предела (DEPTH_DARKEN_MIN) —
+    // не завязана жёстко на конкретный RIVER_MAX_DEPTH генератора (Editor.java), чтобы правки
+    // одного не требовали синхронной правки другого; просто разумный визуальный диапазон.
+    private static final float DEPTH_DARKEN_RANGE  = 40f;
+    private static final float DEPTH_DARKEN_MIN    = 0.35f; // даже в самой глубокой точке не чёрное
+    private static final float DEPTH_DARKEN_SOFTEN = 1f / 3f; // смягчает итоговую просадку яркости в 3 раза
 
     // ── Процедурные облака на основе градиентного шума ──────────────────────
     // Шум сэмплируется в мировых координатах + смещение ветром → облака

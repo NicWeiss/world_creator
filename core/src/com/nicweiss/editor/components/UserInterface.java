@@ -372,14 +372,20 @@ public class UserInterface {
                 int textureId    = Integer.parseInt(pendingMap[i][j][1]);
                 String type      = pendingMap[i][j][2];
                 boolean isTree   = "tree".equals(pendingMap[i][j][3]);
+                // objectHeight — с v3 (см. FileManager) сохраняется ПЕР-ТАЙЛОВО (рекам нужна своя
+                // глубина на тайл, не единая высота текстуры) — null в старых сейвах, тогда как раньше.
+                String savedHeight = pendingMap[i][j][4];
+                // isRiverWater — с v4, чисто для water-шейдера (течение у реки vs волны у озера).
+                boolean isRiverWater = "river".equals(pendingMap[i][j][5]);
 
                 MapObject tmp = new MapObject();
                 tmp.setSurfaceTexture(tileTextures[1].texture);
                 tmp.setSurfaceId(1);
                 tmp.setTexture(tileTextures[textureId].texture);
-                tmp.setObjectHeight(tileTextures[textureId].high);
+                tmp.setObjectHeight(savedHeight != null ? Integer.parseInt(savedHeight) : tileTextures[textureId].high);
                 tmp.setTextureId(textureId);
                 tmp.isTree = isTree;
+                tmp.isRiverWater = isRiverWater;
                 tmp.xPositionOnMap = i + store.TILE_INDEX_BASE;
                 tmp.yPositionOnMap = j + store.TILE_INDEX_BASE;
                 tmp.setUUID(uuid);

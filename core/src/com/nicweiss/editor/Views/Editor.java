@@ -84,6 +84,10 @@ public class Editor extends View{
         userInterface.build();
     }
 
+    // Индекс текстуры воды в textures[] (gp_10.png) — раньше был заведён, но ничем не заполнялся
+    // генератором (просто лежал неиспользуемым). Теперь — единственный тайл для рек, см. generateRivers.
+    private static final int WATER_TEXTURE_ID = 10;
+
     void defineMap() {
         Random rand = new Random();
         Perlin perlin = new Perlin(rand.nextInt(9000));
@@ -139,7 +143,417 @@ public class Editor extends View{
             }
         }
 
+        // Общее поле "рельефа" — единственный источник истины и для озёр (низины), и для рек
+        // (текут вниз по склону), см. generateElevation/generateLakes/generateRivers.
+        float[][] elevation = generateElevation(rand);
+
+        // OWNER_NONE / id озера (LAKE_ID_BASE и выше) / индекс реки (0..RIVER_COUNT-1) на клетку —
+        // чтобы отличать "продолжение своей же реки" от столкновения с ЧУЖОЙ водой.
+        int[][] waterOwner = new int[store.mapHeight][store.mapWidth];
+        for (int[] row : waterOwner) java.util.Arrays.fill(row, OWNER_NONE);
+
+        int[] lakeIdCounter = { LAKE_ID_BASE };
+        java.util.List<Lake> lakes = generateLakes(rand, elevation, waterOwner, lakeIdCounter);
+        generateRivers(rand, elevation, waterOwner, lakes, lakeIdCounter);
+
 //        light.recalcOnMap();
+    }
+
+    // ── Рельеф, озёра и реки ────────────────────────────────────────────────────────────────
+    //
+    // Полный редизайн (см. обсуждение): вместо самодельного синус-меандра — единое поле "высот"
+    // (Perlin-шум + общий уклон карты с севера на юг), общее для озёр и рек:
+    //   • Озёра — связные области, где рельеф ниже порога (см. generateLakes), т.е. настоящие
+    //     низины, а не произвольно расставленные круги. Порог берётся ПЕРСЕНТИЛЕМ по фактическому
+    //     распределению высот этой карты (а не абсолютной константой) — площадь озёр стабильна
+    //     независимо от масштаба/октав шума. Сглаживание клеточным автоматом убирает шум-артефакты
+    //     по краям берега, а компоненты меньше LAKE_MIN_SIZE отбрасываются как лужи.
+    //   • Реки — "капля", скатывающаяся вниз по локальному градиенту рельефа (техника из
+    //     hydraulic erosion / steepest-descent river tracing), с инерцией направления (не дёргано
+    //     меняет курс) и лёгким случайным дрожанием. Поскольку ВСЕ реки читают ОДНО и то же поле
+    //     рельefa, соседние русла естественно сходятся в одни и те же низины (настоящие слияния,
+    //     а не совпадение фаз синусоиды) и текут туда, где действительно ниже — а не по
+    //     синтетической кривой.
+    // Столкновение реки с ЧУЖОЙ водой (другая река/озеро, не тот, из которого она сама вытекает)
+    // останавливает её и создаёт небольшое озеро-пруд на месте стыка, вместо продолжения слитно.
+
+    private static final int OWNER_NONE   = -1;
+    private static final int LAKE_ID_BASE = 1000; // у каждого озера/пруда — свой уникальный id (см. ниже, почему)
+
+    private static final float ELEVATION_SCALE       = 130f;
+    private static final int   ELEVATION_OCTAVES     = 3;
+    private static final float ELEVATION_PERSISTENCE = 0.5f;
+    // Общий уклон карты: север выше, юг ниже — задаёт ПРЕОБЛАДАЮЩЕЕ направление стока рек (юг),
+    // не абсолютный запрет на любое отклонение (локальный рельеф всё ещё может вести куда угодно).
+    private static final float ELEVATION_NS_BIAS = 0.6f;
+
+    private static final float LAKE_AREA_FRACTION = 0.09f; // доля карты НИЖЕ порога озёр (до сглаживания/фильтра луж)
+    private static final int   LAKE_SMOOTH_PASSES = 2;      // проходов клеточного автомата по маске озёр
+    private static final int   LAKE_MIN_SIZE      = 45;     // отбрасываем связные пятна меньше — шумовые лужи
+    private static final float LAKE_DEPTH_RANGE   = 0.5f;   // на сколько ниже порога рельеф даёт максимальную глубину
+    private static final int   LAKE_MAX_DEPTH     = 34;
+
+    private static final int   RIVER_COUNT           = 14;
+    private static final int   RIVER_MAX_DEPTH       = 30;
+    private static final float RIVER_HALF_WIDTH      = 4.2f;   // половина ширины русла, в тайлах
+    private static final float RIVER_STEP_LENGTH     = 1f;     // шаг капли, в тайлах
+    private static final float RIVER_INERTIA         = 0.75f;  // доля прежнего направления при повороте — плавные, не дёрганые изгибы
+    private static final float RIVER_JITTER          = 0.16f;  // случайное дрожание направления на шаг — живая, не идеально гладкая линия
+    private static final float RIVER_GRADIENT_SAMPLE = 2.5f;   // на каком расстоянии (тайлы) считать наклон рельефа
+    private static final int   RIVER_SOURCE_TAPER_TILES = 30;  // за сколько тайлов от истока глубина плавно нарастает до максимума
+    private static final float RIVER_FROM_LAKE_CHANCE   = 0.4f; // шанс, что река начинается из озера, а не от края карты
+    private static final int   RIVER_EDGE_CANDIDATES    = 6;    // сколько случайных точек сев. края пробуем — исток берём с самым высоким рельефом
+    // При столкновении двух рек (см. generateRivers) образуется БОЛЬШОЕ озеро, а не маленький
+    // прудик размером с само русло — множитель к RIVER_HALF_WIDTH и собственная (большая) глубина.
+    private static final float RIVER_CONFLUENCE_LAKE_SCALE = 6f;
+    private static final int   RIVER_CONFLUENCE_LAKE_DEPTH = 40;
+
+    /** Одно озеро: id и точка на берегу (уже суша), откуда может вытекать река, + направление наружу. */
+    private static final class Lake {
+        final int id;
+        final int shoreI, shoreJ;
+        final float dirI, dirJ;
+
+        Lake(int id, int shoreI, int shoreJ, float dirI, float dirJ) {
+            this.id = id;
+            this.shoreI = shoreI;
+            this.shoreJ = shoreJ;
+            this.dirI = dirI;
+            this.dirJ = dirJ;
+        }
+    }
+
+    /** Единое поле "высот" для рек и озёр — Perlin-шум + общий уклон карты с севера на юг. */
+    private float[][] generateElevation(Random rand) {
+        Perlin elevPerlin = new Perlin(rand.nextInt(9000));
+        float[][] elevation = new float[store.mapHeight][store.mapWidth];
+
+        for (int i = 0; i < store.mapHeight; i++) {
+            float southBias = (i / (float) store.mapHeight) * ELEVATION_NS_BIAS;
+            for (int j = 0; j < store.mapWidth; j++) {
+                float n = elevPerlin.getNoise(i / ELEVATION_SCALE, j / ELEVATION_SCALE, ELEVATION_OCTAVES, ELEVATION_PERSISTENCE);
+                elevation[i][j] = n - southBias;
+            }
+        }
+
+        return elevation;
+    }
+
+    /**
+     * Озёра — связные компоненты клеток, чей рельеф ниже порога (persentиль LAKE_AREA_FRACTION
+     * по фактическому распределению высот ЭТОЙ карты — площадь озёр стабильна независимо от
+     * калибровки шума), сглаженные клеточным автоматом (правило большинства соседей — убирает
+     * одиночные шумовые "дырки"/"наросты" по краю берега) и отфильтрованные по минимальному
+     * размеру (LAKE_MIN_SIZE — отсеивает шумовые лужи-артефакты). Глубина — по тому, насколько
+     * рельеф клетки ниже порога (глубже низина — глубже вода).
+     * @return список озёр с точкой возможного истока реки (см. Lake).
+     */
+    private java.util.List<Lake> generateLakes(Random rand, float[][] elevation, int[][] waterOwner, int[] lakeIdCounter) {
+        int total = store.mapHeight * store.mapWidth;
+        float[] sorted = new float[total];
+        int idx = 0;
+        for (int i = 0; i < store.mapHeight; i++) {
+            for (int j = 0; j < store.mapWidth; j++) {
+                sorted[idx++] = elevation[i][j];
+            }
+        }
+        java.util.Arrays.sort(sorted);
+        float threshold = sorted[Math.max(0, Math.min(total - 1, (int) (total * LAKE_AREA_FRACTION)))];
+
+        boolean[][] mask = new boolean[store.mapHeight][store.mapWidth];
+        for (int i = 0; i < store.mapHeight; i++) {
+            for (int j = 0; j < store.mapWidth; j++) {
+                mask[i][j] = elevation[i][j] < threshold;
+            }
+        }
+        for (int pass = 0; pass < LAKE_SMOOTH_PASSES; pass++) {
+            mask = smoothLakeMask(mask);
+        }
+
+        int[] dI = { -1, 1, 0, 0 };
+        int[] dJ = { 0, 0, -1, 1 };
+
+        boolean[][] visited = new boolean[store.mapHeight][store.mapWidth];
+        java.util.List<Lake> lakes = new java.util.ArrayList<>();
+        java.util.ArrayDeque<int[]> queue = new java.util.ArrayDeque<>();
+
+        for (int i = 0; i < store.mapHeight; i++) {
+            for (int j = 0; j < store.mapWidth; j++) {
+                if (!mask[i][j] || visited[i][j]) continue;
+
+                java.util.List<int[]> cells = new java.util.ArrayList<>();
+                visited[i][j] = true;
+                queue.add(new int[] { i, j });
+                while (!queue.isEmpty()) {
+                    int[] c = queue.poll();
+                    cells.add(c);
+                    for (int d = 0; d < 4; d++) {
+                        int ni = c[0] + dI[d], nj = c[1] + dJ[d];
+                        if (ni < 0 || ni >= store.mapHeight || nj < 0 || nj >= store.mapWidth) continue;
+                        if (visited[ni][nj] || !mask[ni][nj]) continue;
+                        visited[ni][nj] = true;
+                        queue.add(new int[] { ni, nj });
+                    }
+                }
+
+                if (cells.size() < LAKE_MIN_SIZE) continue; // шумовая лужа, не настоящее озеро
+
+                int id = lakeIdCounter[0]++;
+                java.util.List<int[]> shoreCells = new java.util.ArrayList<>();
+
+                for (int[] c : cells) {
+                    int ci = c[0], cj = c[1];
+                    float depthT = Math.min(1f, (threshold - elevation[ci][cj]) / LAKE_DEPTH_RANGE);
+                    float smooth = depthT * depthT * (3f - 2f * depthT);
+                    int depth = -Math.round(LAKE_MAX_DEPTH * smooth);
+                    if (depth < 0) {
+                        writeWaterTile(ci, cj, depth, false);
+                        waterOwner[ci][cj] = id;
+                    }
+
+                    for (int d = 0; d < 4; d++) {
+                        int ni = ci + dI[d], nj = cj + dJ[d];
+                        if (ni < 0 || ni >= store.mapHeight || nj < 0 || nj >= store.mapWidth) continue;
+                        if (!mask[ni][nj]) { shoreCells.add(c); break; }
+                    }
+                }
+
+                if (!shoreCells.isEmpty()) {
+                    int[] shore = shoreCells.get(rand.nextInt(shoreCells.size()));
+                    int si = shore[0], sj = shore[1];
+
+                    java.util.List<int[]> landNeighbors = new java.util.ArrayList<>();
+                    for (int d = 0; d < 4; d++) {
+                        int ni = si + dI[d], nj = sj + dJ[d];
+                        if (ni < 0 || ni >= store.mapHeight || nj < 0 || nj >= store.mapWidth) continue;
+                        if (!mask[ni][nj]) landNeighbors.add(new int[] { ni, nj });
+                    }
+
+                    if (!landNeighbors.isEmpty()) {
+                        int[] land = landNeighbors.get(rand.nextInt(landNeighbors.size()));
+                        float outI = land[0] - si;
+                        float outJ = land[1] - sj;
+                        float len = (float) Math.sqrt(outI * outI + outJ * outJ);
+                        if (len > 0.0001f) { outI /= len; outJ /= len; } else { outI = 1f; outJ = 0f; }
+                        lakes.add(new Lake(id, land[0], land[1], outI, outJ));
+                    }
+                }
+            }
+        }
+
+        return lakes;
+    }
+
+    /** Один проход клеточного автомата (правило большинства соседей) — сглаживает край маски озёр. */
+    private boolean[][] smoothLakeMask(boolean[][] mask) {
+        boolean[][] out = new boolean[store.mapHeight][store.mapWidth];
+
+        for (int i = 0; i < store.mapHeight; i++) {
+            for (int j = 0; j < store.mapWidth; j++) {
+                int waterNeighbors = 0, total = 0;
+                for (int di = -1; di <= 1; di++) {
+                    for (int dj = -1; dj <= 1; dj++) {
+                        if (di == 0 && dj == 0) continue;
+                        int ni = i + di, nj = j + dj;
+                        if (ni < 0 || ni >= store.mapHeight || nj < 0 || nj >= store.mapWidth) continue;
+                        total++;
+                        if (mask[ni][nj]) waterNeighbors++;
+                    }
+                }
+                out[i][j] = waterNeighbors > total / 2f ? true : (waterNeighbors < total / 2f ? false : mask[i][j]);
+            }
+        }
+
+        return out;
+    }
+
+    /**
+     * Реки — "капли", скатывающиеся вниз по локальному градиенту общего поля рельефа (см.
+     * generateElevation), с инерцией направления и лёгким случайным дрожанием (hydraulic-erosion
+     * стиль трассировки, а не синтетическая кривая) — см. класс-комментарий выше про весь блок.
+     * Исток — либо точка на северном краю карты (из нескольких случайных кандидатов берём самый
+     * высокий рельеф — правдоподобнее для настоящего истока), либо берег готового озера (см.
+     * Lake.shoreI/J — река стартует уже НА СУШЕ рядом с озером и течёт в направлении Lake.dirI/J).
+     * Глубина плавно (smoothstep) нарастает от истока (RIVER_SOURCE_TAPER_TILES).
+     *
+     * Капля останавливается (и на этом месте появляется небольшой пруд, см. stampPond):
+     *  — при столкновении с ЧУЖОЙ водой (другая река, либо чужое озеро — но не то, из которого
+     *    сама река вытекает, см. originLakeId) — слияние, а не продолжение единым руслом;
+     *  — если рельеф локально плоский (некуда течь) — река "теряется" небольшим озерцом.
+     * Если капля просто уходит за пределы карты — это её естественный, "успешный" конец.
+     */
+    private void generateRivers(Random rand, float[][] elevation, int[][] waterOwner, java.util.List<Lake> lakes, int[] lakeIdCounter) {
+        int radius = Math.round(RIVER_HALF_WIDTH);
+        int maxSteps = store.mapHeight * 3;
+
+        for (int r = 0; r < RIVER_COUNT; r++) {
+            float posI, posJ, dirI, dirJ;
+            int originLakeId = OWNER_NONE;
+
+            if (!lakes.isEmpty() && rand.nextFloat() < RIVER_FROM_LAKE_CHANCE) {
+                Lake lake = lakes.get(rand.nextInt(lakes.size()));
+                posI = lake.shoreI;
+                posJ = lake.shoreJ;
+                dirI = lake.dirI;
+                dirJ = lake.dirJ;
+                originLakeId = lake.id;
+            } else {
+                int bestCol = rand.nextInt(store.mapWidth);
+                float bestElev = elevation[0][bestCol];
+                for (int c = 1; c < RIVER_EDGE_CANDIDATES; c++) {
+                    int col = rand.nextInt(store.mapWidth);
+                    if (elevation[0][col] > bestElev) { bestElev = elevation[0][col]; bestCol = col; }
+                }
+                posI = 0;
+                posJ = bestCol;
+                dirI = 1f;
+                dirJ = 0f;
+            }
+
+            float travelled = 0f;
+
+            for (int step = 0; step < maxSteps; step++) {
+                int ci = Math.round(posI);
+                int cj = Math.round(posJ);
+                if (ci < 0 || ci >= store.mapHeight || cj < 0 || cj >= store.mapWidth) break; // вышла за карту — естественный конец
+
+                // Полный 2D-диск вокруг ТЕКУЩЕЙ позиции (а не 1D-линия вдоль перпендикуляра к
+                // направлению) — на диагональном направлении движения линия точек-семплов на
+                // целочисленных смещениях перепрыгивает часть клеток решётки после округления,
+                // отсюда "прерывистая" (не сплошная) река на скриншоте. Диск даёт гарантированно
+                // сплошное покрытие: соседние шаги (RIVER_STEP_LENGTH=1) сильно перекрываются, т.к.
+                // шаг много меньше радиуса реки.
+                boolean collided = false;
+                for (int di = -radius; di <= radius && !collided; di++) {
+                    for (int dj = -radius; dj <= radius && !collided; dj++) {
+                        int oi = ci + di;
+                        int oj = cj + dj;
+                        if (oi < 0 || oi >= store.mapHeight || oj < 0 || oj >= store.mapWidth) continue;
+                        if (Math.sqrt(di * di + dj * dj) >= RIVER_HALF_WIDTH) continue;
+
+                        int owner = waterOwner[oi][oj];
+                        if (owner != OWNER_NONE && owner != r && owner != originLakeId) collided = true;
+                    }
+                }
+
+                if (collided) {
+                    stampPond(ci, cj, RIVER_HALF_WIDTH * RIVER_CONFLUENCE_LAKE_SCALE, RIVER_CONFLUENCE_LAKE_DEPTH, rand, waterOwner, lakeIdCounter[0]++);
+                    break;
+                }
+
+                float taper = Math.min(1f, travelled / RIVER_SOURCE_TAPER_TILES);
+                taper = taper * taper * (3f - 2f * taper);
+
+                if (taper > 0.001f) {
+                    for (int di = -radius; di <= radius; di++) {
+                        for (int dj = -radius; dj <= radius; dj++) {
+                            int oi = ci + di;
+                            int oj = cj + dj;
+                            if (oi < 0 || oi >= store.mapHeight || oj < 0 || oj >= store.mapWidth) continue;
+
+                            float distFromCenter = (float) Math.sqrt(di * di + dj * dj);
+                            if (distFromCenter >= RIVER_HALF_WIDTH) continue;
+
+                            float widthT = distFromCenter / RIVER_HALF_WIDTH;
+                            float widthSmooth = 1f - (widthT * widthT * (3f - 2f * widthT));
+                            int depth = -Math.round(RIVER_MAX_DEPTH * widthSmooth * taper);
+                            if (depth >= 0) continue;
+
+                            // Уже вода ЭТОЙ ЖЕ реки (соседний шаг) или чужого озера-истока —
+                            // просто пишем; уже вода ДРУГОГО озера сюда никогда не попадёт — такое
+                            // столкновение отловлено выше и обрывает реку раньше этой строки.
+                            writeWaterTile(oi, oj, depth, true);
+                            waterOwner[oi][oj] = r;
+                        }
+                    }
+                }
+
+                // Локальный градиент рельефа (конечные разности) — течём в сторону убывания высоты.
+                int si = clamp(Math.round(posI + RIVER_GRADIENT_SAMPLE), 0, store.mapHeight - 1);
+                int ni = clamp(Math.round(posI - RIVER_GRADIENT_SAMPLE), 0, store.mapHeight - 1);
+                int sj = clamp(Math.round(posJ + RIVER_GRADIENT_SAMPLE), 0, store.mapWidth - 1);
+                int nj = clamp(Math.round(posJ - RIVER_GRADIENT_SAMPLE), 0, store.mapWidth - 1);
+                float gi = elevation[si][cj] - elevation[ni][cj];
+                float gj = elevation[ci][sj] - elevation[ci][nj];
+
+                // Инерция (плавный, не дёрганый поворот) + небольшое случайное дрожание (живая линия).
+                float newDirI = dirI * RIVER_INERTIA - gi * (1f - RIVER_INERTIA);
+                float newDirJ = dirJ * RIVER_INERTIA - gj * (1f - RIVER_INERTIA);
+                newDirI += (rand.nextFloat() - 0.5f) * RIVER_JITTER;
+                newDirJ += (rand.nextFloat() - 0.5f) * RIVER_JITTER;
+
+                float len = (float) Math.sqrt(newDirI * newDirI + newDirJ * newDirJ);
+                if (len < 0.0001f) {
+                    // Рельеф локально плоский — течь некуда, река "теряется" небольшим озерцом.
+                    stampPond(ci, cj, RIVER_HALF_WIDTH * 1.6f, RIVER_MAX_DEPTH, rand, waterOwner, lakeIdCounter[0]++);
+                    break;
+                }
+                dirI = newDirI / len;
+                dirJ = newDirJ / len;
+
+                posI += dirI * RIVER_STEP_LENGTH;
+                posJ += dirJ * RIVER_STEP_LENGTH;
+                travelled += RIVER_STEP_LENGTH;
+            }
+        }
+    }
+
+    private static int clamp(int v, int min, int max) {
+        return Math.max(min, Math.min(max, v));
+    }
+
+    /** Пруд/озеро с чуть неровным (шум) краем — на месте слияния рек или там, где река "теряется". */
+    private void stampPond(int centerI, int centerJ, float radius, int maxDepth, Random rand, int[][] waterOwner, int ownerId) {
+        Perlin shapePerlin = new Perlin(rand.nextInt(9000));
+        int r = Math.round(radius) + 3;
+
+        for (int di = -r; di <= r; di++) {
+            for (int dj = -r; dj <= r; dj++) {
+                int i = centerI + di;
+                int j = centerJ + dj;
+                if (i < 0 || i >= store.mapHeight || j < 0 || j >= store.mapWidth) continue;
+
+                float dist = (float) Math.sqrt(di * di + dj * dj);
+                float noiseVal = shapePerlin.getNoise(i / 10f, j / 10f);
+                float effectiveRadius = radius * (1f + noiseVal * 0.3f);
+                if (dist >= effectiveRadius) continue;
+
+                float t = dist / effectiveRadius;
+                float smooth = 1f - (t * t * (3f - 2f * t));
+                int depth = -Math.round(maxDepth * smooth);
+                if (depth >= 0) continue;
+
+                // Math.min внутри writeWaterTile — если тут уже была более глубокая вода (озеро,
+                // из которого выросла эта капля), дно НЕ поднимается. Пруд/слияние — всегда "озеро"
+                // (волны, не течение) для шейдера: место впадения реки должно ЭЛЕГАНТНО слиться в
+                // озеро, а не выглядеть как обрыв текущей реки.
+                writeWaterTile(i, j, depth, false);
+                waterOwner[i][j] = ownerId;
+            }
+        }
+    }
+
+    /**
+     * Превращает тайл в воду заданной глубины (objectHeight, ОТРИЦАТЕЛЬНАЯ). Если тайл уже вода
+     * от другого прохода (река/озеро) — дно НЕ поднимается, остаётся более глубокое из значений.
+     * isRiver — чисто визуальный флаг для water-шейдера (течение у реки vs волны у озера/пруда,
+     * см. Editor.drawTile), на геймплей не влияет.
+     */
+    private void writeWaterTile(int i, int j, int depth, boolean isRiver) {
+        MapObject tile = store.objectedMap[i][j];
+        tile.isRiverWater = isRiver;
+
+        if (tile.getTextureId() == WATER_TEXTURE_ID) {
+            tile.setObjectHeight(Math.min(tile.objectHeight, depth));
+            return;
+        }
+
+        tile.setSurfaceTexture(textures[1].texture);
+        tile.setSurfaceId(1);
+        tile.setTexture(textures[WATER_TEXTURE_ID].texture);
+        tile.setTextureId(WATER_TEXTURE_ID);
+        tile.isTree = false; // вода не качается ветром, даже если тут раньше стояло дерево
+        tile.setObjectHeight(depth);
     }
 
     @Override
@@ -498,7 +912,7 @@ public class Editor extends View{
                     }
 
 //                Рисуем карту
-                    store.objectedMap[mapI][mapJ].draw(batch);
+                    drawTile(batch, store.objectedMap[mapI][mapJ]);
                     store.objectedMap[mapI][mapJ].isPlayerInside = false;
                     store.objectedMap[mapI][mapJ].isRenderLighAndNigth = true;
                 }
@@ -552,6 +966,42 @@ public class Editor extends View{
         }
         if (store.isSimulationMode && store.systemUI != null) {
             store.systemUI.render(uiBatch, store.uiWidthOriginal, store.uiHeightOriginal);
+        }
+    }
+
+    /**
+     * Рисует один тайл карты — обычным шейдером SpriteBatch, либо (для воды) с шейдером искажения
+     * поверхности (см. ShaderLibrary.water(), assets/shaders/water.*).
+     *
+     * ВАЖНО про порядок вызовов: раньше здесь сначала вызывался waterShader.bind() (это НАПРЯМУЮ
+     * дёргает glUseProgram, минуя SpriteBatch), и только потом batch.setShader(...). Из-за этого
+     * GL-программа переключалась на water-шейдер ДО того, как батч успевал сбросить (flush) уже
+     * накопленные в буфере, ещё не отрисованные спрайты обычных тайлов/подложек/деревьев — и они
+     * реально уходили на GPU уже ЧЕРЕЗ water-шейдер ("шейдер накладывается на всё подряд", хотя
+     * код и выглядел так, будто применяется только к воде). Правильный порядок — сначала
+     * batch.setShader(...) (он сам сбросит накопленное СТАРЫМ шейдером, и только потом привяжет
+     * новый), и лишь после этого выставлять юниформы новому шейдеру.
+     */
+    private void drawTile(SpriteBatch batch, MapObject tile) {
+        com.badlogic.gdx.graphics.glutils.ShaderProgram waterShader =
+            tile.getTextureId() == WATER_TEXTURE_ID ? com.nicweiss.editor.utils.ShaderLibrary.water() : null;
+
+        if (waterShader != null) {
+            batch.setShader(waterShader); // флашит всё накопленное обычным шейдером, потом бинднт water-шейдер
+            // store.cloudTime идёт ТОЛЬКО в режиме симуляции (см. WeatherThread/toggleSimulation) —
+            // в редакторе он заморожен на 0, поэтому вода в редакторе намеренно статична, а
+            // "оживает" только в симуляции. Так и задумано — не заменять на всегда-идущие часы.
+            waterShader.setUniformf("u_time", store.cloudTime);
+            // Позиция тайла В СЕТКЕ КАРТЫ (не локальные 0..1 UV спрайта) — что бы фаза волны была
+            // связной между соседями и рябь складывалась в один общий узор, а не дёргалась на
+            // каждом тайле независимо (см. water.frag). БЕЗ модуля на этот раз (в прошлый раз
+            // модуль по 64 давал периодическую решётку) — сейчас безопасность края текстуры
+            // обеспечивает alpha-фолбэк в шейдере, а не ограничение диапазона координаты.
+            waterShader.setUniformf("u_worldPos", tile.xPositionOnMap, tile.yPositionOnMap);
+            tile.draw(batch);
+            batch.setShader(null); // флашит водный тайл, потом возвращает обычный шейдер батча
+        } else {
+            tile.draw(batch);
         }
     }
 
