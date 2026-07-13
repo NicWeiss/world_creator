@@ -617,6 +617,11 @@ public class UserInterface {
         // (смерть врага того же уровня даёт multiplier=1, элита/босс — больше).
         com.nicweiss.editor.simulation.DropManager.dropExperience(10, 1f, playerTileX, playerTileY);
 
+        // По требованию: отладочный дроп сразу выкидывает по факелу каждой редкости.
+        com.nicweiss.editor.simulation.DropManager.spawnTorchOfRarity("common", playerTileX, playerTileY);
+        com.nicweiss.editor.simulation.DropManager.spawnTorchOfRarity("rare",   playerTileX, playerTileY);
+        com.nicweiss.editor.simulation.DropManager.spawnTorchOfRarity("unique", playerTileX, playerTileY);
+
         for (int i = 0; i < 10; i++) {
             if (!store.isSimulationMode) return;
             int enemyLevel = 1 + (int) (Math.random() * 49);

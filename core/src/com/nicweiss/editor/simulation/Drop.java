@@ -268,7 +268,7 @@ public class Drop extends BaseObject {
      */
     private float[] computeLitColor() {
         return com.nicweiss.editor.utils.Lighting.computeLitColor(
-            getLightSourceIsoX(), getLightSourceIsoY(), this, litColorBuf);
+            getLightSourceIsoX(), getLightSourceIsoY(), mapCellX, mapCellY, this, litColorBuf);
     }
 
     // Переиспользуемый буфер вершин — избегаем new float[20] на каждый кадр для каждого дропа.

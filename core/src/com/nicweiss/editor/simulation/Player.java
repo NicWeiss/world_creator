@@ -40,7 +40,7 @@ public class Player extends BaseObject {
     public float flatManaBonus    = 0f;
 
     public float speed     = 1.0f;
-    public int level       = 10;
+    public int level       = 99;
     public int gold        = 0;
 
     // true у каждого нового Player: при первом пересчёте статов (см. SystemUI.recomputePlayerStats)
@@ -138,6 +138,21 @@ public class Player extends BaseObject {
     // Поиск
     public float magicFind  = 0f;
     public float goldFind   = 0f;
+
+    // Сила света — от экипированного факела (см. ItemModifierCatalog "torch", SystemUI.applyMainStat).
+    // 0 = не экипирован/не светит. Свыше 0 — игрок сам становится динамическим источником света
+    // в мире (см. MapObject.calcLitColor / Lighting.computeLitColor) цветом torchGlow*.
+    public int lightPower = 0;
+    // Скрытый параметр (не показывается в тултипе предмета) — цвет свечения текущего факела,
+    // задаётся его редкостью (см. ItemGenerator.applyTorchRarityStats), 0 по умолчанию (нет факела).
+    public float torchGlowR = 0f, torchGlowG = 0f, torchGlowB = 0f;
+
+    // Высота игрока как источника света (см. Lighting.isLineOfSightBlocked) — равна высоте костра
+    // (Editor.java: TextureObject("gp_11.png", 5), id=11, единственный light-object в редакторе).
+    // По требованию пользователя: игрок должен блокироваться так же, как источник света такой
+    // высоты (деревья/камни выше — блокируют, трава/невысокие декорации — нет), а НЕ высотой
+    // тайла, на котором стоит (иначе даже трава перекрывала бы свет).
+    public static final int LIGHT_SOURCE_HEIGHT = 5;
 
     // ── Анимация ───────────────────────────────────────────────────────────────
     public Direction direction = Direction.DOWN;

@@ -404,6 +404,20 @@ public class ItemGenerator {
             case "gloves":
                 value = rollRanged(quality, 10, 500);
                 break;
+            case "torch": {
+                // Сила света — общий диапазон 5..11, но фактический ролл сужен редкостью (выше
+                // редкость — выше "пол" и "потолок"), требуемый уровень считается от неё отдельно
+                // (см. recomputeRequirements).
+                String torchRarityKey = currentRarity(template).key;
+                int torchMin, torchMax;
+                switch (torchRarityKey) {
+                    case "unique": torchMin = 9; torchMax = 11; break;
+                    case "rare":   torchMin = 7; torchMax = 9;  break;
+                    default:       torchMin = 5; torchMax = 7;  break;
+                }
+                value = rollRanged(quality, torchMin, torchMax);
+                break;
+            }
             default: {
                 int itemLevel = currentItemLevel(template);
                 int base = 4 + Math.round(itemLevel * 1.5f);
@@ -493,13 +507,54 @@ public class ItemGenerator {
         if (strengthReq > 0) strengthReq += rarity.reqBonus;
         if (magicReq > 0) magicReq += rarity.reqBonus;
 
-        int levelReq = Math.round(itemLevel * 0.85f) + rarity.reqBonus / 2;
+        boolean isTorch = "torch".equals(typeKey);
+        int levelReq;
+        if (isTorch) {
+            // Только уровень игрока, растёт от силы света (5→1) до (20→50), плюс добавка редкости —
+            // см. описание задачи: "чем выше сила света факела - тем выше требуемый уровень",
+            // "требование к уровню игрока растёт исходя из силы света и редкости". Диапазон силы
+            // света — общий 5..11, фактический ролл сужен по редкости (см. rollMainStat "torch").
+            // Итог делится пополам (/2) — по требованию пользователя ("требования очень высокие,
+            // послабить раза в 2") исходная кривая была слишком жёсткой для предмета этого класса.
+            int lightPower = clamp(mainStat, 5, 11);
+            double base = 1.0 + (lightPower - 5) / 6.0 * 49.0;
+            levelReq = (int) Math.round((base + rarity.reqBonus) / 2.0);
+            applyTorchRarityStats(template, rarity);
+        } else {
+            levelReq = Math.round(itemLevel * 0.85f) + rarity.reqBonus / 2;
+        }
 
-        // Чармы не требуют силы и магии — только уровень
+        // Чармы и факелы не требуют силы и магии — только уровень
         boolean isCharm = "charm".equals(typeKey);
-        template.put("__reqStrength__", isCharm ? 0 : clamp(strengthReq, 0, 300));
-        template.put("__reqMagic__",    isCharm ? 0 : clamp(magicReq,    0, 300));
+        template.put("__reqStrength__", (isCharm || isTorch) ? 0 : clamp(strengthReq, 0, 300));
+        template.put("__reqMagic__",    (isCharm || isTorch) ? 0 : clamp(magicReq,    0, 300));
         template.put("__reqLevel__", clamp(levelReq, 1, 99));
+    }
+
+    // Common: чадящий тусклый оранжевый; Rare: светлый тёплый; Unique: холодный яркий с синим
+    // отливом — цвет свечения СКРЫТЫЙ параметр (не отображается в тултипе, см. SystemUI), меняется
+    // только редкостью, не роллится как обычный стат. Время горения — тоже жёстко по редкости.
+    public static void applyTorchRarityStats(LinkedHashMap template, RarityDef rarity) {
+        float r, g, b;
+        int burnSeconds;
+        switch (rarity.key) {
+            case "unique":
+                r = 0.55f; g = 0.75f; b = 1.00f;
+                burnSeconds = 30 * 60;
+                break;
+            case "rare":
+                r = 1.00f; g = 0.85f; b = 0.55f;
+                burnSeconds = 15 * 60;
+                break;
+            default:
+                r = 1.00f; g = 0.55f; b = 0.15f;
+                burnSeconds = 3 * 60;
+                break;
+        }
+        template.put("__glowColorR__", r);
+        template.put("__glowColorG__", g);
+        template.put("__glowColorB__", b);
+        template.put("__torchBurnTime__", burnSeconds);
     }
 
     // Какое требование поднимает "основная характеристика" — зависит от типа/класса предмета.

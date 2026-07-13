@@ -66,6 +66,6 @@ public class Creation extends BaseObject {
     public float getLightSourceIsoY() { ensureLightSourcePos(); return lightSourcePos[1]; }
 
     private float[] computeLitColor() {
-        return Lighting.computeLitColor(getLightSourceIsoX(), getLightSourceIsoY(), null, litColorBuf);
+        return Lighting.computeLitColor(getLightSourceIsoX(), getLightSourceIsoY(), mapCellX, mapCellY, null, litColorBuf);
     }
 }

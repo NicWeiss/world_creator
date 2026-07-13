@@ -43,6 +43,54 @@ public class MapObject  extends BaseObject {
     public static final float EXP_ORB_LIGHT_G = 0.30f;
     public static final float EXP_ORB_LIGHT_B = 0.70f;
 
+    // Свечение факела (на земле или в руках игрока, см. calcLitColor ниже и Lighting.computeLitColor
+    // для Drop) — шире и ярче сферы опыта: это полноценный источник света, а не декоративная искра.
+    // Цвет — за пределами этих констант, берётся из скрытого стата предмета/игрока
+    // (__glowColorR/G/B__ / Player.torchGlow*, см. ItemGenerator.applyTorchRarityStats).
+
+    /** Число из шаблона предмета (Integer/Long/Float/Double после JSON-round-trip) с дефолтом. */
+    public static float itemFloat(java.util.LinkedHashMap item, String key, float def) {
+        Object v = item.get(key);
+        return v instanceof Number ? ((Number) v).floatValue() : def;
+    }
+
+    // x5 — по требованию пользователя ("свет невероятно слабый"): без множителя базовая яркость
+    // (0.35..1.0) почти везде проигрывала дневному амбиенту (dayR/dayG/dayB, см. calcLitColor —
+    // итоговый цвет это max(день, источник)), из-за чего факел был почти не видно даже вплотную.
+    private static final float TORCH_BRIGHTNESS_MULTIPLIER = 5f;
+
+    /**
+     * Яркость свечения факела от его силы света (общий диапазон 5..11, см.
+     * ItemGenerator.rollMainStat "torch") — чем сильнее факел, тем ярче и заметнее издалека.
+     */
+    public static float torchIntensity(int lightPower) {
+        float t = Math.max(0, Math.min(6, lightPower - 5)) / 6f;
+        return (0.35f + t * 0.65f) * TORCH_BRIGHTNESS_MULTIPLIER;
+    }
+
+    // Радиус свечения в тайлах = сила света НАПРЯМУЮ (по требованию пользователя: "сила света 6 -
+    // должна освещать 6 клеток, 14 - 14 клеток"). Калибр "1 тайл ≈ N px" подобран отдельно от
+    // EXP_ORB_LIGHT_RADIUS (80px) — на глаз того калибра оказалось многовато, уменьшили до 40px/тайл.
+    private static final float TORCH_RADIUS_PX_PER_LIGHT_POWER = 40f;
+
+    // Факел, лежащий на земле, — фиксированные 2 клетки радиуса, НЕ зависит от силы света (по
+    // требованию пользователя: "свет от лежащего на земле факела должен быть всего 2 клетки").
+    private static final float TORCH_GROUND_RADIUS_TILES = 2f;
+
+    /** Радиус свечения факела в руках игрока (или как самостоятельный источник света) — в пикселях, см. выше. */
+    public static float torchRadius(int lightPower) {
+        return lightPower * TORCH_RADIUS_PX_PER_LIGHT_POWER;
+    }
+
+    /** Радиус свечения факела, лежащего на земле — фиксированные TORCH_GROUND_RADIUS_TILES клеток. */
+    public static float torchGroundRadius() {
+        return TORCH_GROUND_RADIUS_TILES * TORCH_RADIUS_PX_PER_LIGHT_POWER;
+    }
+
+    // Переиспользуемый буфер индекса позиции игрока-источника света — без аллокаций на кадр
+    // (calcLitColor вызывается на каждый тайл, см. использование ниже).
+    private static final int[] PLAYER_LIGHT_SRC_BUF = new int[2];
+
     public MapObject(){
         isEnableRenderLimits = true;
     }
@@ -489,6 +537,58 @@ public class MapObject  extends BaseObject {
                 lr = Math.max(lr, EXP_ORB_LIGHT_R * t);
                 lg = Math.max(lg, EXP_ORB_LIGHT_G * t);
                 lb = Math.max(lb, EXP_ORB_LIGHT_B * t);
+            }
+        }
+
+        // Индекс этой клетки в store.objectedMap — цель для проверки препятствий ниже (см.
+        // Lighting.isLineOfSightBlocked). xPositionOnMap/yPositionOnMap = arrayIndex + TILE_INDEX_BASE,
+        // без TILE_X_ANCHOR_EXTRA_OFFSET (та компенсация тайлов не касается, см. Store.java).
+        int toAi = xPositionOnMap - store.TILE_INDEX_BASE;
+        int toAj = yPositionOnMap - store.TILE_INDEX_BASE;
+
+        // Факел, лежащий на земле — светит цветом из скрытого стата предмета (см. ItemGenerator.
+        // applyTorchRarityStats), той же схемой затухания по радиусу, что и сферы опыта выше. Как и
+        // статичные источники в редакторе — не проходит сквозь препятствия (дерево/камень, см.
+        // Lighting.isLineOfSightBlocked): "правила света едины" для редактора и симуляции.
+        if (store.isSimulationMode && store.drops != null) {
+            for (Drop d : store.drops) {
+                if (d == null || !d.isLanded || d.itemData == null) continue;
+                if (!"torch".equals(d.itemData.get("__type__"))) continue;
+                int lightPower = (int) itemFloat(d.itemData, "__mainStat__", 2f);
+                float radius = torchGroundRadius();
+                float odx = (x - store.shiftX + (float) width / 2f) - d.getLightSourceIsoX();
+                float ody = ((y - store.shiftY - height * 0.1f) - d.getLightSourceIsoY()) * 1.45f;
+                if (Math.abs(odx) > radius || Math.abs(ody) > radius) continue;
+                float odist = (float) Math.sqrt(odx * odx + ody * ody);
+                if (odist >= radius) continue;
+                int srcAi = d.mapCellX - store.TILE_INDEX_BASE, srcAj = d.mapCellY - store.TILE_INDEX_BASE;
+                if (com.nicweiss.editor.utils.Lighting.isLineOfSightBlocked(srcAi, srcAj, toAi, toAj)) continue;
+                float t = (1f - odist / radius) * torchIntensity(lightPower);
+                lr = Math.max(lr, itemFloat(d.itemData, "__glowColorR__", 1f) * t);
+                lg = Math.max(lg, itemFloat(d.itemData, "__glowColorG__", 1f) * t);
+                lb = Math.max(lb, itemFloat(d.itemData, "__glowColorB__", 1f) * t);
+            }
+        }
+
+        // Игрок сам — динамический источник света, если у него сила света > 0 (экипирован факел,
+        // см. Player.lightPower/torchGlow*, SystemUI.applyMainStat). Цвет и яркость — как у факела
+        // на земле выше, но источник — сам игрок (его мировая позиция), а не Drop. Тоже не проходит
+        // сквозь препятствия (см. комментарий у блока факела выше).
+        if (store.isSimulationMode && store.player != null && store.player.isInitialized() && store.player.lightPower > 0) {
+            float radius = torchRadius(store.player.lightPower);
+            float[] pp = com.nicweiss.editor.utils.Lighting.ensurePlayerLightAnchor();
+            float odx = (x - store.shiftX + (float) width / 2f) - pp[0];
+            float ody = ((y - store.shiftY - height * 0.1f) - pp[1]) * 1.45f;
+            if (Math.abs(odx) <= radius && Math.abs(ody) <= radius) {
+                float odist = (float) Math.sqrt(odx * odx + ody * ody);
+                int[] srcIdx = com.nicweiss.editor.utils.Lighting.worldToArrayIndex(store.player.worldX, store.player.worldY, PLAYER_LIGHT_SRC_BUF);
+                if (odist < radius && !com.nicweiss.editor.utils.Lighting.isLineOfSightBlocked(
+                        com.nicweiss.editor.simulation.Player.LIGHT_SOURCE_HEIGHT, srcIdx[0], srcIdx[1], toAi, toAj)) {
+                    float t = (1f - odist / radius) * torchIntensity(store.player.lightPower);
+                    lr = Math.max(lr, store.player.torchGlowR * t);
+                    lg = Math.max(lg, store.player.torchGlowG * t);
+                    lb = Math.max(lb, store.player.torchGlowB * t);
+                }
             }
         }
 

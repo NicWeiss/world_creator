@@ -1075,6 +1075,7 @@ public class SystemUI {
         p.lifeLeech = 0; p.manaLeech = 0;
         p.lifeRegen = 0f; p.manaRegen = 0f;
         p.magicFind = 0f; p.goldFind = 0f;
+        p.lightPower = 0; p.torchGlowR = 0f; p.torchGlowG = 0f; p.torchGlowB = 0f;
 
         // Чармы — активны если уровень игрока >= требуемого
         for (Object v : store.inventory.values()) {
@@ -1195,6 +1196,19 @@ public class SystemUI {
         if      ("boots".equals(typeKey))  p.runSpeed     += v;
         else if ("gloves".equals(typeKey)) p.attackRating += v;
         else if ("belt".equals(typeKey))   p.beltCapacity += v;
+        else if ("torch".equals(typeKey)) {
+            // Факел один на слот (см. allowedEqSlotsForType) — присваиваем, а не накапливаем.
+            // Цвет свечения — скрытый параметр предмета (__glowColorR/G/B__, см.
+            // ItemGenerator.applyTorchRarityStats), напрямую переносится в стату игрока.
+            p.lightPower = v;
+            p.torchGlowR = toFloat(item.get("__glowColorR__"));
+            p.torchGlowG = toFloat(item.get("__glowColorG__"));
+            p.torchGlowB = toFloat(item.get("__glowColorB__"));
+        }
+    }
+
+    private static float toFloat(Object v) {
+        return v instanceof Number ? ((Number) v).floatValue() : 0f;
     }
 
     /** Подпись __mainStat__ в тултипе — зависит от типа предмета (см. ItemGenerator.rollMainStat). */
@@ -1203,7 +1217,13 @@ public class SystemUI {
         if ("belt".equals(typeKey))   return "Ёмкость";
         if ("boots".equals(typeKey))  return "Скорость передвижения";
         if ("gloves".equals(typeKey)) return "Рейтинг атаки";
+        if ("torch".equals(typeKey))  return "Сила света";
         return "Защита";
+    }
+
+    /** Время горения факела (секунды → "N мин", см. ItemGenerator.applyTorchRarityStats). */
+    private static String formatBurnTime(int seconds) {
+        return (seconds / 60) + " мин";
     }
 
     /**
@@ -1396,6 +1416,7 @@ public class SystemUI {
         switch (type) {
             case "weapon":   return new int[]{0};
             case "shield":   return new int[]{12};
+            case "torch":    return new int[]{12}; // альтернатива щиту/гримуару — тот же слот (см. ItemModifierCatalog "torch")
             case "armor":    return new int[]{4};
             case "helmet":   return new int[]{2};
             case "belt":     return new int[]{5};
@@ -1679,6 +1700,11 @@ public class SystemUI {
         if (item.containsKey("__mainStat__"))
             mainStatLine = mainStatLabel(typeKey) + ": " + item.get("__mainStat__");
 
+        // Время горения факела — виден в тултипе (в отличие от цвета свечения, см. applyMod).
+        String burnTimeLine = null;
+        if ("torch".equals(typeKey) && item.containsKey("__torchBurnTime__"))
+            burnTimeLine = "Время горения: " + formatBurnTime(toInt(item.get("__torchBurnTime__")));
+
         java.util.List<String> reqLines = new java.util.ArrayList<>();
         if (item.containsKey("__reqLevel__")    && toInt(item.get("__reqLevel__"))    > 1) reqLines.add("Требуемый уровень: "  + item.get("__reqLevel__"));
         if (item.containsKey("__reqStrength__") && toInt(item.get("__reqStrength__")) > 0) reqLines.add("Требуемая сила: "     + item.get("__reqStrength__"));
@@ -1699,6 +1725,7 @@ public class SystemUI {
         }
 
         int lines = 1 + (subtypeLabel != null ? 1 : 0) + (mainStatLine != null ? 2 : 0)
+                  + (burnTimeLine != null ? 1 : 0)
                   + (!modLines.isEmpty() ? modLines.size() + 1 : 0)
                   + (!reqLines.isEmpty() ? reqLines.size() + 1 : 0)
                   + (equipped ? 2 : 0);
@@ -1707,6 +1734,7 @@ public class SystemUI {
         layout.setText(font, name); minW = Math.max(minW, layout.width);
         if (subtypeLabel != null) { layout.setText(font, subtypeLabel); minW = Math.max(minW, layout.width); }
         if (mainStatLine != null) { layout.setText(font, mainStatLine); minW = Math.max(minW, layout.width); }
+        if (burnTimeLine != null) { layout.setText(font, burnTimeLine); minW = Math.max(minW, layout.width); }
         for (String l : modLines) { layout.setText(font, l);            minW = Math.max(minW, layout.width); }
         for (String r : reqLines) { layout.setText(font, r);            minW = Math.max(minW, layout.width); }
         if (equipped)             { layout.setText(font, "Экипировано"); minW = Math.max(minW, layout.width); }
@@ -1742,6 +1770,10 @@ public class SystemUI {
         if (item.containsKey("__mainStat__")) {
             mainStatLine = mainStatLabel(typeKey) + ": " + item.get("__mainStat__");
         }
+
+        String burnTimeLine = null;
+        if ("torch".equals(typeKey) && item.containsKey("__torchBurnTime__"))
+            burnTimeLine = "Время горения: " + formatBurnTime(toInt(item.get("__torchBurnTime__")));
 
         // Требования
         java.util.List<String> reqLines = new java.util.ArrayList<>();
@@ -1802,6 +1834,11 @@ public class SystemUI {
             col(batch, C_BORDER); batch.draw(pixel, tx + TPAD, lineY, tw - TPAD * 2, 1f); lineY -= LINE_H * 0.5f;
             font.setColor(C_TEXT_ACT);
             drawCentered(batch, mainStatLine, tx, lineY, tw); lineY -= LINE_H;
+        }
+
+        if (burnTimeLine != null) {
+            font.setColor(C_TEXT_DIM);
+            drawCentered(batch, burnTimeLine, tx, lineY, tw); lineY -= LINE_H;
         }
 
         // Требования — белый; красный если уровень выше текущего

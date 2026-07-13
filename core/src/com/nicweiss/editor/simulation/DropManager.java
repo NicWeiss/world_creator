@@ -68,6 +68,63 @@ public class DropManager {
         }
 
         rollPotionsAndScroll(tileX, tileY);
+        rollTorchDrop(tileX, tileY);
+    }
+
+    // ── Факел ────────────────────────────────────────────────────────────────
+    // Не часть обычного ролла снаряжения (см. equipmentTypeKeys — торч туда не входит):
+    // выпадает по счётчику убийств, а не по общей вероятности "предмет выпал/не выпал". Три
+    // редкости считаются НЕЗАВИСИМО, каждая — свой счётчик и свой случайный порог в своём
+    // диапазоне (обычный 5-10, редкий 50-100, уник 150-300, см. задачу пользователя).
+    private static int killsSinceCommonTorch = 0, killsSinceRareTorch = 0, killsSinceUniqueTorch = 0;
+    private static int nextCommonTorchAt = rollTorchThreshold(5, 10);
+    private static int nextRareTorchAt   = rollTorchThreshold(50, 100);
+    private static int nextUniqueTorchAt = rollTorchThreshold(150, 300);
+
+    private static int rollTorchThreshold(int min, int max) {
+        return min + RANDOM.nextInt(max - min + 1);
+    }
+
+    private static void rollTorchDrop(int tileX, int tileY) {
+        killsSinceCommonTorch++;
+        killsSinceRareTorch++;
+        killsSinceUniqueTorch++;
+
+        if (killsSinceCommonTorch >= nextCommonTorchAt) {
+            spawnTorchOfRarity("common", tileX, tileY);
+            killsSinceCommonTorch = 0;
+            nextCommonTorchAt = rollTorchThreshold(5, 10);
+        }
+        if (killsSinceRareTorch >= nextRareTorchAt) {
+            spawnTorchOfRarity("rare", tileX, tileY);
+            killsSinceRareTorch = 0;
+            nextRareTorchAt = rollTorchThreshold(50, 100);
+        }
+        if (killsSinceUniqueTorch >= nextUniqueTorchAt) {
+            spawnTorchOfRarity("unique", tileX, tileY);
+            killsSinceUniqueTorch = 0;
+            nextUniqueTorchAt = rollTorchThreshold(150, 300);
+        }
+    }
+
+    /** Спавнит факел заданной редкости — используется и авто-дропом выше, и отладочным дропом (см. UserInterface). */
+    public static void spawnTorchOfRarity(String rarityKey, int tileX, int tileY) {
+        int playerLevel = store.player != null ? store.player.level : 1;
+        spawnItemDrop(rollTorchTemplate(rarityKey, playerLevel), tileX, tileY);
+    }
+
+    private static LinkedHashMap rollTorchTemplate(String rarityKey, int playerLevel) {
+        LinkedHashMap template = new LinkedHashMap();
+        template.put("__uuid__", Uuid.generate());
+        // __itemLevel__ ограничен уровнем игрока (не роллится 1..99 вслепую, как для обычного
+        // снаряжения) — currentQuality() растёт от itemLevel/99, а от неё зависит центр ролла силы
+        // света (rollRanged в ItemGenerator.rollMainStat "torch"). Чем выше уровень игрока, тем выше
+        // потолок itemLevel — тем выше ШАНС на бОльшую силу света (не гарантия, разброс сохраняется).
+        ItemGenerator.applyType(template, "torch", Math.max(1, playerLevel));
+        ItemGenerator.setRarity(template, rarityKey);
+        ItemGenerator.rollModifiers(template); // силу света/требования/скрытый цвет — под нужную редкость и уровень
+        template.put("__name__", ItemModifierCatalog.TYPES.get("torch").label);
+        return template;
     }
 
     // Один дроп (один убитый враг) — общая сумма опыта дробится на случайное число сфер,
@@ -142,7 +199,9 @@ public class DropManager {
         if (equipmentTypeKeysCache == null) {
             List<String> keys = new ArrayList<>();
             for (String key : ItemModifierCatalog.TYPES.keySet()) {
-                if (!ItemModifierCatalog.isConsumableType(key)) keys.add(key);
+                // Факел не роллится как обычное снаряжение — у него свой счётчик убийств
+                // (см. rollTorchDrop), а не общая вероятность "предмет выпал/не выпал".
+                if (!ItemModifierCatalog.isConsumableType(key) && !"torch".equals(key)) keys.add(key);
             }
             equipmentTypeKeysCache = keys.toArray(new String[0]);
         }

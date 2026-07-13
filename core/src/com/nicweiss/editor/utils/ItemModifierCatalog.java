@@ -492,7 +492,7 @@ public class ItemModifierCatalog {
         TypeDef artifact = type("artifact", "Артефакт", new int[][]{{1,1}});
         artifact.maxModifiers = 5; // "на артефактах не более 5 модификаторов вне зависимости от редкости"
         artifact.imageFolder = "artifact";
-        mod(artifact, "artifact_light_radius", "Радиус света", 1, 10, "", NEUTRAL).gated("unique");
+        mod(artifact, "artifact_light_radius", "Сила света", 1, 10, "", NEUTRAL).gated("unique");
         mod(artifact, "artifact_fcr", "Скорость каста", 1, 10, "%", MAGIC);
         mod(artifact, "artifact_ar", "Рейтинг атаки", 10, 120, "", PHYSICAL);
         mod(artifact, "artifact_life_leech", "Похищение жизни", 1, 8, "%", PHYSICAL).exclusive("life_pool");
@@ -510,6 +510,16 @@ public class ItemModifierCatalog {
         mod(artifact, "artifact_replenish_life", "Восстановление здоровья", 1, 9, "", NEUTRAL);
         mod(artifact, "artifact_replenish_mana", "Восстановление маны", 1, 9, "", MAGIC);
         mod(artifact, "artifact_all_skills", "Все навыки", 1, 1, "", MAGIC).gated("rare");
+
+        // ───────────────────────── ФАКЕЛ ─────────────────────────
+        // Альтернатива щиту/гримуару (тот же eq-слот, см. SystemUI.allowedEqSlotsForType) — без
+        // подклассов и обычных модификаторов: основная характеристика ("Сила света", 5..11, диапазон
+        // ролла сужен по редкости — common 5-7, rare 7-9, unique 9-11) и
+        // требование по уровню считаются отдельной формулой (см. ItemGenerator.rollMainStat/
+        // recomputeRequirements), а свечение/время горения жёстко заданы редкостью (см.
+        // ItemGenerator.applyTorchRarityStats) — не роллятся как обычные статы.
+        TypeDef torch = type("torch", "Факел", new int[][]{{2, 4}});
+        torch.imageFolder = "torch";
 
         // ───────────────────────── ЧАРМ ─────────────────────────
         // Класс чарма строго определяется размером — не роллится отдельно.
