@@ -4,6 +4,7 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.objects.MapObject;
 
 /**
  * Интерфейс игрока в режиме симуляции.
@@ -124,7 +125,11 @@ public class PlayerUI {
                 }
 
                 float lit = Math.max(rawLight, lightBoost);
-                float[] c = tileColor(store.objectedMap[mi][mj].getTextureId());
+                MapObject tile = store.objectedMap[mi][mj];
+                // Вода — отдельный слой поверхности (surfaceId), независимый от объектного слоя
+                // (textureId — дерево/камень/трава сверху воды и т.п., см. MapObject class javadoc) —
+                // раньше миникарта смотрела только на textureId, поэтому реки/озёра были не видны.
+                float[] c = tile.getSurfaceId() == WATER_TEXTURE_ID ? WATER_COLOR : tileColor(tile.getTextureId());
                 batch.setColor(c[0] * lit, c[1] * lit, c[2] * lit, 1f);
                 batch.draw(pixel, dx1, dy1, dx2 - dx1, dy2 - dy1);
             }
@@ -158,6 +163,11 @@ public class PlayerUI {
     }
 
     // ── Цветовая палитра тайлов ───────────────────────────────────────────────
+
+    // Вода — surfaceId, не textureId (см. Editor.WATER_TEXTURE_ID, тот же id=10 — константа
+    // продублирована по тому же принципу, что и в Player/DropManager/SpawnManager).
+    private static final int WATER_TEXTURE_ID = 10;
+    private static final float[] WATER_COLOR = {0.16f, 0.34f, 0.58f};
 
     private static final float[][] TILE_COLORS = {
         {0.22f, 0.20f, 0.13f},  //  0  голая земля
