@@ -121,11 +121,15 @@ public class Player extends BaseObject {
     public java.util.Set<String> activeAuras = new java.util.HashSet<>();
 
     // ── Пассивные боевые статы от умений — пересчитываются в SystemUI.recomputePlayerStats(),
-    // показываются на вкладке Статы (см. renderStats). Пока только Воитель: Смертоносность/Тяжелая рука.
-    public float critChance   = 0f; // % (Смертоносность)
-    public float critDamage   = 0f; // % (Смертоносность)
-    public float stunChance   = 0f; // % (Тяжелая рука)
-    public float stunDuration = 0f; // сек (Тяжелая рука)
+    // показываются на вкладке Статы (см. renderStats). Пока только Воитель: Смертоносность/Тяжелая
+    // рука/Широкий взмах.
+    public float critChance    = 0f; // % (Смертоносность)
+    public float critDamage    = 0f; // % (Смертоносность)
+    public float stunChance    = 0f; // % (Тяжелая рука)
+    public float stunDuration  = 0f; // сек (Тяжелая рука)
+    // Широкий взмах — больше не шанс срабатывания, всегда активен, если умение вложено (см. ТЗ:
+    // "если сплеш есть - то пусть работает всегда"), поэтому только урон, без chance-поля.
+    public float splashDamage  = 0f; // % (Широкий взмах)
 
     /** Начисляет опыт, обрабатывая один или несколько левел-апов подряд (остаток переносится). */
     public void addExperience(int amount) {

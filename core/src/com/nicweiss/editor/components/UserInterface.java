@@ -593,6 +593,9 @@ public class UserInterface {
                 p.baseDexterity     = prog.baseDexterity;
                 p.unspentStatPoints = prog.unspentStatPoints;
                 p.unspentSkillPoints = prog.unspentSkillPoints;
+                if (prog.skillLevels != null)      p.skillLevels = new java.util.HashMap<>(prog.skillLevels);
+                if (prog.mainSkillSlots != null)   p.mainSkillSlots = prog.mainSkillSlots;
+                if (prog.comboSkillSlots != null)  p.comboSkillSlots = prog.comboSkillSlots;
             }
             store.playerUI        = new com.nicweiss.editor.simulation.PlayerUI();
             store.playerHud       = new com.nicweiss.editor.simulation.PlayerHud();
@@ -659,6 +662,9 @@ public class UserInterface {
             prog.baseDexterity     = p.baseDexterity;
             prog.unspentStatPoints = p.unspentStatPoints;
             prog.unspentSkillPoints = p.unspentSkillPoints;
+            prog.skillLevels      = new java.util.HashMap<>(p.skillLevels);
+            prog.mainSkillSlots   = p.mainSkillSlots;
+            prog.comboSkillSlots  = p.comboSkillSlots;
             store.savedProgress = prog;
         }
 

@@ -67,6 +67,12 @@ public class Store {
     public static class PlayerProgress {
         public int level, experience, baseStrength, baseMagic, baseDexterity;
         public int unspentStatPoints, unspentSkillPoints;
+        // Прокачка умений и их привязка к кнопкам (см. Player.skillLevels/mainSkillSlots/
+        // comboSkillSlots) — без этого умения и хотбар обнулялись бы при каждом выходе из
+        // симуляции, как статы до этого поля.
+        public java.util.Map<String, Integer> skillLevels;
+        public com.nicweiss.editor.utils.SkillSlot[] mainSkillSlots;
+        public com.nicweiss.editor.utils.SkillSlot[] comboSkillSlots;
     }
 
     // Рендер погоды — создаётся на GL-потоке при запуске симуляции

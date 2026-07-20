@@ -19,6 +19,7 @@ import com.nicweiss.editor.utils.SkillSlot;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,8 +33,8 @@ public class SystemUI {
     public static Store store;
 
     // ── Вкладки ───────────────────────────────────────────────────────────────
-    public enum Tab { QUESTS, INVENTORY, STATS, DROP, SKILLS, MENU }
-    private static final String[] TAB_LABELS = {"ЗАДАНИЯ", "ИНВЕНТАРЬ", "СТАТЫ", "ДРОП", "НАВЫКИ", "МЕНЮ"};
+    public enum Tab { QUESTS, INVENTORY, STATS, SKILLS, DROP, MENU }
+    private static final String[] TAB_LABELS = {"ЗАДАНИЯ", "ИНВЕНТАРЬ", "СТАТЫ", "НАВЫКИ", "ДРОП", "МЕНЮ"};
 
     private boolean isOpen    = false;
     private Tab     activeTab = Tab.INVENTORY;
@@ -186,10 +187,14 @@ public class SystemUI {
     // ветка, даже если открыть её пока нельзя.
     private static final Color C_TREE_LINE     = new Color(0.45f, 0.60f, 0.85f, 0.95f);
     private static final Color C_TREE_LINE_DIM = new Color(0.30f, 0.34f, 0.40f, 0.70f);
+    // Умение с вложенными очками, но временно недоступное для прокачки (см. drawSkillSquare) —
+    // при наведении курсора подсвечивается этим оранжевым, вместо обычного полного цвета.
+    private static final Color C_SKILL_HOVER_LOCKED = new Color(1f, 0.55f, 0.15f, 1f);
 
     private int skillsSubtab = 0; // 0=Воитель,1=Вестник,2=Стихийник
-    // Фокус геймпада/навигации — координаты в ДЕРЕВЕ текущей подвкладки (см. treeRowsFor):
-    // skillsFocusRow — индекс строки (ветки), skillsFocusCol — позиция умения в этой строке.
+    // Фокус геймпада/навигации — координаты в ГРАФЕ текущей подвкладки (см. rowsFor): skillsFocusRow —
+    // индекс Y-лэйна (строки), skillsFocusCol — позиция умения внутри этого лэйна (отсортированы по
+    // требуемому уровню, то же самое, что и порядок по X, см. renderSkills).
     private int skillsFocusRow = 0;
     private int skillsFocusCol = 0;
     private float   skillsHoldATimer = 0f;
@@ -202,33 +207,76 @@ public class SystemUI {
     // И умение разблокировано (см. isSkillUnlocked).
     private final java.util.List<float[]> skillPlusHotspots = new java.util.ArrayList<>();
 
-    // ── Деревья умений (по требованию пользователя) — фиксированные "ветки" слева направо,
-    // между узлами рисуется пунктирная линия-путь (см. drawBranchConnector). Каждый следующий
-    // узел ветки требует, чтобы В ПРЕДЫДУЩЕМ было вложено хотя бы 1 очко (см.
-    // SkillCatalog.isUnlocked/SkillDef.prerequisites — те же данные, что тут в дереве, продублированы
-    // намеренно: тут просто раскладка ДЛЯ ОТОБРАЖЕНИЯ, реальная проверка доступности — в каталоге).
-    // Некоторые умения встречаются в НЕСКОЛЬКИХ ветках (общий узел, напр. "Удар" — предок сразу
-    // двух цепочек Воителя) — это ожидаемо, рисуются на каждой ветке отдельно.
-    private static final String[][] WARRIOR_TREE = {
-        {"warrior_strike", "warrior_blade_dash", "warrior_shadow_blade"},
-        {"warrior_strike", "warrior_death_whirl", "warrior_madness"},
-        {"warrior_splash", "warrior_stun", "warrior_crit"},
-    };
-    private static final String[][] HERALD_TREE = {
-        {"herald_defense", "herald_evasion"},
-        {"herald_defense", "herald_steel_will"},
-        {"herald_heal", "herald_steel_will"},
-        {"herald_suppression", "herald_evasion"},
-        {"herald_stupor"},
-    };
-    private static final String[][] ELEMENTALIST_TREE = {
-        {"elem_fire_ball", "elem_fire_wave", "elem_fire_doom"},
-        {"elem_cold_spike", "elem_cold_mist", "elem_cold_fragility"},
-        {"elem_lightning_chain", "elem_lightning_storm", "elem_lightning_shield"},
-    };
+    // ── Дерево умений — НАСТОЯЩИЙ граф, узел на умение строго один (общий предок нескольких
+    // цепочек рисуется ОДИН раз, а не дублируется на каждой ветке). Рёбра берутся напрямую из
+    // SkillCatalog.SkillDef.prerequisites — отдельного списка "веток для отображения" больше нет,
+    // каталог и рендер используют одни и те же данные. X-координата узла — % от требуемого уровня
+    // умения относительно максимального требуемого уровня в подвкладке (см. renderSkills). Y-лэйн —
+    // ручная раскладка ниже (нужна, т.к. в графе есть и форки (1 родитель → неск. детей, напр.
+    // "Удар"), и мерджи (неск. родителей → 1 ребёнок, напр. "Аура Уклонения"/"Аура Стальной Воли") —
+    // общий алгоритм авторазметки DAG избыточен для 6-9 умений на подвкладку. Дробные значения
+    // (0.5) — узел-развилка, зажатый между двумя лэйнами своих потомков/предков.
+    private static final Map<String, Float> SKILL_LANE = new HashMap<>();
+    static {
+        // Воитель: "Удар" — общий предок 2 цепочек (blade_dash.. и death_whirl..), поэтому его
+        // лэйн — посередине между ними; "Широкий взмах" — независимая 3-я цепочка.
+        SKILL_LANE.put("warrior_strike", 0.5f);
+        SKILL_LANE.put("warrior_blade_dash", 0f);
+        SKILL_LANE.put("warrior_shadow_blade", 0f);
+        SKILL_LANE.put("warrior_death_whirl", 1f);
+        SKILL_LANE.put("warrior_madness", 1f);
+        SKILL_LANE.put("warrior_splash", 2f);
+        SKILL_LANE.put("warrior_stun", 2f);
+        SKILL_LANE.put("warrior_crit", 2f);
+        // Вестник: Защиты и Исцеления — оба родители Стальной Воли (мердж); дальше Стальной Воли
+        // ведёт к Уклонению; Оцепенения->Подавления->Уклонения — отдельная цепочка, сливающаяся
+        // со Стальной Волей в Уклонении (второй мердж).
+        SKILL_LANE.put("herald_defense", 0f);
+        SKILL_LANE.put("herald_steel_will", 0.5f);
+        SKILL_LANE.put("herald_heal", 1f);
+        SKILL_LANE.put("herald_evasion", 1f);
+        SKILL_LANE.put("herald_stupor", 2f);
+        SKILL_LANE.put("herald_suppression", 2f);
+        // Стихийник: 3 независимые цепочки, по одной на стихию.
+        SKILL_LANE.put("elem_fire_ball", 0f);
+        SKILL_LANE.put("elem_fire_wave", 0f);
+        SKILL_LANE.put("elem_fire_doom", 0f);
+        SKILL_LANE.put("elem_cold_spike", 1f);
+        SKILL_LANE.put("elem_cold_mist", 1f);
+        SKILL_LANE.put("elem_cold_fragility", 1f);
+        SKILL_LANE.put("elem_lightning_chain", 2f);
+        SKILL_LANE.put("elem_lightning_storm", 2f);
+        SKILL_LANE.put("elem_lightning_shield", 2f);
+    }
+    private static float laneOf(String skillId) { return SKILL_LANE.getOrDefault(skillId, 0f); }
 
-    private static String[][] treeRowsFor(int subtab) {
-        return subtab == 0 ? WARRIOR_TREE : subtab == 1 ? HERALD_TREE : ELEMENTALIST_TREE;
+    private static SkillCatalog.Branch branchFor(int subtab) {
+        return subtab == 0 ? SkillCatalog.Branch.WARRIOR
+             : subtab == 1 ? SkillCatalog.Branch.HERALD
+             :                SkillCatalog.Branch.ELEMENTALIST;
+    }
+
+    /** Умения подвкладки как настоящий граф, сгруппированный на "строки" по Y-лэйну (см.
+     *  SKILL_LANE) — нужно только для 2D-навигации геймпада (skillsNavigate/handleSkills*Click),
+     *  каждое умение встречается РОВНО один раз (см. класс-комментарий у SKILL_LANE). Внутри
+     *  строки узлы отсортированы по требуемому уровню — тем же порядком, что и по X (см.
+     *  renderSkills). */
+    private List<List<SkillCatalog.SkillDef>> rowsFor(int subtab) {
+        List<SkillCatalog.SkillDef> defs = SkillCatalog.byBranch(branchFor(subtab));
+        java.util.List<Float> lanes = new java.util.ArrayList<>();
+        for (SkillCatalog.SkillDef d : defs) {
+            float l = laneOf(d.id);
+            if (!lanes.contains(l)) lanes.add(l);
+        }
+        java.util.Collections.sort(lanes);
+        java.util.List<List<SkillCatalog.SkillDef>> rows = new java.util.ArrayList<>();
+        for (float lane : lanes) {
+            java.util.List<SkillCatalog.SkillDef> row = new java.util.ArrayList<>();
+            for (SkillCatalog.SkillDef d : defs) if (laneOf(d.id) == lane) row.add(d);
+            row.sort((a, b) -> Integer.compare(a.unlockLevel, b.unlockLevel));
+            rows.add(row);
+        }
+        return rows;
     }
 
     // ── Окно привязки умения к кнопке (модальное поверх вкладки Навыки) ────────
@@ -726,6 +774,7 @@ public class SystemUI {
         if (p.critDamage   != 0) lines.add(new String[]{"Крит. урон",             "+" + p.critDamage + "%", "0.91","0.35","0.35", null});
         if (p.stunChance   != 0) lines.add(new String[]{"Шанс оглушения",         p.stunChance   + "%",  "0.85","0.65","0.35", null});
         if (p.stunDuration != 0) lines.add(new String[]{"Длительность оглушения", p.stunDuration + " сек", "0.85","0.65","0.35", null});
+        if (p.splashDamage != 0) lines.add(new String[]{"Урон по площади",       p.splashDamage + "%",  "0.55","0.80","1.00", null});
 
         if (p.defence          != 0) lines.add(new String[]{"Защита",             String.valueOf(p.defence),          "0.35","0.80","0.75", null});
         if (p.defenceRating    != 0) lines.add(new String[]{"Повышение защита",      p.defenceRating    + "%",           "0.35","0.80","0.75", null});
@@ -889,6 +938,16 @@ public class SystemUI {
         return SkillCatalog.isUnlocked(def, store.player.level, store.player.skillLevels);
     }
 
+    /** Можно ли ПРЯМО СЕЙЧАС потратить очко в это умение — разблокировано, не на максимум (20) и
+     *  есть хотя бы 1 нераспределённое очко. Единая точка правды для всей раскраски/кнопки "+" на
+     *  вкладке Навыки (см. drawSkillSquare) — "заблокировано", "на максимуме" и "нет свободных
+     *  очков" для пользователя визуально означают одно и то же: "прокачать нельзя". */
+    private boolean canLevelUp(SkillCatalog.SkillDef def) {
+        if (store.player == null || def == null) return false;
+        int invested = store.player.skillLevels.getOrDefault(def.id, 0);
+        return isSkillUnlocked(def) && invested < SkillCatalog.SkillDef.MAX_LEVEL && store.player.unspentSkillPoints > 0;
+    }
+
     private void renderSkills(SpriteBatch batch, float px, float py, float cH) {
         if (store.player == null) return;
         Player p = store.player;
@@ -913,9 +972,9 @@ public class SystemUI {
         col(batch, C_BORDER);
         batch.draw(pixel, px, subtabY, PANEL_W, 1);
 
-        String[][] rows = treeRowsFor(skillsSubtab);
-        if (skillsFocusRow >= rows.length) skillsFocusRow = 0;
-        if (skillsFocusCol >= rows[skillsFocusRow].length) skillsFocusCol = 0;
+        List<List<SkillCatalog.SkillDef>> rows = rowsFor(skillsSubtab);
+        if (skillsFocusRow >= rows.size()) skillsFocusRow = 0;
+        if (!rows.isEmpty() && skillsFocusCol >= rows.get(skillsFocusRow).size()) skillsFocusCol = 0;
 
         boolean showMsg = p.unspentSkillPoints > 0;
         if (showMsg) {
@@ -928,29 +987,52 @@ public class SystemUI {
         skillsHotspots.clear();
         skillPlusHotspots.clear();
 
-        // Дерево — каждая строка (ветка) растянута НА ВСЮ ширину панели, узлы равномерно
-        // распределены от левого до правого края (см. ТЗ: "на всю ширину окна").
+        // X-координата узла — % от требуемого уровня МЕЖДУ минимальным и максимальным требуемым
+        // уровнем в этой подвкладке (минимальный = 0% — левый край, максимальный = 100% — правый
+        // край, см. уточнение пользователя: считать не от абсолютного 0, а от минимума подвкладки —
+        // иначе при плотной группе низких уровней и одном высоком узлы визуально сбивались влево).
+        int minUnlock = Integer.MAX_VALUE, maxUnlock = 0;
+        for (List<SkillCatalog.SkillDef> row : rows)
+            for (SkillCatalog.SkillDef d : row) {
+                minUnlock = Math.min(minUnlock, d.unlockLevel);
+                maxUnlock = Math.max(maxUnlock, d.unlockLevel);
+            }
+        int unlockSpan = maxUnlock - minUnlock;
         float usableW = PANEL_W - STATS_PAD * 2 - SKILLS_SQUARE;
 
-        for (int r = 0; r < rows.length; r++) {
-            String[] chain = rows[r];
+        Map<String, float[]> pos = new HashMap<>(); // skillId -> {x, y} (левый нижний угол квадрата)
+        for (int r = 0; r < rows.size(); r++) {
             float rowTop = gridTop - r * (SKILLS_SQUARE + SKILLS_ROW_GAP);
             float squareBottom = rowTop - SKILLS_SQUARE;
-            float stepX = chain.length > 1 ? usableW / (chain.length - 1) : 0f;
-
-            // Пунктирная "ветка" рисуется ДО узлов — чтобы иконки поверх неё, без наложения линии на артворк.
-            for (int c = 0; c < chain.length - 1; c++) {
-                float x1 = px + STATS_PAD + c * stepX + SKILLS_SQUARE;
-                float x2 = px + STATS_PAD + (c + 1) * stepX;
-                float cy = squareBottom + SKILLS_SQUARE / 2f;
-                boolean childUnlocked = isSkillUnlocked(SkillCatalog.SKILLS.get(chain[c + 1]));
-                drawBranchConnector(batch, x1, cy, x2, cy, childUnlocked);
+            for (SkillCatalog.SkillDef d : rows.get(r)) {
+                float pct = unlockSpan > 0 ? (d.unlockLevel - minUnlock) / (float) unlockSpan : 0f;
+                float sx = px + STATS_PAD + pct * usableW;
+                pos.put(d.id, new float[]{sx, squareBottom});
             }
+        }
 
-            for (int c = 0; c < chain.length; c++) {
-                float sx = px + STATS_PAD + c * stepX;
-                SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get(chain[c]);
-                if (def != null) drawSkillSquare(batch, sx, squareBottom, def, r, c);
+        // Рёбра дерева — напрямую из SkillDef.prerequisites (реальные данные каталога, никакого
+        // отдельного списка "веток"), рисуются ДО узлов, чтобы иконки перекрывали линии.
+        for (List<SkillCatalog.SkillDef> row : rows) {
+            for (SkillCatalog.SkillDef d : row) {
+                float[] to = pos.get(d.id);
+                if (to == null) continue;
+                for (String parentId : d.prerequisites) {
+                    float[] from = pos.get(parentId);
+                    if (from == null) continue;
+                    float x1 = from[0] + SKILLS_SQUARE / 2f, y1 = from[1] + SKILLS_SQUARE / 2f;
+                    float x2 = to[0]   + SKILLS_SQUARE / 2f, y2 = to[1]   + SKILLS_SQUARE / 2f;
+                    drawBranchConnector(batch, x1, y1, x2, y2, isSkillUnlocked(d));
+                }
+            }
+        }
+
+        for (int r = 0; r < rows.size(); r++) {
+            List<SkillCatalog.SkillDef> row = rows.get(r);
+            for (int c = 0; c < row.size(); c++) {
+                SkillCatalog.SkillDef def = row.get(c);
+                float[] xy = pos.get(def.id);
+                drawSkillSquare(batch, xy[0], xy[1], def, r, c);
             }
         }
 
@@ -969,9 +1051,11 @@ public class SystemUI {
             }
         }
         if (hovered != null) {
-            String skillId = treeRowsFor(skillsSubtab)[(int) hovered[4]][(int) hovered[5]];
-            SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get(skillId);
-            if (def != null) renderSkillTooltip(batch, def, hovered[0] + hovered[2] / 2f, hovered[1] + hovered[3] / 2f);
+            SkillCatalog.SkillDef def = rows.get((int) hovered[4]).get((int) hovered[5]);
+            // Точка привязки — низ иконки, а не центр: тултип обычно раскрывается вверх (см.
+            // computeTooltipY), и от центра он перекрывал нижнюю половину самой иконки. Смещение
+            // вниз на половину высоты иконки (см. ТЗ) убирает это наложение.
+            if (def != null) renderSkillTooltip(batch, def, hovered[0] + hovered[2] / 2f, hovered[1]);
         }
 
         batch.setColor(1, 1, 1, 1);
@@ -997,6 +1081,10 @@ public class SystemUI {
     private void drawSkillSquare(SpriteBatch batch, float x, float y, SkillCatalog.SkillDef def, int row, int col) {
         boolean focused = store.isGamepadMode && row == skillsFocusRow && col == skillsFocusCol;
         boolean unlocked = isSkillUnlocked(def);
+        int invested = store.player.skillLevels.getOrDefault(def.id, 0);
+        boolean canLevel = canLevelUp(def);
+        boolean hoveredNow = store.mouseX >= x && store.mouseX <= x + SKILLS_SQUARE
+                          && store.mouseY >= y && store.mouseY <= y + SKILLS_SQUARE;
 
         col(batch, focused ? C_BTN_FOCUS : C_SLOT_BG);
         batch.draw(pixel, x, y, SKILLS_SQUARE, SKILLS_SQUARE);
@@ -1005,13 +1093,23 @@ public class SystemUI {
 
         // Иконка умения — ячейка тут квадратная (не круглая, как в HUD), обрезка не нужна:
         // достаточно нарисовать картинку на весь квадрат с небольшим отступом от рамки.
-        // Заблокированные (недоступные для прокачки) умения — притушены, чтобы было видно
-        // разницу с уже открытыми.
+        // Раскраска (по требованию пользователя, см. drawSkillSquare-правки):
+        //  - можно прокачать ПРЯМО СЕЙЧАС (см. canLevelUp) — всегда полный цвет, даже без вложенных
+        //    очков (иначе только что открывшееся умение выглядело бы как заблокированное);
+        //  - прокачать нельзя, но очки уже вложены (0 < invested) И где-то ЕЩЁ есть свободные очки
+        //    (unspentSkillPoints>0, просто не сюда) — полный цвет, но при наведении курсора
+        //    подсвечивается оранжевым (маркер "тут что-то есть, но сейчас недоступно для прокачки");
+        //  - прокачать нельзя, очки вложены, но свободных очков нигде вообще нет — просто полный
+        //    цвет без оранжевой подсветки (наводить курсор незачем — прокачка сейчас в принципе
+        //    невозможна, а не только для этого умения);
+        //  - прокачать нельзя и очков 0 — всегда серое/обесцвеченное.
         Texture icon = loadSkillIcon(def.imageFile);
         if (icon != null) {
             float inset = 4f;
-            if (unlocked) batch.setColor(1f, 1f, 1f, 1f);
-            else          batch.setColor(0.4f, 0.4f, 0.42f, 0.55f);
+            boolean canHoverOrange = invested > 0 && !canLevel && store.player.unspentSkillPoints > 0;
+            if (canLevel)                 batch.setColor(1f, 1f, 1f, 1f);
+            else if (invested > 0)        batch.setColor(hoveredNow && canHoverOrange ? C_SKILL_HOVER_LOCKED : Color.WHITE);
+            else                          batch.setColor(0.4f, 0.4f, 0.42f, 0.55f);
             batch.draw(icon, x + inset, y + inset, SKILLS_SQUARE - inset * 2, SKILLS_SQUARE - inset * 2);
             batch.setColor(1f, 1f, 1f, 1f);
         }
@@ -1029,11 +1127,11 @@ public class SystemUI {
         else                                                   font.setColor(C_TEXT_DIM);
         font.draw(batch, badgeText, x + SKILLS_SQUARE - badgeW - 2f + 4f, y + 2f + badgeH - 2f);
 
-        // Кнопка "+" (крупнее аналога на вкладке Статы) — только пока умение разблокировано И
-        // есть очки на распределение. Клик/A — потратить (см. handleSkillsButtonClick/
-        // gamepadActivateFocusedSkill); привязка умения к кнопке — отдельно, по ПКМ/X (см.
-        // handleSkillsRmbClick/openPickerForFocusedSkill).
-        if (unlocked && store.player.unspentSkillPoints > 0) {
+        // Кнопка "+" (крупнее аналога на вкладке Статы) — только у умений, которые МОЖНО прокачать
+        // прямо сейчас (см. canLevelUp — разблокировано, не на максимуме, есть свободные очки).
+        // Клик/A — потратить (см. handleSkillsButtonClick/gamepadActivateFocusedSkill); привязка
+        // умения к кнопке — отдельно, по ПКМ/X (см. handleSkillsRmbClick/openPickerForFocusedSkill).
+        if (canLevel) {
             // Верхний левый угол квадрата (симметрично бейджу уровня в правом нижнем) — целиком
             // внутри квадрата, с небольшим отступом.
             float plusX = x + 2f;
@@ -1063,30 +1161,30 @@ public class SystemUI {
      *  dCol — смена позиции ВНУТРИ текущей ветки (см. treeRowsFor — строки разной длины). */
     public void skillsNavigate(int dRow, int dCol) {
         if (!isSkillsOpen() || pickerOpen) return;
-        String[][] rows = treeRowsFor(skillsSubtab);
-        if (rows.length == 0) return;
+        List<List<SkillCatalog.SkillDef>> rows = rowsFor(skillsSubtab);
+        if (rows.isEmpty()) return;
         if (dRow != 0) {
-            skillsFocusRow = (skillsFocusRow + dRow + rows.length) % rows.length;
-            skillsFocusCol = Math.min(skillsFocusCol, rows[skillsFocusRow].length - 1);
+            skillsFocusRow = (skillsFocusRow + dRow + rows.size()) % rows.size();
+            skillsFocusCol = Math.min(skillsFocusCol, rows.get(skillsFocusRow).size() - 1);
         }
         if (dCol != 0) {
-            int len = rows[skillsFocusRow].length;
+            int len = rows.get(skillsFocusRow).size();
             skillsFocusCol = (skillsFocusCol + dCol + len) % len;
         }
     }
 
     private void gamepadActivateFocusedSkill(int amount) {
-        String[][] rows = treeRowsFor(skillsSubtab);
-        if (skillsFocusRow >= rows.length || skillsFocusCol >= rows[skillsFocusRow].length) return;
-        spendSkillPoints(rows[skillsFocusRow][skillsFocusCol], amount);
+        List<List<SkillCatalog.SkillDef>> rows = rowsFor(skillsSubtab);
+        if (skillsFocusRow >= rows.size() || skillsFocusCol >= rows.get(skillsFocusRow).size()) return;
+        spendSkillPoints(rows.get(skillsFocusRow).get(skillsFocusCol).id, amount);
     }
 
     /** X на геймпаде (короткое нажатие, см. pollGamepad) — открывает окно привязки для СФОКУСИРОВАННОГО
      *  умения, независимо от наличия очков (аналог ПКМ мышью, см. handleSkillsRmbClick). */
     private void openPickerForFocusedSkill() {
-        String[][] rows = treeRowsFor(skillsSubtab);
-        if (skillsFocusRow >= rows.length || skillsFocusCol >= rows[skillsFocusRow].length) return;
-        openKeybindPicker(rows[skillsFocusRow][skillsFocusCol]);
+        List<List<SkillCatalog.SkillDef>> rows = rowsFor(skillsSubtab);
+        if (skillsFocusRow >= rows.size() || skillsFocusCol >= rows.get(skillsFocusRow).size()) return;
+        openKeybindPicker(rows.get(skillsFocusRow).get(skillsFocusCol).id);
     }
 
     private boolean handleSkillsSubtabClick(float mx, float my, float px, float py) {
@@ -1109,14 +1207,14 @@ public class SystemUI {
      *  (и хит-тестится) только пока умение разблокировано И есть нераспределённые очки. */
     private boolean handleSkillsButtonClick(float mx, float my) {
         if (store.player == null) return false;
-        String[][] rows = treeRowsFor(skillsSubtab);
+        List<List<SkillCatalog.SkillDef>> rows = rowsFor(skillsSubtab);
         for (float[] h : skillPlusHotspots) {
             if (mx >= h[0] && mx <= h[0] + h[2] && my >= h[1] && my <= h[1] + h[3]) {
                 int r = (int) h[4], c = (int) h[5];
-                if (r < 0 || r >= rows.length || c < 0 || c >= rows[r].length) return true;
+                if (r < 0 || r >= rows.size() || c < 0 || c >= rows.get(r).size()) return true;
                 boolean shift = Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_LEFT)
                              || Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_RIGHT);
-                spendSkillPoints(rows[r][c], shift ? MULTI_SPEND_AMOUNT : 1);
+                spendSkillPoints(rows.get(r).get(c).id, shift ? MULTI_SPEND_AMOUNT : 1);
                 return true;
             }
         }
@@ -1126,11 +1224,12 @@ public class SystemUI {
     /** ПКМ по квадрату умения (любому, вне зависимости от очков) — открывает окно привязки к
      *  кнопке (см. ТЗ: "вызов окна связки на ПКМ или на X на геймпаде"). */
     private boolean handleSkillsRmbClick(float mx, float my) {
-        String[][] rows = treeRowsFor(skillsSubtab);
+        List<List<SkillCatalog.SkillDef>> rows = rowsFor(skillsSubtab);
         for (float[] h : skillsHotspots) {
             if (mx >= h[0] && mx <= h[0] + h[2] && my >= h[1] && my <= h[1] + h[3]) {
                 int r = (int) h[4], c = (int) h[5];
-                if (r >= 0 && r < rows.length && c >= 0 && c < rows[r].length) openKeybindPicker(rows[r][c]);
+                if (r >= 0 && r < rows.size() && c >= 0 && c < rows.get(r).size())
+                    openKeybindPicker(rows.get(r).get(c).id);
                 return true;
             }
         }
@@ -1253,7 +1352,12 @@ public class SystemUI {
                 }
             }
             if (!missing.isEmpty()) {
-                lines.add(new String[]{"Требует: " + String.join(", ", missing), "0.90", "0.35", "0.35"});
+                // Список предпосылок переносится по словам, как и описание (см. wrapText выше) —
+                // иначе длинный список (несколько родителей, см. herald_evasion/herald_steel_will)
+                // вылезал за правый край тултипа одной строкой.
+                for (String wl : wrapText("Требует: " + String.join(", ", missing), tw - TPAD * 2)) {
+                    lines.add(new String[]{wl, "0.90", "0.35", "0.35"});
+                }
             }
         }
 
@@ -1299,6 +1403,9 @@ public class SystemUI {
         // привязка к кнопке для них бессмысленна, поэтому окно привязки для PASSIVE не открываем.
         SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get(skillId);
         if (def != null && def.kind == SkillCatalog.SkillKind.PASSIVE) return;
+        // 0 вложенных очков — умение ещё не "изучено" по-настоящему, привязывать его к кнопке нельзя
+        // (см. ТЗ: "если в скилле 0 поинтов - его нельзя использовать для привязки").
+        if (store.player != null && store.player.skillLevels.getOrDefault(skillId, 0) <= 0) return;
 
         pickerOpen = true;
         pickerSkillId = skillId;
@@ -1468,15 +1575,32 @@ public class SystemUI {
     }
 
     /** Пишет захваченный код в keyboardInputCode ЛИБО gamepadInputCode (см. SkillSlot — раздельные
-     *  поля, чтобы привязки клавиатуры/мыши и геймпада никогда не конфликтовали и не затирали друг
-     *  друга). Если ячейка раньше держала ДРУГОЕ умение — обе привязки сбрасываются (не тащим
-     *  чужие бинды за новым умением); если то же самое умение просто получает вторую привязку
-     *  (например уже есть ЛКМ, теперь добавляется геймпад-кнопка) — вторая привязка добавляется
-     *  рядом, не трогая первую. */
+     *  поля) — строго в пределах ТЕКУЩЕГО ряда (основной/комбо) и ТЕКУЩЕГО типа ввода (клавиатура/
+     *  мышь И геймпад считаются РАЗДЕЛЬНО — привязка одного никогда не трогает поля другого):
+     *
+     *  1. Если ЭТО ЖЕ умение уже было привязано в ДРУГОЙ ячейке этого ряда (тем же типом ввода) —
+     *     снимаем оттуда старую привязку (умение может висеть только на одной кнопке каждого типа).
+     *  2. Если этот КОД КНОПКИ уже занят ДРУГИМ умением в этом же ряду (тем же типом ввода) —
+     *     освобождаем его оттуда (одна кнопка не может звать два разных умения).
+     *  3. Если целевая ячейка держала ДРУГОЕ умение — обе привязки сбрасываются (не тащим чужие
+     *     бинды за новым умением); если то же самое умение — вторая привязка (другого типа)
+     *     добавляется рядом, не трогая первую (см. Player.initDefaultSkills — "Удар" на ЛКМ+B). */
     private void bindCapturedInput(String inputCode, boolean gamepad) {
         if (store.player == null) { closeKeybindPicker(); return; }
         SkillSlot[] slots = pickerFocusRow == 0 ? store.player.mainSkillSlots : store.player.comboSkillSlots;
         SkillSlot slot = slots[pickerFocusCol];
+
+        for (SkillSlot s : slots) {
+            if (s == slot) continue;
+            boolean sameSkill = pickerSkillId.equals(s.skillId);
+            String  boundHere = gamepad ? s.gamepadInputCode : s.keyboardInputCode;
+            boolean sameButton = inputCode.equals(boundHere);
+            if (sameSkill || sameButton) {
+                if (gamepad) s.gamepadInputCode = null; else s.keyboardInputCode = null;
+                if (s.keyboardInputCode == null && s.gamepadInputCode == null) s.skillId = null;
+            }
+        }
+
         if (!java.util.Objects.equals(pickerSkillId, slot.skillId)) {
             slot.keyboardInputCode = null;
             slot.gamepadInputCode = null;
@@ -2307,6 +2431,11 @@ public class SystemUI {
         int stunLevel = p.effectiveSkillLevel("warrior_stun");
         p.stunChance   = stunLevel > 0 ? 5f + 0.75f * (stunLevel - 1) : 0f;
         p.stunDuration = stunLevel > 0 ? 1.0f + 0.05f * (stunLevel - 1) : 0f;
+
+        // Широкий взмах — без шанса срабатывания (см. SkillCatalog.warrior_splash): раз умение
+        // вложено, урон по площади применяется на КАЖДОЙ автоатаке.
+        int splashLevel = p.effectiveSkillLevel("warrior_splash");
+        p.splashDamage = splashLevel > 0 ? 30f + 2f * (splashLevel - 1) : 0f;
 
         if (p.pendingInitialFill) {
             // При входе в симуляцию — стартуем с половиной ёмкости (см. Player.pendingInitialFill).

@@ -184,9 +184,8 @@ public class SkillCatalog {
             ), fixedOf("hp_drain_pct", 3, "attack_speed_pct", 20, "mana", 0, "cooldown", 1)).withImage("warrior_4.png").withUnlock(20, "warrior_death_whirl"));
 
         l.add(new SkillDef("warrior_splash", "Широкий взмах (Сплеш)", Branch.WARRIOR, SkillKind.PASSIVE, null,
-            "Автоатаки получают шанс нанести урон по площади соседним врагам.",
+            "Автоатаки всегда наносят урон по площади соседним врагам.",
             Arrays.asList(
-                stat("trigger_chance_pct", "Шанс срабатывания", "%", L -> 15 + 4.47 * (L - 1)),
                 stat("splash_damage_pct", "Урон по площади", "%", L -> 30 + 2 * (L - 1))
             ), fixedOf()).withImage("warrior_5.png").withUnlock(5));
 
@@ -208,6 +207,11 @@ public class SkillCatalog {
     }
 
     // ── Направление 2: Вестник (6 аур — см. примечание о расхождении в шапке класса) ───────────
+    // Дерево (все 6 аур — ОДНА связная структура, узел "Стальной Воли" — общая точка-мердж, из
+    // которой идёт единственная дальнейшая ветка, а не дублируется): Защиты->Стальной Воли,
+    // Исцеления->Стальной Воли, Стальной Воли->Уклонения, Оцепенения->Подавления->Уклонения (см.
+    // SystemUI — рендер дерева строится напрямую из prerequisites ниже, отдельного списка
+    // "веток" для отображения нет).
     private static List<SkillDef> heraldSkills() {
         List<SkillDef> l = new ArrayList<>();
 
@@ -224,7 +228,7 @@ public class SkillCatalog {
         l.add(new SkillDef("herald_evasion", "Аура Уклонения", Branch.HERALD, SkillKind.AURA, null,
             "Снижает рейтинг атаки (шанс попадания) у врагов вокруг.",
             Arrays.asList(stat("enemy_accuracy_reduction_pct", "Снижение точности врагов", "%", L -> 5 + 1.0 * L)),
-            fixedOf("mana_reserve_pct", 15)).withImage("aura_3.png").withUnlock(13, "herald_defense", "herald_suppression"));
+            fixedOf("mana_reserve_pct", 15)).withImage("aura_3.png").withUnlock(13, "herald_steel_will", "herald_suppression"));
 
         l.add(new SkillDef("herald_steel_will", "Аура Стальной Воли", Branch.HERALD, SkillKind.AURA, null,
             "Повышает броню и отражает часть полученного физического урона обратно во врага.",
@@ -234,7 +238,7 @@ public class SkillCatalog {
         l.add(new SkillDef("herald_suppression", "Аура Подавления", Branch.HERALD, SkillKind.AURA, null,
             "Снижает физическое и стихийное сопротивление у всех врагов в области действия.",
             Arrays.asList(stat("defense_shred_pct", "Срез брони/резистов врагов", "%", L -> 10 + 1.25 * L)),
-            fixedOf("mana_reserve_pct", 25)).withImage("aura_5.png").withUnlock(7));
+            fixedOf("mana_reserve_pct", 25)).withImage("aura_5.png").withUnlock(7, "herald_stupor"));
 
         l.add(new SkillDef("herald_stupor", "Аура Оцепенения", Branch.HERALD, SkillKind.AURA, null,
             "Замедляет скорость передвижения и атаки у всех врагов поблизости.",
