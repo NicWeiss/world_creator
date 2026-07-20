@@ -579,7 +579,21 @@ public class UserInterface {
 
         // Player, PlayerUI, SystemUI и WeatherRenderer создаются на GL-потоке
         com.badlogic.gdx.Gdx.app.postRunnable(() -> {
-            store.player          = new com.nicweiss.editor.simulation.Player();
+            store.player = new com.nicweiss.editor.simulation.Player();
+            // Восстанавливаем прогресс (уровень/опыт/распределённые статы) с прошлой сессии
+            // симуляции, если она уже была — иначе прокачка сбрасывалась бы при каждом выходе/
+            // повторном входе (см. stopSimulation, где прогресс сохраняется перед обнулением player).
+            if (store.savedProgress != null) {
+                com.nicweiss.editor.simulation.Player p = store.player;
+                com.nicweiss.editor.Generic.Store.PlayerProgress prog = store.savedProgress;
+                p.level             = prog.level;
+                p.experience        = prog.experience;
+                p.baseStrength      = prog.baseStrength;
+                p.baseMagic         = prog.baseMagic;
+                p.baseDexterity     = prog.baseDexterity;
+                p.unspentStatPoints = prog.unspentStatPoints;
+                p.unspentSkillPoints = prog.unspentSkillPoints;
+            }
             store.playerUI        = new com.nicweiss.editor.simulation.PlayerUI();
             store.playerHud       = new com.nicweiss.editor.simulation.PlayerHud();
             store.systemUI        = new com.nicweiss.editor.simulation.SystemUI();
@@ -613,24 +627,41 @@ public class UserInterface {
         int playerTileX = (int) (store.player.worldX / store.tileSizeWidth)  - 1;
         int playerTileY = (int) (store.player.worldY / store.tileSizeHeight) - 1;
 
-        // Уровень/множитель фиксированы (10, x1), пока нет реальной точки вызова
-        // (смерть врага того же уровня даёт multiplier=1, элита/босс — больше).
-        com.nicweiss.editor.simulation.DropManager.dropExperience(10, 1f, playerTileX, playerTileY);
+        // Уровень врага = уровень игрока (пока нет реальной точки вызова — смерть врага того же
+        // уровня даёт multiplier=1, элита/босс — больше). Раньше был зафиксирован на 10 — не
+        // отражал реальные статы игрока (magicFind и т.д. в dropLoot зависят от store.player,
+        // но "уровень источника дропа" был constant, из-за чего отладка на высоких уровнях
+        // выглядела как дроп с врага уровня 10, а не как игрок ожидает).
+        int enemyLevel = Math.max(1, store.player.level);
+        com.nicweiss.editor.simulation.DropManager.dropExperience(enemyLevel, 1f, playerTileX, playerTileY);
 
-        // По требованию: отладочный дроп сразу выкидывает по факелу каждой редкости.
-        com.nicweiss.editor.simulation.DropManager.spawnTorchOfRarity("common", playerTileX, playerTileY);
-        com.nicweiss.editor.simulation.DropManager.spawnTorchOfRarity("rare",   playerTileX, playerTileY);
-        com.nicweiss.editor.simulation.DropManager.spawnTorchOfRarity("unique", playerTileX, playerTileY);
-
+        // Факелы больше НЕ форсируются здесь — они уже роллятся сами по вероятности внутри
+        // dropLoot() -> rollTorchDrop() на каждой из итераций ниже (см. DropManager), как и весь
+        // остальной лут. Принудительный гарантированный дроп по одному факелу каждой редкости
+        // обходил систему вероятностей — убран.
         for (int i = 0; i < 10; i++) {
             if (!store.isSimulationMode) return;
-            int enemyLevel = 1 + (int) (Math.random() * 49);
             com.nicweiss.editor.simulation.DropManager.dropLoot(enemyLevel, playerTileX, playerTileY);
             try { Thread.sleep(300); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
         }
     }
 
     private void stopSimulation() {
+        // Сохраняем прогресс прокачки (уровень/опыт/распределённые статы) ПЕРЕД тем, как player
+        // будет обнулён — см. восстановление в startSimulation.
+        if (store.player != null) {
+            com.nicweiss.editor.simulation.Player p = store.player;
+            com.nicweiss.editor.Generic.Store.PlayerProgress prog = new com.nicweiss.editor.Generic.Store.PlayerProgress();
+            prog.level             = p.level;
+            prog.experience        = p.experience;
+            prog.baseStrength      = p.baseStrength;
+            prog.baseMagic         = p.baseMagic;
+            prog.baseDexterity     = p.baseDexterity;
+            prog.unspentStatPoints = p.unspentStatPoints;
+            prog.unspentSkillPoints = p.unspentSkillPoints;
+            store.savedProgress = prog;
+        }
+
         store.isSimulationMode  = false;
         store.player            = null;
         store.playerUI          = null;

@@ -42,6 +42,17 @@ public class PhysicThread implements Runnable {
         float dCartX = (dx + 2f * dy) / 2f;
         float dCartY = (2f * dy - dx) / 2f;
 
+        float beforeX = store.player.worldX, beforeY = store.player.worldY;
         store.player.moveBy(dCartX, dCartY, BLOCK_HEIGHT);
+
+        // Клик-муав: если движение было к цели клика (см. SimulationInputThread) и moveBy не сдвинул
+        // игрока вообще (полностью заблокирован препятствием) — прерываем погоню за целью, как и
+        // требовалось ("если встречается помеха — прерывать движение"). Достижение цели по расстоянию
+        // проверяется в самом SimulationInputThread.run(), сюда попадает только случай блокировки.
+        if (store.hasMoveTarget) {
+            boolean moved = Math.abs(store.player.worldX - beforeX) > 0.01f
+                         || Math.abs(store.player.worldY - beforeY) > 0.01f;
+            if (!moved) store.hasMoveTarget = false;
+        }
     }
 }

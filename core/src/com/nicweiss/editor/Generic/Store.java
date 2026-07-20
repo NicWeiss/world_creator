@@ -40,9 +40,34 @@ public class Store {
     public static SimulationInputThread simulationInput = null;
     // Действие выхода из симуляции — устанавливает UserInterface, вызывает SystemUI
     public static Runnable stopSimulationAction = null;
-    // Отладочный выброс лута+опыта по кнопке (Enter/R3) — устанавливает UserInterface,
-    // вызывает SimulationInputThread. TODO: убрать, когда появится реальная точка вызова.
+    // Отладочный выброс лута+опыта по кнопке Enter (было и на R3, но R3 освобождён под каст умений,
+    // см. SimulationInputThread) — устанавливает UserInterface, вызывает SimulationInputThread.
+    // TODO: убрать, когда появится реальная точка вызова.
     public static Runnable debugDropTrigger = null;
+
+    // ── Движение по клику мыши ("клик-муав") ────────────────────────────────
+    // Цель клика в декартовых мировых координатах — читается PhysicThread/SimulationInputThread.
+    // hasMoveTarget=false, когда цели нет, движение прервано препятствием или игрок её достиг.
+    public static volatile boolean hasMoveTarget = false;
+    public static volatile float moveTargetX = 0f, moveTargetY = 0f;
+    // Мировая точка под курсором, обновляется каждый кадр в Editor.calcPositionCursor — источник
+    // для moveTargetX/Y при клике (см. SimulationInputThread.touchDown).
+    public static volatile float cursorWorldX = 0f, cursorWorldY = 0f;
+
+    // Левый триггер геймпада зажат — читает PlayerHud (переключение на комбо-ряд ячеек умений,
+    // наравне с Shift на клавиатуре), пишет SimulationInputThread.pollFrame().
+    public static volatile boolean leftTriggerHeld = false;
+
+    // Прогресс игрока (уровень/опыт/распределённые статы и очки) — сохраняется при выходе из
+    // симуляции (см. UserInterface.stopSimulation) и восстанавливается при новом входе
+    // (startSimulation), чтобы прокачка не сбрасывалась между сессиями симуляции внутри одного
+    // запуска редактора. null = ещё не было ни одной сессии.
+    public static PlayerProgress savedProgress = null;
+
+    public static class PlayerProgress {
+        public int level, experience, baseStrength, baseMagic, baseDexterity;
+        public int unspentStatPoints, unspentSkillPoints;
+    }
 
     // Рендер погоды — создаётся на GL-потоке при запуске симуляции
     public static WeatherRenderer weatherRenderer = null;

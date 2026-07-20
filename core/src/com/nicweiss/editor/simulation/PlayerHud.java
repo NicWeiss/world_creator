@@ -52,10 +52,14 @@ public class PlayerHud {
     private static final Color C_HOTKEY_TEXT   = new Color(0.64f, 0.54f, 0.46f, 1f);
     private static final Color C_TEXT          = new Color(0.92f, 0.86f, 0.75f, 1f);
 
-    // Навыков пока нет — ячейки декоративные. Ячейки предметов привязаны к store.stacks (см.
-    // StackManager) — те же 4 ячейки, что и кнопки 1-4/D-pad (см. SimulationInputThread).
-    private static final String[] SKILL_KEYS = {"Q", "W", "E", "R", "ЛКМ", "ПКМ"};
+    // Ячейки навыков — см. Player.mainSkillSlots/comboSkillSlots (com.nicweiss.editor.utils.SkillSlot),
+    // привязка настраивается в окне пикера (SystemUI — вкладка Навыки). Ячейки предметов привязаны
+    // к store.stacks (см. StackManager) — те же 4 ячейки, что и кнопки 1-4/D-pad (SimulationInputThread).
+    private static final int SKILL_SLOT_COUNT = 6;
     private static final String[] ITEM_KEYS  = {"1", "2", "3", "4"};
+
+    // Комбо-ряд (Shift/LT) показывается ВМЕСТО основного, а не рядом — считается каждый render().
+    private boolean showComboRow = false;
 
     private final Texture pixel;
     private final Texture circle; // белый круг на прозрачном фоне — основа сфер и ячеек
@@ -64,6 +68,10 @@ public class PlayerHud {
 
     // Иконки предметов из стеков — кешируются по пути картинки, чтобы не грузить Texture каждый кадр.
     private final Map<String, Texture> itemIconCache = new HashMap<>();
+    // Иконки умений — В ОТЛИЧИЕ от itemIconCache, кэшируем уже КРУГЛО ОБРЕЗАННУЮ версию (см.
+    // circularSkillIcon) — исходники в assets/skills/ прямоугольные (128x128, непрозрачны до
+    // самых углов), а ячейка круглая: без обрезки квадратные углы вылезали бы за пределы круга.
+    private final Map<String, Texture> skillIconCache = new HashMap<>();
 
     public PlayerHud() {
         Pixmap pm = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
@@ -102,6 +110,12 @@ public class PlayerHud {
         // Статы актуальны даже когда инвентарь закрыт — иначе они пересчитываются только
         // во время рендера вкладок ИНВЕНТАРЬ/СТАТЫ (см. SystemUI.recomputeStats).
         if (store.systemUI != null) store.systemUI.recomputeStats();
+
+        // Комбо-ряд ячеек умений показывается вместо основного, пока зажат Shift (клавиатура)
+        // или левый триггер геймпада (Store.leftTriggerHeld, пишет SimulationInputThread.pollFrame).
+        boolean shiftHeld = Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_LEFT)
+                         || Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_RIGHT);
+        showComboRow = shiftHeld || store.leftTriggerHeld;
 
         Player p = store.player;
 
@@ -182,14 +196,15 @@ public class PlayerHud {
         float bottomPad = 11f;
         float slotY = y + bottomPad;
 
-        float skillsW = SKILL_KEYS.length * SLOT_SIZE + (SKILL_KEYS.length - 1) * SLOT_GAP;
+        float skillsW = SKILL_SLOT_COUNT * SLOT_SIZE + (SKILL_SLOT_COUNT - 1) * SLOT_GAP;
         float itemsW  = ITEM_KEYS.length  * SLOT_SIZE + (ITEM_KEYS.length  - 1) * SLOT_GAP;
         float rowW = skillsW + DIVIDER_GAP + itemsW;
         float rowX = x + (PANEL_W - rowW) / 2f;
 
+        com.nicweiss.editor.utils.SkillSlot[] skillSlots = showComboRow ? p.comboSkillSlots : p.mainSkillSlots;
         float sx = rowX;
-        for (String key : SKILL_KEYS) {
-            renderSlot(batch, sx, slotY, C_SLOT_BG, C_SLOT_BORDER, key);
+        for (int i = 0; i < SKILL_SLOT_COUNT; i++) {
+            renderSkillSlot(batch, sx, slotY, skillSlots[i]);
             sx += SLOT_SIZE + SLOT_GAP;
         }
 
@@ -207,24 +222,68 @@ public class PlayerHud {
         batch.setColor(1, 1, 1, 1);
     }
 
-    private void renderSlot(SpriteBatch batch, float x, float y, Color bg, Color border, String hotkey) {
-        col(batch, border);
+    /** Ячейка умения: пустая — без подписи (ещё не привязана, см. SystemUI — окно пикера); занятая —
+     *  иконка умения (круглый вырез, см. circularSkillIcon) + подпись фактически привязанной кнопки
+     *  НАД ячейкой. */
+    private void renderSkillSlot(SpriteBatch batch, float x, float y, com.nicweiss.editor.utils.SkillSlot slot) {
+        boolean bound = slot != null && slot.skillId != null;
+        col(batch, bound ? C_SLOT_ITEM_BORDER : C_SLOT_BORDER);
         batch.draw(circle, x, y, SLOT_SIZE, SLOT_SIZE);
         float inset = 3f;
-        col(batch, bg);
+        col(batch, bound ? C_SLOT_ITEM_BG : C_SLOT_BG);
         batch.draw(circle, x + inset, y + inset, SLOT_SIZE - inset * 2, SLOT_SIZE - inset * 2);
 
-        layout.setText(fontSmall, hotkey);
-        float tagW = layout.width + 8f;
-        float tagH = layout.height + 6f;
-        float tagX = x + (SLOT_SIZE - tagW) / 2f;
-        float tagY = y - tagH / 2f;
-        col(batch, C_HOTKEY_BG);
-        batch.draw(pixel, tagX, tagY, tagW, tagH);
-        fontSmall.setColor(C_HOTKEY_TEXT);
-        fontSmall.draw(batch, hotkey, tagX + 3f, tagY + tagH - 3f);
+        if (bound) {
+            // Иконка на ВЕСЬ внутренний круг (та же геометрия, что и фон-заливка выше) — уже
+            // обрезана по кругу в самой текстуре (см. circularSkillIcon), поэтому можно рисовать
+            // квадратом ровно по диаметру круга без риска "квадратных" углов.
+            com.nicweiss.editor.utils.SkillCatalog.SkillDef def = com.nicweiss.editor.utils.SkillCatalog.SKILLS.get(slot.skillId);
+            Texture icon = def != null ? circularSkillIcon(def.imageFile) : null;
+            if (icon != null) {
+                float iconSize = SLOT_SIZE - inset * 2;
+                batch.setColor(1f, 1f, 1f, 1f);
+                batch.draw(icon, x + inset, y + inset, iconSize, iconSize);
+            }
+
+            // Клавиатура/мышь и геймпад — РАЗДЕЛЬНЫЕ привязки (см. SkillSlot) — показываем ту,
+            // что актуальна для текущего режима ввода (store.isGamepadMode, переключается сам по
+            // последнему источнику ввода — нажатие на геймпаде переводит в режим геймпада со
+            // своими привязками, клавиатура/мышь — обратно, каждая читает только своё поле).
+            String activeCode = store.isGamepadMode ? slot.gamepadInputCode : slot.keyboardInputCode;
+            if (activeCode != null) {
+                String hotkey = displayLabelFor(activeCode);
+                layout.setText(fontSmall, hotkey);
+                float tagW = layout.width + 8f;
+                float tagH = layout.height + 6f;
+                float tagX = x + (SLOT_SIZE - tagW) / 2f;
+                float tagY = y - tagH / 2f;
+                col(batch, C_HOTKEY_BG);
+                batch.draw(pixel, tagX, tagY, tagW, tagH);
+                fontSmall.setColor(C_HOTKEY_TEXT);
+                fontSmall.draw(batch, hotkey, tagX + 3f, tagY + tagH - 3f);
+            }
+        }
 
         batch.setColor(1, 1, 1, 1);
+    }
+
+    /** Стабильный inputCode ("KEY_Q", "MOUSE_LEFT", "PAD_X" и т.п., см. SkillSlot) → короткая
+     *  подпись для HUD. */
+    private static String displayLabelFor(String inputCode) {
+        if (inputCode == null) return "?";
+        switch (inputCode) {
+            case "MOUSE_LEFT":  return "ЛКМ";
+            case "MOUSE_RIGHT": return "ПКМ";
+            case "PAD_X": return "X";
+            case "PAD_Y": return "Y";
+            case "PAD_B": return "B";
+            case "PAD_R1": return "R1";
+            case "PAD_R2": return "R2";
+            case "PAD_R3": return "R3";
+            default:
+                // "KEY_Q" -> "Q"
+                return inputCode.startsWith("KEY_") ? inputCode.substring(4) : inputCode;
+        }
     }
 
     /** Ячейка стека: иконка первого предмета в очереди + бейдж "N/ёмкость" в нижнем правом углу. */
@@ -280,6 +339,67 @@ public class PlayerHud {
             }
         }
         return t;
+    }
+
+    /** Грузит иконку умения (assets/skills/&lt;imageFile&gt;, тот же приём разрешения пути, что
+     *  ItemGenerator.applyDefaultImage) и вырезает круг по центру — исходники прямоугольные и
+     *  непрозрачны до самых углов, без обрезки они торчали бы за пределы круглой ячейки. */
+    private Texture circularSkillIcon(String imageFile) {
+        if (imageFile == null) return null;
+        Texture cached = skillIconCache.get(imageFile);
+        if (cached != null) return cached;
+        try {
+            java.io.File file = Gdx.files.internal("assets/skills/" + imageFile).file();
+            if (!file.exists()) return null;
+
+            Pixmap raw = new Pixmap(Gdx.files.absolute(file.getAbsolutePath()));
+            Pixmap rgba = raw;
+            if (raw.getFormat() != Pixmap.Format.RGBA8888) {
+                rgba = new Pixmap(raw.getWidth(), raw.getHeight(), Pixmap.Format.RGBA8888);
+                rgba.setBlending(Pixmap.Blending.None);
+                rgba.drawPixmap(raw, 0, 0);
+                raw.dispose();
+            }
+
+            Pixmap masked = maskToCircle(rgba);
+            if (rgba != raw) rgba.dispose(); else raw.dispose();
+
+            Texture t = new Texture(masked);
+            t.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            masked.dispose();
+            skillIconCache.put(imageFile, t);
+            return t;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Обнуляет альфу за пределами вписанного круга (с лёгким 1.5px сглаживанием на границе) —
+     *  единственный надёжный способ гарантировать "ничего не вылезает за круг" независимо от
+     *  того, что реально нарисовано в исходном прямоугольном файле. */
+    private static Pixmap maskToCircle(Pixmap src) {
+        int w = src.getWidth(), h = src.getHeight();
+        Pixmap out = new Pixmap(w, h, Pixmap.Format.RGBA8888);
+        out.setBlending(Pixmap.Blending.None);
+        float cx = w / 2f, cy = h / 2f;
+        float r = Math.min(w, h) / 2f;
+        float feather = 1.5f;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                float dx = x + 0.5f - cx, dy = y + 0.5f - cy;
+                float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                int rgba = src.getPixel(x, y);
+                if (dist > r) {
+                    rgba &= 0xFFFFFF00;
+                } else if (dist > r - feather) {
+                    int a = rgba & 0xFF;
+                    int newA = Math.round(a * ((r - dist) / feather));
+                    rgba = (rgba & 0xFFFFFF00) | (newA & 0xFF);
+                }
+                out.drawPixel(x, y, rgba);
+            }
+        }
+        return out;
     }
 
     private void col(SpriteBatch b, Color c) { b.setColor(c.r, c.g, c.b, c.a); }

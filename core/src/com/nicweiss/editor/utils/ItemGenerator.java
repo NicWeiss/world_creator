@@ -147,6 +147,28 @@ public class ItemGenerator {
     }
 
     /**
+     * Возвращает текущие вероятности {common, rare, unique} по той же кривой, что и rollRarityKey —
+     * без ролла, для отображения в UI (см. SystemUI — вкладка "Дроп").
+     */
+    public static double[] rarityChances(int playerLevel, float magicFind) {
+        double levelFraction = clamp01((playerLevel - 1) / 98.0);
+        double mfFraction = magicFind > 0 ? magicFind / (magicFind + MF_SATURATION) : 0.0;
+
+        double rareChance = RARE_MIN + RARE_LEVEL_GAIN * levelFraction + RARE_MF_GAIN * mfFraction;
+        double uniqueChance = UNIQUE_MIN + UNIQUE_LEVEL_GAIN * levelFraction + UNIQUE_MF_GAIN * mfFraction
+                + UNIQUE_SYNERGY * levelFraction * mfFraction;
+
+        double total = rareChance + uniqueChance;
+        if (total > 0.6) {
+            double scale = 0.6 / total;
+            rareChance *= scale;
+            uniqueChance *= scale;
+        }
+
+        return new double[]{1.0 - rareChance - uniqueChance, rareChance, uniqueChance};
+    }
+
+    /**
      * Меняет размер предмета; для классов, определяемых размером (чармы), пересчитывает класс.
      * Если класс при этом реально меняется (другой размер чарма) — пул модификаторов меняется
      * полностью, поэтому старые статы могли стать невалидными и роллятся заново.

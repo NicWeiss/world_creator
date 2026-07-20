@@ -845,8 +845,10 @@ public class Editor extends View{
         int arrPointY = selectedTileY-1;
 
 
-        if (store.isSimulationMode && store.simulationInput != null && button == 0) {
-            if (store.simulationInput.touchDown(store.mouseX, store.mouseY)) {
+        // button==0 (ЛКМ) ИЛИ button==1 (ПКМ) — расширено с "только ЛКМ", т.к. умения теперь можно
+        // привязать и на ПКМ (см. SimulationInputThread.touchDown — приоритет подбор/каст/клик-муав).
+        if (store.isSimulationMode && store.simulationInput != null && (button == 0 || button == 1)) {
+            if (store.simulationInput.touchDown(store.mouseX, store.mouseY, button)) {
                 return false;
             }
         }
@@ -1063,6 +1065,10 @@ public class Editor extends View{
         float[] dotPoint = transform.isometricToCartesian(mouseInViewportX, mouseInViewportY);
         store.playerPositionX = v.x ;
         store.playerPositionY = v.y;
+        // Мировая точка под курсором в декартовых координатах — источник цели для клик-муава
+        // (см. SimulationInputThread.touchDown, Store.moveTargetX/Y).
+        store.cursorWorldX = dotPoint[0];
+        store.cursorWorldY = dotPoint[1];
 
         light.setUserPoint(v.x, v.y);
         selectedTileX = (int) ((dotPoint[0]) / tileSizeX) - 1;
@@ -1376,6 +1382,9 @@ public class Editor extends View{
             store.playerHud.render(uiBatch);
         }
         if (store.isSimulationMode && store.systemUI != null) {
+            // Таймаут ожидания ввода в окне привязки умения (см. SystemUI.tick) — опрашивается
+            // каждый кадр, не блокирует поток.
+            store.systemUI.tick(Gdx.graphics.getDeltaTime());
             store.systemUI.render(uiBatch, store.uiWidthOriginal, store.uiHeightOriginal);
         }
     }

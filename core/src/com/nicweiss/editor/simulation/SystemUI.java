@@ -8,7 +8,14 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
+import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.scenes.scene2d.utils.ScissorStack;
 import com.nicweiss.editor.Generic.Store;
+import com.nicweiss.editor.Main;
+import com.nicweiss.editor.utils.ItemGenerator;
+import com.nicweiss.editor.utils.ItemModifierCatalog;
+import com.nicweiss.editor.utils.SkillCatalog;
+import com.nicweiss.editor.utils.SkillSlot;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -25,8 +32,8 @@ public class SystemUI {
     public static Store store;
 
     // ── Вкладки ───────────────────────────────────────────────────────────────
-    public enum Tab { QUESTS, INVENTORY, STATS, SKILLS, MENU }
-    private static final String[] TAB_LABELS = {"ЗАДАНИЯ", "ИНВЕНТАРЬ", "СТАТЫ", "НАВЫКИ", "МЕНЮ"};
+    public enum Tab { QUESTS, INVENTORY, STATS, DROP, SKILLS, MENU }
+    private static final String[] TAB_LABELS = {"ЗАДАНИЯ", "ИНВЕНТАРЬ", "СТАТЫ", "ДРОП", "НАВЫКИ", "МЕНЮ"};
 
     private boolean isOpen    = false;
     private Tab     activeTab = Tab.INVENTORY;
@@ -36,8 +43,11 @@ public class SystemUI {
     private int menuFocus = 0;
 
     // ── Размеры ───────────────────────────────────────────────────────────────
-    // PANEL_W подобрана под EQ_TOTAL_W=550 (см. EQ_SLOTS) с запасом ~16px на сторону.
-    private static final float PANEL_W  = 582f;
+    // Изначально подобрана под EQ_TOTAL_W=550 (см. EQ_SLOTS) с запасом ~16px на сторону (582px).
+    // Расширена на четверть (×1.25), т.к. с добавлением вкладки "Дроп" 6 вкладок перестали
+    // помещаться по ширине. Сетки инвентаря/снаряжения центрируются формулой (PANEL_W - W)/2 —
+    // при расширении панели остаются на месте относительно общего центра, просто с большими полями.
+    private static final float PANEL_W  = 582f * 1.25f;
     // Подобрана так, чтобы отступ от ячейки золота до нижнего края панели равнялся PAD —
     // тому же отступу, что сверху между вкладками и слотами снаряжения (см. renderGoldPocket).
     private static final float PANEL_H  = 798f;
@@ -158,6 +168,79 @@ public class SystemUI {
     private boolean holdAFired  = false;      // долгое нажатие A уже сработало
     private static final float HOLD_A_SWAP = 0.3f; // секунд до быстрой замены/укладки в стек
 
+    // ── Прокачка с геймпада (вкладка Статы) ──────────────────────────────────
+    // Фокус среди 3 качаемых статов (0=Сила,1=Магия,2=Ловкость) — двигается D-pad'ом
+    // (см. gamepadNavigate), не стиком (стик на этой вкладке уже скроллит список).
+    private int statsFocusIndex = 0;
+    private float   statsHoldATimer = 0f;
+    private boolean statsHoldAFired = false;
+    private static final int MULTI_SPEND_AMOUNT = 5; // очков за удержание A / Shift+клик
+
+    // ── Вкладка Навыки ────────────────────────────────────────────────────────
+    private static final float SKILLS_SUBTAB_H = 36f;
+    private static final float SKILLS_SQUARE = 64f;
+    private static final float SKILLS_ROW_GAP = 46f; // вертикальный зазор между строками дерева
+    private static final float SKILL_PLUS_BTN_SIZE = 30f; // крупнее, чем STAT_BTN_SIZE на вкладке Статы
+    // Цвет "ветки" дерева — крупные пунктирные точки между иконками (см. drawBranchConnector).
+    // Тусклее (dimColor), если умение-потомок ещё не разблокировано — визуально видно, куда ведёт
+    // ветка, даже если открыть её пока нельзя.
+    private static final Color C_TREE_LINE     = new Color(0.45f, 0.60f, 0.85f, 0.95f);
+    private static final Color C_TREE_LINE_DIM = new Color(0.30f, 0.34f, 0.40f, 0.70f);
+
+    private int skillsSubtab = 0; // 0=Воитель,1=Вестник,2=Стихийник
+    // Фокус геймпада/навигации — координаты в ДЕРЕВЕ текущей подвкладки (см. treeRowsFor):
+    // skillsFocusRow — индекс строки (ветки), skillsFocusCol — позиция умения в этой строке.
+    private int skillsFocusRow = 0;
+    private int skillsFocusCol = 0;
+    private float   skillsHoldATimer = 0f;
+    private boolean skillsHoldAFired = false;
+    // Хит-тест квадратов умений — {x,y,w,h,row,col}, пересобирается каждый renderSkills. Клик по
+    // квадрату (ПКМ) открывает привязку; клик по красной кнопке "+" (ЛКМ, см. skillPlusHotspots) —
+    // тратит очко.
+    private final java.util.List<float[]> skillsHotspots = new java.util.ArrayList<>();
+    // Хит-тест кнопок "+" — {x,y,w,h,row,col}, рисуются только пока есть нераспределённые очки
+    // И умение разблокировано (см. isSkillUnlocked).
+    private final java.util.List<float[]> skillPlusHotspots = new java.util.ArrayList<>();
+
+    // ── Деревья умений (по требованию пользователя) — фиксированные "ветки" слева направо,
+    // между узлами рисуется пунктирная линия-путь (см. drawBranchConnector). Каждый следующий
+    // узел ветки требует, чтобы В ПРЕДЫДУЩЕМ было вложено хотя бы 1 очко (см.
+    // SkillCatalog.isUnlocked/SkillDef.prerequisites — те же данные, что тут в дереве, продублированы
+    // намеренно: тут просто раскладка ДЛЯ ОТОБРАЖЕНИЯ, реальная проверка доступности — в каталоге).
+    // Некоторые умения встречаются в НЕСКОЛЬКИХ ветках (общий узел, напр. "Удар" — предок сразу
+    // двух цепочек Воителя) — это ожидаемо, рисуются на каждой ветке отдельно.
+    private static final String[][] WARRIOR_TREE = {
+        {"warrior_strike", "warrior_blade_dash", "warrior_shadow_blade"},
+        {"warrior_strike", "warrior_death_whirl", "warrior_madness"},
+        {"warrior_splash", "warrior_stun", "warrior_crit"},
+    };
+    private static final String[][] HERALD_TREE = {
+        {"herald_defense", "herald_evasion"},
+        {"herald_defense", "herald_steel_will"},
+        {"herald_heal", "herald_steel_will"},
+        {"herald_suppression", "herald_evasion"},
+        {"herald_stupor"},
+    };
+    private static final String[][] ELEMENTALIST_TREE = {
+        {"elem_fire_ball", "elem_fire_wave", "elem_fire_doom"},
+        {"elem_cold_spike", "elem_cold_mist", "elem_cold_fragility"},
+        {"elem_lightning_chain", "elem_lightning_storm", "elem_lightning_shield"},
+    };
+
+    private static String[][] treeRowsFor(int subtab) {
+        return subtab == 0 ? WARRIOR_TREE : subtab == 1 ? HERALD_TREE : ELEMENTALIST_TREE;
+    }
+
+    // ── Окно привязки умения к кнопке (модальное поверх вкладки Навыки) ────────
+    private boolean pickerOpen = false;
+    private String  pickerSkillId = null;
+    private int pickerFocusRow = 0; // 0=основной,1=комбо
+    private int pickerFocusCol = 0; // 0-5
+    private boolean captureMode = false;
+    private float   captureTimer = 0f;
+    private static final float CAPTURE_TIMEOUT = 10f;
+    private final java.util.List<float[]> pickerHotspots = new java.util.ArrayList<>(); // {x,y,w,h,row,col}
+
     // ── Кэшированная геометрия панели (обновляется каждый render) ────────────
     private float _px = 0, _py = 0;
     private float _invGridX = 0, _invTop = 0;
@@ -173,6 +256,9 @@ public class SystemUI {
     private static final float STATS_SCROLL_SPEED = 300f;
     private static final float STATS_LINE_H       = 24f;
     private static final float STATS_PAD          = 16f;
+
+    // ── Скролл вкладки дропа (те же размеры строк/паддинга, что у статов) ──────
+    private float dropScroll = 0f;
 
     // ── Буфер переноса ───────────────────────────────────────────────────────
     // Предмет в буфере ВСЕГДА вне store.inventory и store.equipmentSlots.
@@ -207,6 +293,21 @@ public class SystemUI {
 
     public boolean isOpen()    { return isOpen; }
     public boolean isMenuOpen(){ return isOpen && activeTab == Tab.MENU; }
+    public boolean isStatsOpen(){ return isOpen && activeTab == Tab.STATS; }
+    public boolean isSkillsOpen(){ return isOpen && activeTab == Tab.SKILLS; }
+    /** true — открыто окно привязки умения и сейчас идёт ожидание нажатия клавиши/кнопки (см.
+     *  openKeybindPicker/tick) — SimulationInputThread должен "проглатывать" обычный ввод. */
+    public boolean isCapturingKeybind() { return pickerOpen && captureMode; }
+
+    /** Синхронизирует edge-detect поля геймпада (prevBX/prevAGp) под ТЕКУЩЕЕ физическое состояние
+     *  кнопок — вызывается SimulationInputThread СРАЗУ после выхода из режима захвата (см.
+     *  isCapturingKeybind), пока pollGamepad несколько кадров вообще не вызывался. Без этого, если
+     *  игрок ещё держит кнопку, которой только что забиндил умение (например X), она читалась бы
+     *  как "новое нажатие" по устаревшему prevBX=false и сразу открывала бы НОВОЕ окно привязки. */
+    public void syncGamepadButtonState(boolean bx, boolean a) {
+        prevBX = bx;
+        prevAGp = a;
+    }
 
     /** Клавиша поглощена → возвращает true */
     public boolean handleKeyDown(int keyCode) {
@@ -217,10 +318,15 @@ public class SystemUI {
         return false;
     }
 
-    /** Клик мышью. @return true — поглощён */
-    public boolean handleClick(float mx, float my, float sw, float sh) {
+    /** Клик мышью. button — libGDX-код кнопки (0=ЛКМ, 1=ПКМ). @return true — поглощён */
+    public boolean handleClick(float mx, float my, float sw, float sh, int button) {
         if (!isOpen) return false;
         store.isGamepadMode = false;
+
+        // Окно привязки умения — модальное, поверх остального содержимого (см. openKeybindPicker).
+        // Выбор ячейки — любой кнопкой, различие ЛКМ/ПКМ тут не нужно.
+        if (pickerOpen) return handlePickerClick(mx, my, sw, sh);
+
         float px = (sw - PANEL_W) / 2f, py = (sh - PANEL_H) / 2f;
 
         // Клик вне панели
@@ -243,8 +349,8 @@ public class SystemUI {
             }
         }
 
-        // Клик по кнопкам меню
-        if (activeTab == Tab.MENU) {
+        // Клик по кнопкам меню (только ЛКМ)
+        if (activeTab == Tab.MENU && button == 0) {
             float cx = px + (PANEL_W - BTN_W) / 2f;
             for (int i = 0; i < MENU_ITEMS.length; i++) {
                 float by = menuButtonY(i, py, PANEL_H - TAB_H);
@@ -256,8 +362,22 @@ public class SystemUI {
             }
         }
 
-        // Клик в зоне инвентаря
-        if (activeTab == Tab.INVENTORY) {
+        // Клик по кнопкам "+" вкладки Статы (левел-ап/распределение очков) — только ЛКМ
+        if (activeTab == Tab.STATS && button == 0 && handleStatsButtonClick(mx, my)) return true;
+
+        // Вкладка Навыки: ПКМ по квадрату — открыть окно привязки (вне зависимости от очков);
+        // ЛКМ — подвкладки/кнопка "+" (трата очков).
+        if (activeTab == Tab.SKILLS) {
+            if (button == 1) {
+                handleSkillsRmbClick(mx, my);
+                return true;
+            }
+            if (handleSkillsSubtabClick(mx, my, px, py)) return true;
+            if (handleSkillsButtonClick(mx, my)) return true;
+        }
+
+        // Клик в зоне инвентаря (только ЛКМ)
+        if (activeTab == Tab.INVENTORY && button == 0) {
             boolean shift = Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_LEFT)
                          || Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_RIGHT);
             if (shift && draggedItem == null) quickActionAt(mx, my);
@@ -283,12 +403,23 @@ public class SystemUI {
         // X — выбросить перетаскиваемый предмет на землю (короткое нажатие, буфер не пуст)
         if (bx && !prevBX && isOpen && draggedItem != null) dropDraggedToGround();
 
+        // Вкладка Навыки: X (короткое нажатие, вне пикера) — открыть окно привязки для
+        // сфокусированного умения, вне зависимости от очков (аналог ПКМ мышью).
+        if (bx && !prevBX && isOpen && activeTab == Tab.SKILLS && !pickerOpen) {
+            openPickerForFocusedSkill();
+        }
+
         // Y — переключить режим сравнения (инвентарь) / скролл вниз (статы)
         if (y && !prevY && isOpen && activeTab == Tab.INVENTORY) compareMode = !compareMode;
 
         // Скролл вкладки статов левым стиком
         if (isOpen && activeTab == Tab.STATS && Math.abs(stickY) > 0.12f) {
             statsScroll = Math.max(0, statsScroll - stickY * STATS_SCROLL_SPEED * dt);
+        }
+        // Скролл вкладки дропа левым стиком (направление инвертировано относительно статов —
+        // по требованию пользователя).
+        if (isOpen && activeTab == Tab.DROP && Math.abs(stickY) > 0.12f) {
+            dropScroll = Math.max(0, dropScroll + stickY * STATS_SCROLL_SPEED * dt);
         }
 
         if (isOpen && activeTab == Tab.INVENTORY) {
@@ -319,21 +450,93 @@ public class SystemUI {
             holdATimer = 0f; holdAFired = false;
         }
 
+        // Вкладка Статы: A на сфокусированной (D-pad'ом, см. gamepadNavigate) строке качаемого
+        // стата — короткое нажатие тратит 1 очко, удержание (тот же порог, что и в инвентаре) —
+        // сразу MULTI_SPEND_AMOUNT очков (по требованию: "по одному вводить неудобно").
+        if (isOpen && activeTab == Tab.STATS) {
+            if (a) {
+                statsHoldATimer += dt;
+                if (!statsHoldAFired && statsHoldATimer >= HOLD_A_SWAP) {
+                    spendStatPoints(statsFocusIndex, MULTI_SPEND_AMOUNT);
+                    statsHoldAFired = true;
+                }
+            } else {
+                if (prevAGp && !statsHoldAFired) {
+                    spendStatPoints(statsFocusIndex, 1);
+                }
+                statsHoldATimer = 0f;
+                statsHoldAFired = false;
+            }
+        } else {
+            statsHoldATimer = 0f; statsHoldAFired = false;
+        }
+
+        // Вкладка Навыки: если открыт пикер привязки — A подтверждает выбор ячейки (запускает
+        // ожидание нажатия кнопки, см. pickerConfirm). Иначе — короткое A тратит 1 очко умения,
+        // удержание — MULTI_SPEND_AMOUNT очков разом (открыть пикер — X, см. выше).
+        if (isOpen && activeTab == Tab.SKILLS) {
+            if (pickerOpen) {
+                if (a && !prevAGp && !captureMode) pickerConfirm();
+            } else if (a) {
+                skillsHoldATimer += dt;
+                if (!skillsHoldAFired && skillsHoldATimer >= HOLD_A_SWAP) {
+                    gamepadActivateFocusedSkill(MULTI_SPEND_AMOUNT);
+                    skillsHoldAFired = true;
+                }
+            } else {
+                if (prevAGp && !skillsHoldAFired) {
+                    gamepadActivateFocusedSkill(1);
+                }
+                skillsHoldATimer = 0f;
+                skillsHoldAFired = false;
+            }
+        } else {
+            skillsHoldATimer = 0f; skillsHoldAFired = false;
+        }
+
         prevStart = start; prevLT = lt; prevRT = rt; prevB = b; prevBX = bx;
         prevY = y; prevAGp = a;
     }
 
     /** Скролл колёсиком мыши (amountY > 0 = вниз). */
     public boolean handleScroll(float amountY) {
-        if (!isOpen || activeTab != Tab.STATS) return false;
-        statsScroll = Math.max(0, statsScroll + amountY * STATS_LINE_H * 3);
-        return true;
+        if (!isOpen) return false;
+        if (activeTab == Tab.STATS) {
+            statsScroll = Math.max(0, statsScroll + amountY * STATS_LINE_H * 3);
+            return true;
+        }
+        if (activeTab == Tab.DROP) {
+            // Направление инвертировано относительно статов — по требованию пользователя.
+            dropScroll = Math.max(0, dropScroll - amountY * STATS_LINE_H * 3);
+            return true;
+        }
+        return false;
     }
 
-    /** Навигация по кнопкам меню (D-pad / стрелки). */
+    /** Навигация по кнопкам меню (D-pad / стрелки) — либо по строкам качаемых статов на вкладке
+     *  Статы, либо по строкам сетки умений/ячеек пикера на вкладке Навыки. */
     public void gamepadNavigate(int dir) {
-        if (!isMenuOpen()) return;
-        menuFocus = (menuFocus + dir + MENU_ITEMS.length) % MENU_ITEMS.length;
+        if (isMenuOpen()) {
+            menuFocus = (menuFocus + dir + MENU_ITEMS.length) % MENU_ITEMS.length;
+            return;
+        }
+        if (isOpen && activeTab == Tab.STATS) {
+            statsFocusIndex = (statsFocusIndex + dir + 3) % 3;
+            return;
+        }
+        if (isSkillsOpen()) {
+            if (pickerOpen) pickerNavigate(dir, 0);
+            else            skillsNavigate(dir, 0);
+        }
+    }
+
+    /** Навигация по СТОЛБЦАМ (D-pad Left/Right) — только вкладка Навыки (сетка умений/пикер),
+     *  остальные вкладки этой оси не используют. */
+    public void gamepadNavigateCol(int dir) {
+        if (isSkillsOpen()) {
+            if (pickerOpen) pickerNavigate(0, dir);
+            else            skillsNavigate(0, dir);
+        }
     }
 
     /** Активация кнопки в фокусе (кнопка A) — только для MENU вкладки.
@@ -359,6 +562,8 @@ public class SystemUI {
         renderTabs(batch, px, py);
         renderContent(batch, px, py);
         batch.setColor(1,1,1,1);
+
+        if (pickerOpen) renderKeybindPicker(batch, sw, sh);
     }
 
     private void renderTabs(SpriteBatch batch, float px, float py) {
@@ -399,7 +604,8 @@ public class SystemUI {
             case QUESTS:    renderPlaceholder(batch, px, py, cH, "Активных заданий нет."); break;
             case INVENTORY: renderInventory(batch, px, py, cH);                            break;
             case STATS:     renderStats(batch, px, py, cH);                                break;
-            case SKILLS:    renderPlaceholder(batch, px, py, cH, "Навыки не изучены.");    break;
+            case DROP:      renderDrop(batch, px, py, cH);                                 break;
+            case SKILLS:    renderSkills(batch, px, py, cH);                                break;
             case MENU:      renderMenu(batch, px, py, cH);                                  break;
         }
     }
@@ -436,95 +642,186 @@ public class SystemUI {
         }
     }
 
-    // ── Инвентарь ─────────────────────────────────────────────────────────────
+    // ── Прокачка (кнопки на вкладке Статы) ─────────────────────────────────────
+    private static final float STAT_BTN_SIZE = 22f;
+    private static final Color C_XP_BTN   = new Color(0.20f, 0.45f, 0.95f, 1f); // синяя — левел-ап
+    private static final Color C_STAT_BTN  = new Color(0.85f, 0.20f, 0.20f, 1f); // красная — потратить очко стата
+    private static final Color C_UNSPENT_MSG = new Color(0.95f, 0.80f, 0.25f, 1f);
 
-    /**
-     * Рисует вкладку инвентаря: сверху сетка снаряжения, снизу главный инвентарь.
-     * В Y-up libGDX: строка 0 снаряжения находится ВВЕРХУ (большой Y).
-     */
+    private static final int HOTSPOT_XP = 0, HOTSPOT_STR = 1, HOTSPOT_MAGIC = 2, HOTSPOT_DEX = 3;
+    // Хитбоксы кнопок "+" вкладки Статы — {x, y, w, h, tag}, пересчитываются каждый кадр в
+    // renderStats (только для реально отрисованных, видимых кнопок) — см. handleClick.
+    private final java.util.List<float[]> statsHotspots = new java.util.ArrayList<>();
+
     private void renderStats(SpriteBatch batch, float px, float py, float cH) {
         if (store.player == null) return;
         Player p = store.player;
         recomputePlayerStats();
+        statsHotspots.clear();
 
-        // Собираем строки
-        java.util.List<String[]> lines = new java.util.ArrayList<>(); // {label, value, color_r, color_g, color_b}
+        // ── Заголовок: уровень (крупно, отдельным нескроллящимся блоком сверху) ─────────────
+        boolean showUnspentMsg = p.unspentStatPoints > 0;
+        float levelRowH = 40f;
+        float msgRowH   = showUnspentMsg ? 24f : 0f;
+        float headerH   = levelRowH + msgRowH + STATS_PAD;
+        float headerTop = py + cH;
 
-        // Вспомогательные лямбды для формата
-        // Базовый стат: "X (B + D)" если D != 0, иначе просто "X"
-        java.util.function.BiConsumer<String, int[]> addBase = (name, vals) -> {
-            int base = vals[0], bonus = vals[1], total = base + bonus;
-            String val = bonus != 0 ? total + " (" + base + " + " + bonus + ")" : String.valueOf(total);
-            lines.add(new String[]{name, val, "1.0", "1.0", "1.0"});
-        };
-        // Простой стат: показываем только если != 0
-        java.util.function.BiConsumer<String, int[]> addBonus = (name, vals) -> {
-            int v = vals[0]; String suffix = vals.length > 1 ? vals[1] + "" : "";
-            if (v == 0) return;
-            lines.add(new String[]{name, v + (vals.length > 1 ? "%" : ""), "0.85", "0.88", "0.95"});
-        };
+        font.getData().setScale(1.5f);
+        layout.setText(font, "Уровень " + p.level);
+        font.setColor(C_TEXT_ACT);
+        float levelTextY = headerTop - STATS_PAD - (levelRowH - layout.height) / 2f;
+        font.draw(batch, "Уровень " + p.level, px + STATS_PAD, levelTextY);
+        float xpBtnX = px + STATS_PAD + layout.width + 14f;
+        font.getData().setScale(1f);
 
-        // ── Базовые атрибуты ──────────────────────────────────────────────────
-        lines.add(new String[]{"Уровень", String.valueOf(p.level), "0.85", "0.88", "0.95"});
-        addBase.accept("Сила",     new int[]{p.baseStrength,  p.strength  - p.baseStrength});
-        addBase.accept("Магия",    new int[]{p.baseMagic,     p.magic     - p.baseMagic});
-        addBase.accept("Ловкость", new int[]{p.baseDexterity, p.dexterity - p.baseDexterity});
-        lines.add(new String[]{"Здоровье", (int) p.health + " / " + (int) p.maxHealth, "0.88","0.42","0.42"});
-        if (p.maxMana != 0) lines.add(new String[]{"Мана", (int) p.mana + " / " + (int) p.maxMana, "0.42","0.68","0.92"});
+        // Кнопка "+" — начисляет РОВНО столько опыта, сколько нужно для перехода на след. уровень
+        // (см. handleClick/handleStatsButtonClick): 1 клик = гарантированно 1 левел-ап, без остатка.
+        float xpBtnY = levelTextY - layout.height * 0.3f;
+        col(batch, C_XP_BTN);
+        batch.draw(pixel, xpBtnX, xpBtnY, STAT_BTN_SIZE, STAT_BTN_SIZE);
+        font.setColor(C_TEXT_ACT);
+        layout.setText(font, "+");
+        font.draw(batch, "+", xpBtnX + (STAT_BTN_SIZE - layout.width) / 2f, xpBtnY + (STAT_BTN_SIZE + layout.height) / 2f);
+        statsHotspots.add(new float[]{xpBtnX, xpBtnY, STAT_BTN_SIZE, STAT_BTN_SIZE, HOTSPOT_XP});
 
-        // ── Боевые ────────────────────────────────────────────────────────────
-        if (p.physDamage   != 0) lines.add(new String[]{"Физический урон",   "+" + p.physDamage,   "0.91","0.58","0.28"});
-        if (p.magicDamage  != 0) lines.add(new String[]{"Магический урон", "+" + p.magicDamage,  "0.72","0.55","0.90"});
-        if (p.attackRating != 0) lines.add(new String[]{"Рейтинг атаки",   String.valueOf(p.attackRating), "0.91","0.58","0.28"});
-        if (p.attackSpeed  != 0) lines.add(new String[]{"Скорость атаки",  p.attackSpeed  + "%", "0.91","0.58","0.28"});
-        if (p.castSpeed    != 0) lines.add(new String[]{"Скорость каста",  p.castSpeed    + "%", "0.72","0.55","0.90"});
-        if (p.runSpeed     != 0) lines.add(new String[]{"Скорость бега",   p.runSpeed     + "%", "0.85","0.77","0.35"});
+        if (showUnspentMsg) {
+            font.setColor(C_UNSPENT_MSG);
+            String msg = "Нераспределено очков статов: " + p.unspentStatPoints;
+            font.draw(batch, msg, px + STATS_PAD, headerTop - STATS_PAD - levelRowH);
+        }
 
-        // ── Защита ────────────────────────────────────────────────────────────
-        if (p.defence          != 0) lines.add(new String[]{"Защита",             String.valueOf(p.defence),          "0.35","0.80","0.75"});
-        if (p.defenceRating    != 0) lines.add(new String[]{"Повышение защита",      p.defenceRating    + "%",           "0.35","0.80","0.75"});
-        if (p.physDamageReduce != 0) lines.add(new String[]{"Снижение физического урона",String.valueOf(p.physDamageReduce), "0.35","0.80","0.75"});
-        if (p.magicDamageReduce!= 0) lines.add(new String[]{"Снижение магического урона",String.valueOf(p.magicDamageReduce),"0.35","0.80","0.75"});
+        col(batch, C_BORDER);
+        batch.draw(pixel, px, headerTop - headerH, PANEL_W, 1);
 
-        // ── Резисты ───────────────────────────────────────────────────────────
-        if (p.fireRes      != 0) lines.add(new String[]{"Сопротивление к огню",   p.fireRes      + "%", "0.35","0.80","0.75"});
-        if (p.coldRes      != 0) lines.add(new String[]{"Сопротивление к холоду", p.coldRes      + "%", "0.35","0.80","0.75"});
-        if (p.lightningRes != 0) lines.add(new String[]{"Сопротивление к молнии", p.lightningRes + "%", "0.35","0.80","0.75"});
+        // ── Остальное содержимое — прокачиваемые статы + все прочие, скроллится отдельно ────
+        float listCH = cH - headerH;
 
-        // ── Личи ─────────────────────────────────────────────────────────────
-        if (p.lifeLeech != 0) lines.add(new String[]{"Похищение жизни", p.lifeLeech + "%", "0.88","0.42","0.55"});
-        if (p.manaLeech != 0) lines.add(new String[]{"Похищение маны",  p.manaLeech + "%", "0.88","0.42","0.55"});
+        // Собираем строки: {label, value, color_r, color_g, color_b, kind}
+        // kind: null — обычная строка, STR/MAGIC/DEX — прокачиваемый стат (красная кнопка "+",
+        // только пока есть нераспределённые очки), "" (пустая строка) — отступ-разделитель секций.
+        java.util.List<String[]> lines = new java.util.ArrayList<>();
 
-        // ── Поиски ────────────────────────────────────────────────────────────
-        if (p.magicFind  != 0) lines.add(new String[]{"Поиск предметов",  (int)p.magicFind + "%", "0.85","0.77","0.35"});
-        if (p.goldFind   != 0) lines.add(new String[]{"Поиск золота",     (int)p.goldFind  + "%", "0.85","0.77","0.35"});
-        if (p.containers != 0) lines.add(new String[]{"Контейнеры",       String.valueOf(p.containers), "0.85","0.88","0.95"});
+        // ── Прокачиваемые статы ──────────────────────────────────────────────
+        // entry[1] тут не используется для отображения (значение собирается из base/bonus прямо
+        // в цикле рендера — см. ниже), но оставлен для единообразия структуры строки.
+        lines.add(new String[]{"Сила",     "", "1","1","1", "STR"});
+        lines.add(new String[]{"Магия",    "", "1","1","1", "MAGIC"});
+        lines.add(new String[]{"Ловкость", "", "1","1","1", "DEX"});
 
-        // ── Рендер ────────────────────────────────────────────────────────────
+        lines.add(new String[]{"", "", "0","0","0", null}); // отступ-разделитель
+
+        // ── Остальные, некачаемые статы ──────────────────────────────────────
+        lines.add(new String[]{"Здоровье", (int) p.health + " / " + (int) p.maxHealth, "0.88","0.42","0.42", null});
+        if (p.maxMana != 0) lines.add(new String[]{"Мана", (int) p.mana + " / " + (int) p.maxMana, "0.42","0.68","0.92", null});
+
+        if (p.physDamage   != 0) lines.add(new String[]{"Физический урон",   "+" + p.physDamage,   "0.91","0.58","0.28", null});
+        if (p.magicDamage  != 0) lines.add(new String[]{"Магический урон", "+" + p.magicDamage,  "0.72","0.55","0.90", null});
+        if (p.attackRating != 0) lines.add(new String[]{"Рейтинг атаки",   String.valueOf(p.attackRating), "0.91","0.58","0.28", null});
+        if (p.attackSpeed  != 0) lines.add(new String[]{"Скорость атаки",  p.attackSpeed  + "%", "0.91","0.58","0.28", null});
+        if (p.castSpeed    != 0) lines.add(new String[]{"Скорость каста",  p.castSpeed    + "%", "0.72","0.55","0.90", null});
+        if (p.runSpeed     != 0) lines.add(new String[]{"Скорость бега",   p.runSpeed     + "%", "0.85","0.77","0.35", null});
+
+        // Пассивные статы от навыков (Смертоносность/Тяжелая рука, см. recomputePlayerStats)
+        if (p.critChance   != 0) lines.add(new String[]{"Шанс крита",             p.critChance   + "%",  "0.91","0.35","0.35", null});
+        if (p.critDamage   != 0) lines.add(new String[]{"Крит. урон",             "+" + p.critDamage + "%", "0.91","0.35","0.35", null});
+        if (p.stunChance   != 0) lines.add(new String[]{"Шанс оглушения",         p.stunChance   + "%",  "0.85","0.65","0.35", null});
+        if (p.stunDuration != 0) lines.add(new String[]{"Длительность оглушения", p.stunDuration + " сек", "0.85","0.65","0.35", null});
+
+        if (p.defence          != 0) lines.add(new String[]{"Защита",             String.valueOf(p.defence),          "0.35","0.80","0.75", null});
+        if (p.defenceRating    != 0) lines.add(new String[]{"Повышение защита",      p.defenceRating    + "%",           "0.35","0.80","0.75", null});
+        if (p.physDamageReduce != 0) lines.add(new String[]{"Снижение физического урона",String.valueOf(p.physDamageReduce), "0.35","0.80","0.75", null});
+        if (p.magicDamageReduce!= 0) lines.add(new String[]{"Снижение магического урона",String.valueOf(p.magicDamageReduce),"0.35","0.80","0.75", null});
+
+        if (p.fireRes      != 0) lines.add(new String[]{"Сопротивление к огню",   p.fireRes      + "%", "0.35","0.80","0.75", null});
+        if (p.coldRes      != 0) lines.add(new String[]{"Сопротивление к холоду", p.coldRes      + "%", "0.35","0.80","0.75", null});
+        if (p.lightningRes != 0) lines.add(new String[]{"Сопротивление к молнии", p.lightningRes + "%", "0.35","0.80","0.75", null});
+
+        if (p.lifeLeech != 0) lines.add(new String[]{"Похищение жизни", p.lifeLeech + "%", "0.88","0.42","0.55", null});
+        if (p.manaLeech != 0) lines.add(new String[]{"Похищение маны",  p.manaLeech + "%", "0.88","0.42","0.55", null});
+
+        if (p.magicFind  != 0) lines.add(new String[]{"Поиск предметов",  (int)p.magicFind + "%", "0.85","0.77","0.35", null});
+        if (p.goldFind   != 0) lines.add(new String[]{"Поиск золота",     (int)p.goldFind  + "%", "0.85","0.77","0.35", null});
+        if (p.containers != 0) lines.add(new String[]{"Контейнеры",       String.valueOf(p.containers), "0.85","0.88","0.95", null});
+
+        // ── Рендер (скроллящаяся часть) ──────────────────────────────────────
         float totalH    = lines.size() * STATS_LINE_H + STATS_PAD * 2;
-        float maxScroll = Math.max(0, totalH - cH);
+        float maxScroll = Math.max(0, totalH - listCH);
         statsScroll     = Math.min(statsScroll, maxScroll);
 
-        float contentTop = py + cH - STATS_PAD + statsScroll;
+        float contentTop = py + listCH - STATS_PAD + statsScroll;
         float colValX    = px + PANEL_W - STATS_PAD;
+        float btnColX    = px + PANEL_W - STATS_PAD - STAT_BTN_SIZE;
 
-        for (String[] entry : lines) {
-            float lineY = contentTop - (lines.indexOf(entry) + 1) * STATS_LINE_H;
+        // Скролл — координаты строк лишь ПРИБЛИЗИТЕЛЬНО ограничены по STATS_LINE_H (см. break/continue
+        // ниже), реальная высота глифов может на пару пикселей вылезать за эту границу (особенно
+        // буквы с нижними выносными элементами вроде "р"/"у") — поэтому рисуем под физическим
+        // scissor-клиппингом по границам контентной области (см. pushContentScissor/popScissor).
+        pushContentScissor(batch, px, py, listCH);
+        for (int i = 0; i < lines.size(); i++) {
+            String[] entry = lines.get(i);
+            float lineY = contentTop - (i + 1) * STATS_LINE_H;
             if (lineY + STATS_LINE_H < py) break;           // ниже видимой области
-            if (lineY > py + cH)           continue;         // выше видимой области
+            if (lineY > py + listCH)       continue;         // выше видимой области
+            if (entry[0].isEmpty()) continue;                // строка-отступ — просто пропуск места
+
+            String kind = entry[5];
+            boolean hasStatButton = kind != null && p.unspentStatPoints > 0;
+
+            // Подсветка строки в фокусе геймпада (навигация D-pad'ом, см. gamepadNavigate) —
+            // только в режиме геймпада, чтобы не мешать при игре мышью. lineY — ВЕРХ текста (текст
+            // рисуется ВНИЗ от неё, см. font.draw в этом же файле), поэтому полоса строки — это
+            // [lineY-STATS_LINE_H, lineY], а не [lineY, lineY+STATS_LINE_H] — раньше было наоборот,
+            // из-за чего подсветка "выше" реального текста и перекрывала строку НАД текущей.
+            int kindIdx = "STR".equals(kind) ? 0 : "MAGIC".equals(kind) ? 1 : "DEX".equals(kind) ? 2 : -1;
+            if (kindIdx == statsFocusIndex && store.isGamepadMode) {
+                col(batch, C_BTN_FOCUS);
+                batch.draw(pixel, px + STATS_PAD - 6f, lineY - STATS_LINE_H + 2f + STATS_LINE_H * 0.25f, PANEL_W - STATS_PAD * 2 + 12f, STATS_LINE_H - 4f);
+            }
 
             float r = Float.parseFloat(entry[2]), g = Float.parseFloat(entry[3]), b = Float.parseFloat(entry[4]);
             font.setColor(r, g, b, 1f);
             font.draw(batch, entry[0], px + STATS_PAD, lineY);
 
-            layout.setText(font, entry[1]);
-            font.draw(batch, entry[1], colValX - layout.width, lineY);
+            float valueRightEdge = hasStatButton ? btnColX - 10f : colValX;
+            if (kind != null) {
+                // Прокачиваемый стат: "итого (база + бонус от снаряжения)" — база белым, бонус
+                // серым, чтобы сразу было видно, сколько вложено игроком, а сколько дало снаряжение
+                // (раньше бонус выводился отдельной строкой снизу, было непонятно, к чему она).
+                int base  = "STR".equals(kind) ? p.baseStrength  : "MAGIC".equals(kind) ? p.baseMagic  : p.baseDexterity;
+                int total = "STR".equals(kind) ? p.strength      : "MAGIC".equals(kind) ? p.magic      : p.dexterity;
+                int bonus = total - base;
+                if (bonus != 0) {
+                    drawRightAligned(batch, valueRightEdge, lineY,
+                        new String[]{String.valueOf(total), " (", String.valueOf(base), " + ", String.valueOf(bonus), ")"},
+                        new Color[]{C_TEXT_ACT, C_TEXT_DIM, C_TEXT_ACT, C_TEXT_DIM, C_TEXT_DIM, C_TEXT_DIM});
+                } else {
+                    layout.setText(font, String.valueOf(total));
+                    font.setColor(C_TEXT_ACT);
+                    font.draw(batch, String.valueOf(total), valueRightEdge - layout.width, lineY);
+                }
+            } else {
+                layout.setText(font, entry[1]);
+                font.draw(batch, entry[1], valueRightEdge - layout.width, lineY);
+            }
+
+            if (hasStatButton) {
+                float btnY = lineY - STAT_BTN_SIZE * 0.7f;
+                col(batch, C_STAT_BTN);
+                batch.draw(pixel, btnColX, btnY, STAT_BTN_SIZE, STAT_BTN_SIZE);
+                font.setColor(C_TEXT_ACT);
+                layout.setText(font, "+");
+                font.draw(batch, "+", btnColX + (STAT_BTN_SIZE - layout.width) / 2f, btnY + (STAT_BTN_SIZE + layout.height) / 2f);
+
+                int tag = "STR".equals(kind) ? HOTSPOT_STR : "MAGIC".equals(kind) ? HOTSPOT_MAGIC : HOTSPOT_DEX;
+                statsHotspots.add(new float[]{btnColX, btnY, STAT_BTN_SIZE, STAT_BTN_SIZE, tag});
+            }
         }
+        popContentScissor(batch);
 
         // Полоса скролла
         if (maxScroll > 0) {
-            float trackH  = cH - STATS_PAD * 2;
-            float thumbH  = Math.max(20f, trackH * (cH / totalH));
+            float trackH  = listCH - STATS_PAD * 2;
+            float thumbH  = Math.max(20f, trackH * (listCH / totalH));
             float thumbY  = py + STATS_PAD + (trackH - thumbH) * (1f - statsScroll / maxScroll);
             col(batch, C_BORDER);
             batch.draw(pixel, px + PANEL_W - 6f, py + STATS_PAD, 4f, trackH);
@@ -533,6 +830,861 @@ public class SystemUI {
         }
 
         batch.setColor(1, 1, 1, 1);
+    }
+
+    /** Обрабатывает клик по кнопкам "+" вкладки Статы (левел-ап/распределение очков).
+     *  Shift+клик по кнопке стата тратит сразу MULTI_SPEND_AMOUNT очков (то же, что удержание
+     *  A на геймпаде, см. pollGamepad) — по одному тратить неудобно. @return true, если клик обработан. */
+    private boolean handleStatsButtonClick(float mx, float my) {
+        if (store.player == null) return false;
+        Player p = store.player;
+        boolean shift = Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_LEFT)
+                     || Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_RIGHT);
+        for (float[] h : statsHotspots) {
+            if (mx >= h[0] && mx <= h[0] + h[2] && my >= h[1] && my <= h[1] + h[3]) {
+                int tag = (int) h[4];
+                if (tag == HOTSPOT_XP) {
+                    int needed = p.experienceToNextLevel() - p.experience;
+                    if (needed > 0) p.addExperience(needed);
+                } else {
+                    int idx = tag == HOTSPOT_STR ? 0 : tag == HOTSPOT_MAGIC ? 1 : 2;
+                    spendStatPoints(idx, shift ? MULTI_SPEND_AMOUNT : 1);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Тратит до amount нераспределённых очков статов на стат idx (0=Сила,1=Магия,2=Ловкость),
+     *  не больше, чем реально доступно. Общая точка для мыши (handleStatsButtonClick),
+     *  геймпада (pollGamepad — короткое/долгое A) — единая логика траты очков. */
+    private void spendStatPoints(int idx, int amount) {
+        if (store.player == null) return;
+        Player p = store.player;
+        int spend = Math.min(amount, p.unspentStatPoints);
+        if (spend <= 0) return;
+        if (idx == 0) p.baseStrength  += spend;
+        if (idx == 1) p.baseMagic     += spend;
+        if (idx == 2) p.baseDexterity += spend;
+        p.unspentStatPoints -= spend;
+    }
+
+    // ── Навыки ────────────────────────────────────────────────────────────────
+
+    /** Вызывается каждый кадр (см. Editor.renderUI) — считает таймаут ожидания ввода в окне
+     *  привязки умения. НЕ блокирует поток — просто убывающий таймер, опрашиваемый по кадрам. */
+    public void tick(float dt) {
+        if (pickerOpen && captureMode) {
+            captureTimer -= dt;
+            if (captureTimer <= 0f) captureMode = false; // таймаут — отмена ожидания, пикер остаётся открыт
+        }
+    }
+
+    /** Разблокировано ли умение для прокачки прямо сейчас (уровень игрока + предпосылки —
+     *  см. SkillCatalog.isUnlocked). Небольшая обёртка, чтобы не таскать store.player по всем
+     *  местам, где нужна эта проверка. */
+    private boolean isSkillUnlocked(SkillCatalog.SkillDef def) {
+        if (store.player == null || def == null) return false;
+        return SkillCatalog.isUnlocked(def, store.player.level, store.player.skillLevels);
+    }
+
+    private void renderSkills(SpriteBatch batch, float px, float py, float cH) {
+        if (store.player == null) return;
+        Player p = store.player;
+
+        String[] subtabLabels = {"Воитель", "Вестник", "Стихийник"};
+        float subtabW = PANEL_W / subtabLabels.length;
+        float subtabY = py + cH - SKILLS_SUBTAB_H;
+        for (int i = 0; i < subtabLabels.length; i++) {
+            boolean active = i == skillsSubtab;
+            col(batch, active ? C_TAB_ACT : C_TAB_IDLE);
+            batch.draw(pixel, px + i * subtabW, subtabY, subtabW - 1, SKILLS_SUBTAB_H);
+            if (active) {
+                col(batch, C_TAB_LINE);
+                batch.draw(pixel, px + i * subtabW, subtabY, subtabW - 1, 2f);
+            }
+            font.setColor(active ? C_TEXT_ACT : C_TEXT_DIM);
+            layout.setText(font, subtabLabels[i]);
+            font.draw(batch, subtabLabels[i],
+                px + i * subtabW + (subtabW - layout.width) / 2f,
+                subtabY + (SKILLS_SUBTAB_H + layout.height) / 2f);
+        }
+        col(batch, C_BORDER);
+        batch.draw(pixel, px, subtabY, PANEL_W, 1);
+
+        String[][] rows = treeRowsFor(skillsSubtab);
+        if (skillsFocusRow >= rows.length) skillsFocusRow = 0;
+        if (skillsFocusCol >= rows[skillsFocusRow].length) skillsFocusCol = 0;
+
+        boolean showMsg = p.unspentSkillPoints > 0;
+        if (showMsg) {
+            font.setColor(C_UNSPENT_MSG);
+            font.draw(batch, "Нераспределено очков умений: " + p.unspentSkillPoints,
+                px + STATS_PAD, subtabY - 20f);
+        }
+        float gridTop = subtabY - (showMsg ? 34f : 10f);
+
+        skillsHotspots.clear();
+        skillPlusHotspots.clear();
+
+        // Дерево — каждая строка (ветка) растянута НА ВСЮ ширину панели, узлы равномерно
+        // распределены от левого до правого края (см. ТЗ: "на всю ширину окна").
+        float usableW = PANEL_W - STATS_PAD * 2 - SKILLS_SQUARE;
+
+        for (int r = 0; r < rows.length; r++) {
+            String[] chain = rows[r];
+            float rowTop = gridTop - r * (SKILLS_SQUARE + SKILLS_ROW_GAP);
+            float squareBottom = rowTop - SKILLS_SQUARE;
+            float stepX = chain.length > 1 ? usableW / (chain.length - 1) : 0f;
+
+            // Пунктирная "ветка" рисуется ДО узлов — чтобы иконки поверх неё, без наложения линии на артворк.
+            for (int c = 0; c < chain.length - 1; c++) {
+                float x1 = px + STATS_PAD + c * stepX + SKILLS_SQUARE;
+                float x2 = px + STATS_PAD + (c + 1) * stepX;
+                float cy = squareBottom + SKILLS_SQUARE / 2f;
+                boolean childUnlocked = isSkillUnlocked(SkillCatalog.SKILLS.get(chain[c + 1]));
+                drawBranchConnector(batch, x1, cy, x2, cy, childUnlocked);
+            }
+
+            for (int c = 0; c < chain.length; c++) {
+                float sx = px + STATS_PAD + c * stepX;
+                SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get(chain[c]);
+                if (def != null) drawSkillSquare(batch, sx, squareBottom, def, r, c);
+            }
+        }
+
+        // Тултип: наведение мышью либо (в режиме геймпада) сфокусированный квадрат.
+        float[] hovered = null;
+        for (float[] h : skillsHotspots) {
+            if (store.mouseX >= h[0] && store.mouseX <= h[0] + h[2]
+                    && store.mouseY >= h[1] && store.mouseY <= h[1] + h[3]) {
+                hovered = h;
+                break;
+            }
+        }
+        if (hovered == null && store.isGamepadMode) {
+            for (float[] h : skillsHotspots) {
+                if ((int) h[4] == skillsFocusRow && (int) h[5] == skillsFocusCol) { hovered = h; break; }
+            }
+        }
+        if (hovered != null) {
+            String skillId = treeRowsFor(skillsSubtab)[(int) hovered[4]][(int) hovered[5]];
+            SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get(skillId);
+            if (def != null) renderSkillTooltip(batch, def, hovered[0] + hovered[2] / 2f, hovered[1] + hovered[3] / 2f);
+        }
+
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    /** Пунктирная линия-"ветка" дерева между двумя узлами — крупные точки, равномерно
+     *  расставленные между ними (см. ТЗ: "между иконками скиллов крупными пунктирными точками
+     *  путь ветка"). Тусклее, если умение-потомок ещё не разблокировано. */
+    private void drawBranchConnector(SpriteBatch batch, float x1, float y1, float x2, float y2, boolean childUnlocked) {
+        float dotSize = 9f, gap = 13f;
+        float dx = x2 - x1, dy = y2 - y1;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        int count = Math.max(1, Math.round(dist / gap));
+        col(batch, childUnlocked ? C_TREE_LINE : C_TREE_LINE_DIM);
+        for (int i = 1; i < count; i++) {
+            float t = i / (float) count;
+            float cx = x1 + dx * t, cy = y1 + dy * t;
+            batch.draw(pixel, cx - dotSize / 2f, cy - dotSize / 2f, dotSize, dotSize);
+        }
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    private void drawSkillSquare(SpriteBatch batch, float x, float y, SkillCatalog.SkillDef def, int row, int col) {
+        boolean focused = store.isGamepadMode && row == skillsFocusRow && col == skillsFocusCol;
+        boolean unlocked = isSkillUnlocked(def);
+
+        col(batch, focused ? C_BTN_FOCUS : C_SLOT_BG);
+        batch.draw(pixel, x, y, SKILLS_SQUARE, SKILLS_SQUARE);
+        col(batch, C_SLOT_LINE);
+        rect(batch, x, y, SKILLS_SQUARE, SKILLS_SQUARE);
+
+        // Иконка умения — ячейка тут квадратная (не круглая, как в HUD), обрезка не нужна:
+        // достаточно нарисовать картинку на весь квадрат с небольшим отступом от рамки.
+        // Заблокированные (недоступные для прокачки) умения — притушены, чтобы было видно
+        // разницу с уже открытыми.
+        Texture icon = loadSkillIcon(def.imageFile);
+        if (icon != null) {
+            float inset = 4f;
+            if (unlocked) batch.setColor(1f, 1f, 1f, 1f);
+            else          batch.setColor(0.4f, 0.4f, 0.42f, 0.55f);
+            batch.draw(icon, x + inset, y + inset, SKILLS_SQUARE - inset * 2, SKILLS_SQUARE - inset * 2);
+            batch.setColor(1f, 1f, 1f, 1f);
+        }
+
+        // Бейдж в правом нижнем углу: разблокировано — уровень умения (база + предметы, см.
+        // Player.effectiveSkillLevel); заблокировано — требуемый уровень ИГРОКА, чтобы было видно,
+        // чего не хватает (предпосылки-умения показаны в тултипе, см. renderSkillTooltip).
+        String badgeText = unlocked ? String.valueOf(store.player.effectiveSkillLevel(def.id)) : ("Ур." + def.unlockLevel);
+        layout.setText(font, badgeText);
+        float badgeW = layout.width + 8f, badgeH = layout.height + 4f;
+        col(batch, C_TOOLTIP_BG);
+        batch.draw(pixel, x + SKILLS_SQUARE - badgeW - 2f, y + 2f, badgeW, badgeH);
+        if (!unlocked)                                        font.setColor(0.95f, 0.35f, 0.30f, 1f); // непрозрачный красный — C_HIGHLIGHT_BAD слишком тусклый (alpha 0.4) для текста
+        else if (store.player.effectiveSkillLevel(def.id) > 0) font.setColor(C_TEXT_ACT);
+        else                                                   font.setColor(C_TEXT_DIM);
+        font.draw(batch, badgeText, x + SKILLS_SQUARE - badgeW - 2f + 4f, y + 2f + badgeH - 2f);
+
+        // Кнопка "+" (крупнее аналога на вкладке Статы) — только пока умение разблокировано И
+        // есть очки на распределение. Клик/A — потратить (см. handleSkillsButtonClick/
+        // gamepadActivateFocusedSkill); привязка умения к кнопке — отдельно, по ПКМ/X (см.
+        // handleSkillsRmbClick/openPickerForFocusedSkill).
+        if (unlocked && store.player.unspentSkillPoints > 0) {
+            // Верхний левый угол квадрата (симметрично бейджу уровня в правом нижнем) — целиком
+            // внутри квадрата, с небольшим отступом.
+            float plusX = x + 2f;
+            float plusY = y + SKILLS_SQUARE - SKILL_PLUS_BTN_SIZE - 2f;
+            col(batch, C_STAT_BTN);
+            batch.draw(pixel, plusX, plusY, SKILL_PLUS_BTN_SIZE, SKILL_PLUS_BTN_SIZE);
+            font.setColor(C_TEXT_ACT);
+            layout.setText(font, "+");
+            font.draw(batch, "+", plusX + (SKILL_PLUS_BTN_SIZE - layout.width) / 2f, plusY + (SKILL_PLUS_BTN_SIZE + layout.height) / 2f);
+            skillPlusHotspots.add(new float[]{plusX, plusY, SKILL_PLUS_BTN_SIZE, SKILL_PLUS_BTN_SIZE, row, col});
+        }
+
+        skillsHotspots.add(new float[]{x, y, SKILLS_SQUARE, SKILLS_SQUARE, row, col});
+    }
+
+    /** Переключение подвкладок (Воитель/Вестник/Стихийник) бамперами L1/R1 (см. pollFrame в
+     *  SimulationInputThread) — раньше работало только мышью. */
+    public void skillsSwitchSubtab(int dir) {
+        if (!isSkillsOpen() || pickerOpen) return;
+        skillsSubtab = (skillsSubtab + dir + 3) % 3;
+        skillsFocusRow = 0;
+        skillsFocusCol = 0;
+    }
+
+    /** Навигация по дереву умений текущей подвкладки (или по ячейкам пикера, см. pickerNavigate) —
+     *  вызывается из gamepadNavigate/gamepadNavigateCol (D-pad/стик). dRow — смена ветки (строки),
+     *  dCol — смена позиции ВНУТРИ текущей ветки (см. treeRowsFor — строки разной длины). */
+    public void skillsNavigate(int dRow, int dCol) {
+        if (!isSkillsOpen() || pickerOpen) return;
+        String[][] rows = treeRowsFor(skillsSubtab);
+        if (rows.length == 0) return;
+        if (dRow != 0) {
+            skillsFocusRow = (skillsFocusRow + dRow + rows.length) % rows.length;
+            skillsFocusCol = Math.min(skillsFocusCol, rows[skillsFocusRow].length - 1);
+        }
+        if (dCol != 0) {
+            int len = rows[skillsFocusRow].length;
+            skillsFocusCol = (skillsFocusCol + dCol + len) % len;
+        }
+    }
+
+    private void gamepadActivateFocusedSkill(int amount) {
+        String[][] rows = treeRowsFor(skillsSubtab);
+        if (skillsFocusRow >= rows.length || skillsFocusCol >= rows[skillsFocusRow].length) return;
+        spendSkillPoints(rows[skillsFocusRow][skillsFocusCol], amount);
+    }
+
+    /** X на геймпаде (короткое нажатие, см. pollGamepad) — открывает окно привязки для СФОКУСИРОВАННОГО
+     *  умения, независимо от наличия очков (аналог ПКМ мышью, см. handleSkillsRmbClick). */
+    private void openPickerForFocusedSkill() {
+        String[][] rows = treeRowsFor(skillsSubtab);
+        if (skillsFocusRow >= rows.length || skillsFocusCol >= rows[skillsFocusRow].length) return;
+        openKeybindPicker(rows[skillsFocusRow][skillsFocusCol]);
+    }
+
+    private boolean handleSkillsSubtabClick(float mx, float my, float px, float py) {
+        float cH = PANEL_H - TAB_H - 1;
+        float subtabY = py + cH - SKILLS_SUBTAB_H;
+        if (my < subtabY || my > subtabY + SKILLS_SUBTAB_H) return false;
+        float subtabW = PANEL_W / 3f;
+        for (int i = 0; i < 3; i++) {
+            if (mx >= px + i * subtabW && mx <= px + (i + 1) * subtabW) {
+                skillsSubtab = i;
+                skillsFocusRow = 0;
+                skillsFocusCol = 0;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** ЛКМ по красной кнопке "+" (см. drawSkillSquare) — тратит очко(и) умения. Кнопка рисуется
+     *  (и хит-тестится) только пока умение разблокировано И есть нераспределённые очки. */
+    private boolean handleSkillsButtonClick(float mx, float my) {
+        if (store.player == null) return false;
+        String[][] rows = treeRowsFor(skillsSubtab);
+        for (float[] h : skillPlusHotspots) {
+            if (mx >= h[0] && mx <= h[0] + h[2] && my >= h[1] && my <= h[1] + h[3]) {
+                int r = (int) h[4], c = (int) h[5];
+                if (r < 0 || r >= rows.length || c < 0 || c >= rows[r].length) return true;
+                boolean shift = Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_LEFT)
+                             || Gdx.input.isKeyPressed(com.badlogic.gdx.Input.Keys.SHIFT_RIGHT);
+                spendSkillPoints(rows[r][c], shift ? MULTI_SPEND_AMOUNT : 1);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** ПКМ по квадрату умения (любому, вне зависимости от очков) — открывает окно привязки к
+     *  кнопке (см. ТЗ: "вызов окна связки на ПКМ или на X на геймпаде"). */
+    private boolean handleSkillsRmbClick(float mx, float my) {
+        String[][] rows = treeRowsFor(skillsSubtab);
+        for (float[] h : skillsHotspots) {
+            if (mx >= h[0] && mx <= h[0] + h[2] && my >= h[1] && my <= h[1] + h[3]) {
+                int r = (int) h[4], c = (int) h[5];
+                if (r >= 0 && r < rows.length && c >= 0 && c < rows[r].length) openKeybindPicker(rows[r][c]);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Тратит до amount нераспределённых очков умений на skillId, капается уровнем 20 и реально
+     *  доступными очками — тот же idiom, что и spendStatPoints. Дополнительно: без разблокировки
+     *  (недостаточный уровень игрока ИЛИ не вложено хотя бы 1 очко в предпосылку) прокачка вообще
+     *  недоступна — см. ТЗ "без прокачки хотя бы одного поинта [в предыдущем] — не доступен для
+     *  прокачки". UI и так не рисует кнопку "+" для заблокированных умений (см. drawSkillSquare),
+     *  но проверка здесь — на случай прямого вызова (геймпад и т.п.), защита в глубину. */
+    private void spendSkillPoints(String skillId, int amount) {
+        if (store.player == null) return;
+        Player p = store.player;
+        SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get(skillId);
+        if (!SkillCatalog.isUnlocked(def, p.level, p.skillLevels)) return;
+        int current = p.skillLevels.getOrDefault(skillId, 0);
+        int room = SkillCatalog.SkillDef.MAX_LEVEL - current;
+        int spend = Math.min(amount, Math.min(room, p.unspentSkillPoints));
+        if (spend <= 0) return;
+        p.skillLevels.put(skillId, current + spend);
+        p.unspentSkillPoints -= spend;
+    }
+
+    // ── Тултип умения ───────────────────────────────────────────────────────────
+    private static final float[] C_TOOLTIP_NEXT = {0.95f, 0.80f, 0.25f};
+
+    private static String kindLabel(SkillCatalog.SkillKind k) {
+        switch (k) {
+            case ACTIVE:    return "Активный";
+            case SUSTAINED: return "Поддерживаемый";
+            case STANCE:    return "Стойка";
+            case PASSIVE:   return "Пассивный";
+            case AURA:      return "Аура";
+            case TACTIC:    return "Тактика";
+            default:        return "";
+        }
+    }
+
+    private static String fmtNum(double v) {
+        if (Math.abs(v - Math.round(v)) < 0.05) return String.valueOf(Math.round(v));
+        return String.format("%.1f", v);
+    }
+
+    private static String fixedLabel(String key) {
+        switch (key) {
+            case "mana":                return "Мана";
+            case "mana_per_sec":        return "Мана/сек";
+            case "cooldown":            return "Перезарядка";
+            case "hp_drain_pct":        return "Списание HP за удар";
+            case "attack_speed_pct":    return "Скорость атаки";
+            case "mana_reserve_pct":    return "Резерв маны";
+            case "max_stacks":          return "Макс. стаков";
+            case "stack_duration_sec":  return "Длительность стаков";
+            case "activation_mana":     return "Активация (мана)";
+            default:                    return key;
+        }
+    }
+
+    private static String fmtFixed(String key, double v) {
+        String num = fmtNum(v);
+        if (key.endsWith("_pct")) return num + "%";
+        if (key.contains("duration") || "cooldown".equals(key)) return num + " сек";
+        return num;
+    }
+
+    private void appendStatLines(java.util.List<String[]> lines, SkillCatalog.SkillDef def, int level, float[] color) {
+        java.util.LinkedHashMap<String, Double> vals = def.compute(level);
+        for (SkillCatalog.SkillStat s : def.stats) {
+            Double v = vals.get(s.key);
+            String unit = s.unit == null ? "" : s.unit;
+            String valStr = fmtNum(v) + ("%".equals(unit) || "°".equals(unit) ? unit : (unit.isEmpty() ? "" : " " + unit));
+            lines.add(new String[]{"  " + s.label + ": " + valStr, color[0] + "", color[1] + "", color[2] + ""});
+        }
+    }
+
+    /** Простой word-wrap по ширине шрифта — для описания умения в тултипе. */
+    private java.util.List<String> wrapText(String text, float maxWidth) {
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        String[] words = text.split(" ");
+        StringBuilder cur = new StringBuilder();
+        for (String w : words) {
+            String candidate = cur.length() == 0 ? w : cur + " " + w;
+            layout.setText(font, candidate);
+            if (layout.width > maxWidth && cur.length() > 0) {
+                lines.add(cur.toString());
+                cur = new StringBuilder(w);
+            } else {
+                cur = new StringBuilder(candidate);
+            }
+        }
+        if (cur.length() > 0) lines.add(cur.toString());
+        return lines;
+    }
+
+    private void renderSkillTooltip(SpriteBatch batch, SkillCatalog.SkillDef def, float anchorX, float anchorY) {
+        Player p = store.player;
+        int level = p.effectiveSkillLevel(def.id);
+        float TPAD = 14f, LINE_H = 20f, tw = 320f;
+
+        java.util.List<String[]> lines = new java.util.ArrayList<>(); // {text,r,g,b}
+        lines.add(new String[]{def.name, "1", "1", "1"});
+        lines.add(new String[]{kindLabel(def.kind), C_TEXT_DIM.r + "", C_TEXT_DIM.g + "", C_TEXT_DIM.b + ""});
+        for (String wl : wrapText(def.description, tw - TPAD * 2)) {
+            lines.add(new String[]{wl, C_INFO[0] + "", C_INFO[1] + "", C_INFO[2] + ""});
+        }
+
+        // Требования разблокировки — показываем, только если ЕЩЁ не выполнены (см. ТЗ:
+        // "ограничение прокачки" — уровень игрока + хотя бы 1 очко в предыдущих умениях ветки).
+        if (!SkillCatalog.isUnlocked(def, p.level, p.skillLevels)) {
+            if (p.level < def.unlockLevel) {
+                lines.add(new String[]{"Требуется уровень: " + def.unlockLevel, "0.90", "0.35", "0.35"});
+            }
+            java.util.List<String> missing = new java.util.ArrayList<>();
+            for (String prereqId : def.prerequisites) {
+                if (p.skillLevels.getOrDefault(prereqId, 0) < 1) {
+                    SkillCatalog.SkillDef prereqDef = SkillCatalog.SKILLS.get(prereqId);
+                    missing.add(prereqDef != null ? prereqDef.name : prereqId);
+                }
+            }
+            if (!missing.isEmpty()) {
+                lines.add(new String[]{"Требует: " + String.join(", ", missing), "0.90", "0.35", "0.35"});
+            }
+        }
+
+        if (level > 0) {
+            lines.add(new String[]{"Уровень " + level, "0.55", "0.80", "1.00"});
+            appendStatLines(lines, def, level, C_INFO);
+        } else {
+            lines.add(new String[]{"Не изучено", C_TEXT_DIM.r + "", C_TEXT_DIM.g + "", C_TEXT_DIM.b + ""});
+        }
+        if (p.unspentSkillPoints > 0 && level < SkillCatalog.SkillDef.MAX_LEVEL) {
+            lines.add(new String[]{"Следующий уровень " + (level + 1),
+                C_TOOLTIP_NEXT[0] + "", C_TOOLTIP_NEXT[1] + "", C_TOOLTIP_NEXT[2] + ""});
+            appendStatLines(lines, def, level + 1, C_TOOLTIP_NEXT);
+        }
+        for (java.util.Map.Entry<String, Double> e : def.fixed.entrySet()) {
+            lines.add(new String[]{"  " + fixedLabel(e.getKey()) + ": " + fmtFixed(e.getKey(), e.getValue()),
+                C_TEXT_DIM.r + "", C_TEXT_DIM.g + "", C_TEXT_DIM.b + ""});
+        }
+
+        float th = TPAD * 2 + lines.size() * LINE_H;
+        float ty = computeTooltipY(anchorY, th);
+        float tx = Math.max(2f, Math.min(store.uiWidthOriginal - tw - 2f, anchorX - tw * 0.5f));
+
+        col(batch, C_TOOLTIP_BG);
+        batch.draw(pixel, tx, ty, tw, th);
+        col(batch, C_BORDER);
+        rect(batch, tx, ty, tw, th);
+
+        float lineY = ty + th - TPAD - LINE_H * 0.72f;
+        for (String[] entry : lines) {
+            font.setColor(Float.parseFloat(entry[1]), Float.parseFloat(entry[2]), Float.parseFloat(entry[3]), 1f);
+            font.draw(batch, entry[0], tx + TPAD, lineY);
+            lineY -= LINE_H;
+        }
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    // ── Окно привязки умения к кнопке ────────────────────────────────────────────
+
+    private void openKeybindPicker(String skillId) {
+        // Пассивные умения (Широкий взмах, Тяжелая рука, Смертоносность и т.п.) применяются сами
+        // по себе (см. recomputePlayerStats — critChance/stunChance и т.д.), их некуда "нажимать" —
+        // привязка к кнопке для них бессмысленна, поэтому окно привязки для PASSIVE не открываем.
+        SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get(skillId);
+        if (def != null && def.kind == SkillCatalog.SkillKind.PASSIVE) return;
+
+        pickerOpen = true;
+        pickerSkillId = skillId;
+        captureMode = false;
+        captureTimer = 0f;
+        pickerFocusRow = 0;
+        pickerFocusCol = 0;
+    }
+
+    private void closeKeybindPicker() {
+        pickerOpen = false;
+        pickerSkillId = null;
+        captureMode = false;
+    }
+
+    /** Навигация по ячейкам пикера (стик/D-pad) — только пока пикер открыт и НЕ в режиме захвата. */
+    public void pickerNavigate(int dRow, int dCol) {
+        if (!pickerOpen || captureMode) return;
+        pickerFocusRow = (pickerFocusRow + dRow + 2) % 2;
+        pickerFocusCol = (pickerFocusCol + dCol + 6) % 6;
+    }
+
+    /** Подтверждение выбранной ячейки (A на геймпаде) — запускает ожидание ввода кнопки. */
+    public void pickerConfirm() {
+        if (!pickerOpen || captureMode) return;
+        captureMode = true;
+        captureTimer = CAPTURE_TIMEOUT;
+    }
+
+    private static String shortLabel(String name) {
+        return name.length() <= 3 ? name : name.substring(0, 3);
+    }
+
+    private void renderKeybindPicker(SpriteBatch batch, float sw, float sh) {
+        float w = 520f, h = 260f;
+        float x = (sw - w) / 2f, y = (sh - h) / 2f;
+
+        col(batch, C_BORDER);
+        batch.draw(pixel, x - 1, y - 1, w + 2, h + 2);
+        col(batch, C_BG);
+        batch.draw(pixel, x, y, w, h);
+
+        SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get(pickerSkillId);
+        font.setColor(C_TEXT_ACT);
+        String title = "Привязка: " + (def != null ? def.name : String.valueOf(pickerSkillId));
+        layout.setText(font, title);
+        font.draw(batch, title, x + (w - layout.width) / 2f, y + h - 16f);
+
+        float cellSize = 56f, cellGap = 10f, rowLabelH = 20f;
+        float rowsTop = y + h - 50f;
+        String[] rowLabels = {"Основной", "Комбинированный"};
+
+        pickerHotspots.clear();
+        for (int row = 0; row < 2; row++) {
+            float rowY = rowsTop - row * (cellSize + rowLabelH + 18f);
+            font.setColor(C_TEXT_DIM);
+            layout.setText(font, rowLabels[row]);
+            font.draw(batch, rowLabels[row], x + (w - layout.width) / 2f, rowY);
+
+            float cellsW = 6 * cellSize + 5 * cellGap;
+            float cellsX = x + (w - cellsW) / 2f;
+            float cellY = rowY - rowLabelH - cellSize;
+
+            SkillSlot[] slots = row == 0 ? store.player.mainSkillSlots : store.player.comboSkillSlots;
+            for (int c = 0; c < 6; c++) {
+                float cx = cellsX + c * (cellSize + cellGap);
+                boolean focused = pickerFocusRow == row && pickerFocusCol == c;
+                col(batch, focused ? C_BTN_FOCUS : C_SLOT_BG);
+                batch.draw(pixel, cx, cellY, cellSize, cellSize);
+                col(batch, C_SLOT_LINE);
+                rect(batch, cx, cellY, cellSize, cellSize);
+
+                SkillSlot slot = slots[c];
+                if (slot.skillId != null) {
+                    SkillCatalog.SkillDef bound = SkillCatalog.SKILLS.get(slot.skillId);
+                    Texture icon = bound != null ? loadSkillIcon(bound.imageFile) : null;
+                    if (icon != null) {
+                        float inset = 4f;
+                        batch.setColor(1f, 1f, 1f, 1f);
+                        batch.draw(icon, cx + inset, cellY + inset, cellSize - inset * 2, cellSize - inset * 2);
+                    } else {
+                        // Нет иконки (или не загрузилась) — показываем аббревиатуру названия как раньше.
+                        String txt = bound != null ? shortLabel(bound.name) : "?";
+                        layout.setText(font, txt);
+                        font.setColor(C_TEXT);
+                        font.draw(batch, txt, cx + (cellSize - layout.width) / 2f, cellY + (cellSize + layout.height) / 2f);
+                    }
+                }
+                pickerHotspots.add(new float[]{cx, cellY, cellSize, cellSize, row, c});
+            }
+        }
+
+        if (captureMode) {
+            String prefix = pickerFocusRow == 1 ? (store.isGamepadMode ? "LT+ " : "Shift+ ") : "";
+            String msg = prefix + "Нажмите клавишу/кнопку... (" + (int) Math.ceil(captureTimer) + ")";
+            font.setColor(C_UNSPENT_MSG);
+            layout.setText(font, msg);
+            font.draw(batch, msg, x + (w - layout.width) / 2f, y + 28f);
+        } else {
+            font.setColor(C_TEXT_DIM);
+            String hint = "Выберите ячейку";
+            layout.setText(font, hint);
+            font.draw(batch, hint, x + (w - layout.width) / 2f, y + 28f);
+        }
+
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    private boolean handlePickerClick(float mx, float my, float sw, float sh) {
+        if (captureMode) return true; // ждём нажатие клавиши/кнопки — обычные клики игнорируем
+        float w = 520f, h = 260f;
+        float x = (sw - w) / 2f, y = (sh - h) / 2f;
+        if (mx < x || mx > x + w || my < y || my > y + h) { closeKeybindPicker(); return true; }
+        for (float[] hs : pickerHotspots) {
+            if (mx >= hs[0] && mx <= hs[0] + hs[2] && my >= hs[1] && my <= hs[1] + hs[3]) {
+                pickerFocusRow = (int) hs[4];
+                pickerFocusCol = (int) hs[5];
+                captureMode = true;
+                captureTimer = CAPTURE_TIMEOUT;
+                return true;
+            }
+        }
+        return true;
+    }
+
+    /** Клавиатурный код → стабильный inputCode ("KEY_Q" и т.п.), null — не из разрешённого пула
+     *  (Q W E R A S D F Z X C V). Публичный статический — переиспользуется SimulationInputThread
+     *  для диспетчинга каста умений по тем же кодам. */
+    public static String keyToInputCode(int keyCode) {
+        if (keyCode == com.badlogic.gdx.Input.Keys.Q) return "KEY_Q";
+        if (keyCode == com.badlogic.gdx.Input.Keys.W) return "KEY_W";
+        if (keyCode == com.badlogic.gdx.Input.Keys.E) return "KEY_E";
+        if (keyCode == com.badlogic.gdx.Input.Keys.R) return "KEY_R";
+        if (keyCode == com.badlogic.gdx.Input.Keys.A) return "KEY_A";
+        if (keyCode == com.badlogic.gdx.Input.Keys.S) return "KEY_S";
+        if (keyCode == com.badlogic.gdx.Input.Keys.D) return "KEY_D";
+        if (keyCode == com.badlogic.gdx.Input.Keys.F) return "KEY_F";
+        if (keyCode == com.badlogic.gdx.Input.Keys.Z) return "KEY_Z";
+        if (keyCode == com.badlogic.gdx.Input.Keys.X) return "KEY_X";
+        if (keyCode == com.badlogic.gdx.Input.Keys.C) return "KEY_C";
+        if (keyCode == com.badlogic.gdx.Input.Keys.V) return "KEY_V";
+        return null;
+    }
+
+    /** @return true — код принят (капчур завершён, привязка выполнена); false — код вне пула,
+     *  таймер продолжает тикать (см. tick). Вызывается из SimulationInputThread.keyDown, когда
+     *  isCapturingKeybind()==true. */
+    public boolean captureKeyboardInput(int keyCode) {
+        String code = keyToInputCode(keyCode);
+        if (code == null) return false;
+        bindCapturedInput(code, false);
+        return true;
+    }
+
+    /** button — libGDX-код кнопки мыши (0=ЛКМ, 1=ПКМ). */
+    public boolean captureMouseInput(int button) {
+        String code = button == 0 ? "MOUSE_LEFT" : button == 1 ? "MOUSE_RIGHT" : null;
+        if (code == null) return false;
+        bindCapturedInput(code, false);
+        return true;
+    }
+
+    /** padCode уже провалидирован вызывающей стороной (SimulationInputThread) — один из
+     *  "PAD_X"/"PAD_Y"/"PAD_B"/"PAD_R1"/"PAD_R2"/"PAD_R3". */
+    public void captureGamepadInput(String padCode) {
+        bindCapturedInput(padCode, true);
+    }
+
+    /** Пишет захваченный код в keyboardInputCode ЛИБО gamepadInputCode (см. SkillSlot — раздельные
+     *  поля, чтобы привязки клавиатуры/мыши и геймпада никогда не конфликтовали и не затирали друг
+     *  друга). Если ячейка раньше держала ДРУГОЕ умение — обе привязки сбрасываются (не тащим
+     *  чужие бинды за новым умением); если то же самое умение просто получает вторую привязку
+     *  (например уже есть ЛКМ, теперь добавляется геймпад-кнопка) — вторая привязка добавляется
+     *  рядом, не трогая первую. */
+    private void bindCapturedInput(String inputCode, boolean gamepad) {
+        if (store.player == null) { closeKeybindPicker(); return; }
+        SkillSlot[] slots = pickerFocusRow == 0 ? store.player.mainSkillSlots : store.player.comboSkillSlots;
+        SkillSlot slot = slots[pickerFocusCol];
+        if (!java.util.Objects.equals(pickerSkillId, slot.skillId)) {
+            slot.keyboardInputCode = null;
+            slot.gamepadInputCode = null;
+        }
+        slot.skillId = pickerSkillId;
+        if (gamepad) slot.gamepadInputCode = inputCode;
+        else         slot.keyboardInputCode = inputCode;
+        slot.isCombo = pickerFocusRow == 1;
+        closeKeybindPicker();
+    }
+
+    // ── Дроп ──────────────────────────────────────────────────────────────────
+    private static final float[] C_HEADER  = {0.50f, 0.75f, 1.00f};
+    private static final float[] C_INFO    = {0.85f, 0.88f, 0.95f};
+    private static final float[] C_COMMON  = {1f, 1f, 1f};
+    private static final float[] C_RARE    = {0.15f, 0.95f, 0.9f};
+    private static final float[] C_UNIQUE  = {1f, 0.1f, 0.75f};
+
+    /**
+     * Вкладка "Дроп": все правила и текущие (пересчитанные под игрока) вероятности выпадения
+     * лута — см. DropManager.dropLoot. Значения, зависящие от Magic Find/уровня, считаются заново
+     * каждый кадр от текущего store.player — отладочный вид, чтобы видеть эффект статов "вживую".
+     */
+    private void renderDrop(SpriteBatch batch, float px, float py, float cH) {
+        float magicFind = store.player != null ? store.player.magicFind : 0f;
+        float goldFind  = store.player != null ? store.player.goldFind  : 0f;
+        int playerLevel = store.player != null ? store.player.level     : 1;
+
+        java.util.List<String[]> lines = new java.util.ArrayList<>(); // {label, value, r, g, b}
+        // Заголовок категории: пустая строка-отступ перед ним (кроме самого первого), чтобы
+        // категории визуально не слипались друг с другом (см. запрос пользователя).
+        boolean[] firstHeader = {true};
+        java.util.function.Consumer<String> header = (text) -> {
+            if (!firstHeader[0]) lines.add(new String[]{"", "", "0", "0", "0"}); // пустой отступ-разделитель
+            firstHeader[0] = false;
+            lines.add(new String[]{text, "", C_HEADER[0]+"", C_HEADER[1]+"", C_HEADER[2]+""});
+        };
+        // Пояснение под заголовком — приглушённым цветом, без значения справа.
+        java.util.function.Consumer<String> note = (text) ->
+            lines.add(new String[]{text, "", C_TEXT_DIM.r+"", C_TEXT_DIM.g+"", C_TEXT_DIM.b+""});
+        java.util.function.BiConsumer<String, String> row = (label, value) ->
+            lines.add(new String[]{label, value, C_INFO[0]+"", C_INFO[1]+"", C_INFO[2]+""});
+
+        // ── Золото ────────────────────────────────────────────────────────────
+        header.accept("ЗОЛОТО");
+        row.accept("Шанс выпадения", pct(DropManager.GOLD_DROP_CHANCE));
+        int goldMin = Math.round(playerLevel * DropManager.GOLD_BASE_MIN * (1f + goldFind / 100f));
+        int goldMax = Math.round(playerLevel * (DropManager.GOLD_BASE_MIN + DropManager.GOLD_BASE_SPAN - 1) * (1f + goldFind / 100f));
+        row.accept("Сумма (тек. уровень)", goldMin + " - " + goldMax);
+
+        // ── Количество предметов ──────────────────────────────────────────────
+        header.accept("ПРЕДМЕТЫ: КОЛИЧЕСТВО");
+        note.accept("максимум " + DropManager.MAX_ITEMS_PER_DROP + " предмета за раз");
+        float[] itemChances = DropManager.itemCountChances(magicFind);
+        for (int i = 0; i < itemChances.length; i++) {
+            row.accept((i + 1) + "-й предмет", pct(itemChances[i]));
+        }
+
+        // ── Уровень предмета ──────────────────────────────────────────────────
+        header.accept("ПРЕДМЕТЫ: УРОВЕНЬ");
+        note.accept("ролл 1 - уровень источника дропа (враг/сундук), потолок 99");
+        row.accept("Диапазон (тек. уровень как источник)", "1 - " + Math.min(99, Math.max(1, playerLevel)));
+
+        // ── Редкость предмета ─────────────────────────────────────────────────
+        header.accept("ПРЕДМЕТЫ: РЕДКОСТЬ");
+        note.accept("на каждый сгенерированный предмет");
+        double[] rarity = ItemGenerator.rarityChances(playerLevel, magicFind);
+        lines.add(new String[]{"Common", pct(rarity[0]), C_COMMON[0]+"", C_COMMON[1]+"", C_COMMON[2]+""});
+        lines.add(new String[]{"Rare",   pct(rarity[1]), C_RARE[0]+"",   C_RARE[1]+"",   C_RARE[2]+""});
+        lines.add(new String[]{"Unique", pct(rarity[2]), C_UNIQUE[0]+"", C_UNIQUE[1]+"", C_UNIQUE[2]+""});
+
+        // ── Модификаторы по редкости (кол-во роллов статов на предмете) ───────
+        header.accept("ПРЕДМЕТЫ: МОДИФИКАТОРЫ");
+        note.accept("кол-во статов на предмете зависит от редкости");
+        for (String rarityKey : new String[]{"common", "rare", "unique"}) {
+            ItemModifierCatalog.RarityDef def = ItemModifierCatalog.RARITIES.get(rarityKey);
+            if (def == null) continue;
+            float[] c = "common".equals(rarityKey) ? C_COMMON : "rare".equals(rarityKey) ? C_RARE : C_UNIQUE;
+            lines.add(new String[]{def.label, def.minMods + " - " + def.maxMods, c[0]+"", c[1]+"", c[2]+""});
+        }
+
+        // ── Ограничения: то, что в рандоме не может выпасть вообще (либо только при условии) ──
+        header.accept("ПРЕДМЕТЫ: ОГРАНИЧЕНИЯ");
+        note.accept("часть модификаторов исключена из рандома полностью или частично");
+        row.accept("Чарм 'Опыт'/'Все характеристики'", "0% — только вручную в редакторе");
+        row.accept("Артефакт 'Сила света'", "только Unique");
+        boolean highLevelPossible = playerLevel >= ItemModifierCatalog.HIGH_LEVEL_THRESHOLD;
+        row.accept("'Все навыки'/'Навыки ветки' (Rare+, ур.≥" + ItemModifierCatalog.HIGH_LEVEL_THRESHOLD + ")",
+            highLevelPossible ? "возможно" : "СЕЙЧАС НЕТ");
+
+        // ── Типы предметов (чарм/артефакт понижены относительно остальных) ────
+        header.accept("ПРЕДМЕТЫ: ТИП");
+        note.accept("чарм и артефакт реже — понижены относительно остальных типов");
+        String[] typeKeys = DropManager.equipmentTypeKeys();
+        float[] typeChances = DropManager.typeChances();
+        for (int i = 0; i < typeKeys.length; i++) {
+            ItemModifierCatalog.TypeDef type = ItemModifierCatalog.TYPES.get(typeKeys[i]);
+            row.accept(type != null ? type.label : typeKeys[i], pct(typeChances[i]));
+        }
+
+        // ── Расходники ────────────────────────────────────────────────────────
+        header.accept("РАСХОДНИКИ");
+        note.accept("не более " + DropManager.MAX_POTIONS_PER_DROP + " зелий за раз, свиток — отдельно");
+        row.accept("Зелье здоровья",       pct(DropManager.HEALTH_POTION_CHANCE));
+        row.accept("Зелье маны",           pct(DropManager.MANA_POTION_CHANCE));
+        row.accept("Зелье восстановления", pct(DropManager.mfScaledChance(DropManager.RECOVERY_POTION_BASE_CHANCE, magicFind)));
+        row.accept("Свиток телепортации",  pct(DropManager.mfScaledChance(DropManager.SCROLL_BASE_CHANCE, magicFind)));
+
+        // ── Факелы (независимый шанс на каждое убийство, растёт от Magic Find как у всего лута) ─
+        header.accept("ФАКЕЛЫ");
+        note.accept("независимый шанс на убийство, растёт от Magic Find");
+        row.accept("Обычный (~" + DropManager.COMMON_TORCH_RANGE[0] + "-" + DropManager.COMMON_TORCH_RANGE[1] + ")",
+            pct(DropManager.mfScaledChance(DropManager.COMMON_TORCH_BASE_CHANCE, magicFind)));
+        row.accept("Редкий (~" + DropManager.RARE_TORCH_RANGE[0] + "-" + DropManager.RARE_TORCH_RANGE[1] + ")",
+            pct(DropManager.mfScaledChance(DropManager.RARE_TORCH_BASE_CHANCE, magicFind)));
+        row.accept("Уникальный (~" + DropManager.UNIQUE_TORCH_RANGE[0] + "-" + DropManager.UNIQUE_TORCH_RANGE[1] + ")",
+            pct(DropManager.mfScaledChance(DropManager.UNIQUE_TORCH_BASE_CHANCE, magicFind)));
+
+        // ── Опыт ──────────────────────────────────────────────────────────────
+        header.accept("ОПЫТ");
+        row.accept("Сфер за килл", "1 - 5");
+        note.accept("сумма опыта фиксирована, дробится на сферы");
+
+        // ── Куда падает лут (геометрические условия, не вероятность) ──────────
+        header.accept("КУДА ПАДАЕТ ЛУТ");
+        row.accept("Разлёт от точки дропа",
+            String.format("%.1f - %.1f тайла", DropManager.MIN_SCATTER_TILES, DropManager.MAX_SCATTER_TILES));
+        row.accept("Макс. высота поверхности", "< " + DropManager.MAX_SURFACE_HEIGHT);
+        note.accept("вода недоступна, кроме как по мосту");
+
+        // ── Рендер (тот же скролл-механизм, что у статов) ─────────────────────
+        float totalH    = lines.size() * STATS_LINE_H + STATS_PAD * 2;
+        float maxScroll = Math.max(0, totalH - cH);
+        dropScroll      = Math.min(dropScroll, maxScroll);
+
+        float contentTop = py + cH - STATS_PAD + dropScroll;
+        float colValX    = px + PANEL_W - STATS_PAD;
+
+        pushContentScissor(batch, px, py, cH);
+        for (int i = 0; i < lines.size(); i++) {
+            String[] entry = lines.get(i);
+            float lineY = contentTop - (i + 1) * STATS_LINE_H;
+            if (lineY + STATS_LINE_H < py) break;
+            if (lineY > py + cH) continue;
+
+            boolean isHeader = entry[1].isEmpty();
+            float r = Float.parseFloat(entry[2]), g = Float.parseFloat(entry[3]), b = Float.parseFloat(entry[4]);
+            font.setColor(r, g, b, 1f);
+            font.draw(batch, entry[0], px + STATS_PAD, lineY);
+
+            if (!isHeader) {
+                layout.setText(font, entry[1]);
+                font.draw(batch, entry[1], colValX - layout.width, lineY);
+            }
+        }
+        popContentScissor(batch);
+
+        if (maxScroll > 0) {
+            float trackH  = cH - STATS_PAD * 2;
+            float thumbH  = Math.max(20f, trackH * (cH / totalH));
+            float thumbY  = py + STATS_PAD + (trackH - thumbH) * (1f - dropScroll / maxScroll);
+            col(batch, C_BORDER);
+            batch.draw(pixel, px + PANEL_W - 6f, py + STATS_PAD, 4f, trackH);
+            col(batch, C_FOCUS_OUT);
+            batch.draw(pixel, px + PANEL_W - 6f, thumbY, 4f, thumbH);
+        }
+
+        batch.setColor(1, 1, 1, 1);
+    }
+
+    private static String pct(double chance) {
+        return String.format("%.1f%%", chance * 100.0);
+    }
+
+    /** Рисует несколько разноцветных кусков текста подряд, выровненных ОБЩИМ блоком по правому
+     *  краю rightEdge (см. прокачиваемые статы в renderStats — "итого (база + бонус)"). */
+    private void drawRightAligned(SpriteBatch batch, float rightEdge, float y, String[] texts, Color[] colors) {
+        float totalW = 0f;
+        for (String t : texts) { layout.setText(font, t); totalW += layout.width; }
+
+        float x = rightEdge - totalW;
+        for (int i = 0; i < texts.length; i++) {
+            font.setColor(colors[i]);
+            font.draw(batch, texts[i], x, y);
+            layout.setText(font, texts[i]);
+            x += layout.width;
+        }
+    }
+
+    // ── Клиппинг скроллящихся списков (Статы/Дроп) ─────────────────────────────
+    // Разрешение "рисовать/не рисовать" по STATS_LINE_H в циклах выше — лишь приближение
+    // (реальная высота глифов может отличаться на несколько пикселей, особенно у букв с нижними
+    // выносными элементами), поэтому строка на самой границе видимой области может физически
+    // вылезти за рамку панели. Физический scissor-клиппинг по границам контента гарантирует, что
+    // ничего не нарисуется за пределами (px, py, PANEL_W, cH), независимо от точности расчётов выше.
+    private final Rectangle scissorClip = new Rectangle();
+    private final Rectangle scissorBounds = new Rectangle();
+
+    private void pushContentScissor(SpriteBatch batch, float px, float py, float cH) {
+        scissorBounds.set(px, py, PANEL_W, cH);
+        batch.flush();
+        ScissorStack.calculateScissors(Main.uiCamera, batch.getTransformMatrix(), scissorBounds, scissorClip);
+        ScissorStack.pushScissors(scissorClip);
+    }
+
+    private void popContentScissor(SpriteBatch batch) {
+        batch.flush();
+        ScissorStack.popScissors();
     }
 
     private void renderInventory(SpriteBatch batch, float px, float py, float cH) {
@@ -788,6 +1940,16 @@ public class SystemUI {
             font.draw(batch, countText, sx + CELL - tw - 3f, sy + th + 3f);
         }
         batch.setColor(1, 1, 1, 1);
+    }
+
+    /** Грузит иконку умения из assets/skills/ (тот же приём разрешения пути, что и
+     *  ItemGenerator.applyDefaultImage) — для квадратной сетки на вкладке Навыки обрезка по кругу
+     *  не нужна (см. PlayerHud.circularSkillIcon — там она нужна, ячейки HUD круглые). */
+    private Texture loadSkillIcon(String imageFile) {
+        if (imageFile == null) return null;
+        java.io.File file = Gdx.files.internal("assets/skills/" + imageFile).file();
+        if (!file.exists()) return null;
+        return loadIcon(file.getAbsolutePath());
     }
 
     /** Грузит и кэширует иконку предмета по абсолютному пути __image__ (см. DropManager.loadItemTexture). */
@@ -1086,37 +2248,34 @@ public class SystemUI {
                 applyItemStats(item, p);
         }
 
-        // Фаза 1: всё снаряжение кроме артефактов (слоты 6-11), итеративно
-        // Нужно сначала получить containers от пояса, чтобы затем решить что делать с артефактами
+        // Единый итеративный проход по ВСЕМУ снаряжению (включая артефакты/чармы) до фиксированной
+        // точки: требования по статам и по контейнерам (для артефактов) могут быть ВЗАИМНО
+        // зависимы — например, магия артефакта открывает требование пояса, а контейнеры пояса
+        // открывают слот артефакта. Раньше артефакты (слоты 6-11) считались отдельной "фазой 2"
+        // строго ПОСЛЕ завершения фазы обычного снаряжения — из-за этого бонусы артефактов
+        // НИКОГДА не учитывались при проверке требований обычного снаряжения (баг: пояс с
+        // требованием 21 магии оставался неактивным/оранжевым даже когда магия артефакта суммарно
+        // это давало, хотя сам дроп в слот уже разрешался — drag-n-drop проверка читала статы
+        // прошлого полного пересчёта, где артефакт был учтён, а этот пересчёт — нет). Теперь оба
+        // типа слотов крутятся в одном цикле, пока что-то меняется — бонусы текут в обе стороны.
+        int[] requiredContainers = {1, 3, 5, 2, 4, 6}; // индекс = i - 6, порядок открытия слотов артефактов
+
         boolean[] active = new boolean[store.equipmentSlots.length];
         boolean changed = true;
         while (changed) {
             changed = false;
             for (int i = 0; i < store.equipmentSlots.length; i++) {
-                if (i >= 6 && i <= 11) continue; // артефакты — в фазе 2
                 LinkedHashMap item = store.equipmentSlots[i];
                 if (item == null || item == draggedItem || active[i]) continue;
-                if (itemMeetsRequirements(item, p)) {
+
+                boolean isArtifactSlot = i >= 6 && i <= 11;
+                boolean slotUnlocked = !isArtifactSlot || p.containers >= requiredContainers[i - 6];
+
+                if (slotUnlocked && itemMeetsRequirements(item, p)) {
                     applyItemStats(item, p);
                     active[i] = true;
                     changed = true;
                 }
-            }
-        }
-
-        // Фаза 2: артефакты — только в пределах containers
-        int[] requiredContainers = {1, 3, 5, 2, 4, 6}; // Тот же маппинг порядка открытия
-
-        for (int i = 6; i <= 11; i++) {
-            LinkedHashMap item = store.equipmentSlots[i];
-            if (item == null || item == draggedItem) continue;
-
-            // Слот разблокирован, если у игрока количество контейнеров больше или равно требуемому
-            boolean slotUnlocked = p.containers >= requiredContainers[i - 6];
-
-            if (slotUnlocked && itemMeetsRequirements(item, p)) {
-                applyItemStats(item, p);
-                active[i] = true;
             }
         }
 
@@ -1132,6 +2291,22 @@ public class SystemUI {
         // предметов (flatHealthBonus/flatManaBonus) — пересчитывается каждый раз заново.
         p.maxHealth = p.strength * HEALTH_PER_STRENGTH + p.flatHealthBonus;
         p.maxMana   = p.magic    * MANA_PER_MAGIC      + p.flatManaBonus;
+
+        // Рейтинг атаки = (финальная ловкость * множитель) + бонус с модификаторов предметов
+        // (тот же принцип, что здоровье/мана от силы/магии выше) — p.attackRating к этому моменту
+        // уже содержит сумму item-бонусов (см. applyMod "_ar", applyMainStat "gloves" выше по циклу).
+        p.attackRating += Math.round(p.dexterity * ATTACK_RATING_PER_DEXTERITY);
+
+        // Пассивные боевые статы от умений (Воитель: Смертоносность/Тяжелая рука) — см.
+        // SkillCatalog.warriorSkills(), формулы 1:1 из skills.txt. Активные умения/ауры сюда пока
+        // не входят (применение их эффектов — отдельная задача, см. SkillCaster).
+        int critLevel = p.effectiveSkillLevel("warrior_crit");
+        p.critChance = critLevel > 0 ? 1f * critLevel : 0f;
+        p.critDamage = critLevel > 0 ? 2.5f * critLevel : 0f;
+
+        int stunLevel = p.effectiveSkillLevel("warrior_stun");
+        p.stunChance   = stunLevel > 0 ? 5f + 0.75f * (stunLevel - 1) : 0f;
+        p.stunDuration = stunLevel > 0 ? 1.0f + 0.05f * (stunLevel - 1) : 0f;
 
         if (p.pendingInitialFill) {
             // При входе в симуляцию — стартуем с половиной ёмкости (см. Player.pendingInitialFill).
@@ -1149,9 +2324,11 @@ public class SystemUI {
         StackManager.enforceCapacity();
     }
 
-    // 8 очков здоровья за 1 силы, 4 очка маны за 1 магии — см. recomputePlayerStats().
-    private static final float HEALTH_PER_STRENGTH = 8f;
-    private static final float MANA_PER_MAGIC      = 4f;
+    // 8 очков здоровья за 1 силы, 4 очка маны за 1 магии, 6 очков рейтинга атаки за 1 ловкости —
+    // см. recomputePlayerStats().
+    private static final float HEALTH_PER_STRENGTH        = 8f;
+    private static final float MANA_PER_MAGIC             = 4f;
+    private static final float ATTACK_RATING_PER_DEXTERITY = 6f;
 
     /** Пересчитывает статы игрока — вызывается HUD-ом каждый кадр, чтобы значения были
      *  актуальны даже когда инвентарь закрыт (иначе статы пересчитывались только на вкладках

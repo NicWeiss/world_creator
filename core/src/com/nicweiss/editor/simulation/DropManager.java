@@ -33,18 +33,21 @@ public class DropManager {
 
     private static final Random RANDOM = new Random();
     // "Падать можно только на поверхности или на совсем низкие предметы" — порог высоты тайла.
-    private static final int MAX_SURFACE_HEIGHT = 3;
+    static final int MAX_SURFACE_HEIGHT = 3;
     // Вода (см. Editor.WATER_TEXTURE_ID) и мостик (gp_12.png, см. Player.BRIDGE_TEXTURE_ID) — лут
     // не должен падать в воду, куда игрок не может дойти (кроме как по мостику).
     private static final int WATER_TEXTURE_ID  = 10;
     private static final int BRIDGE_TEXTURE_ID = 12;
     // Дальность разлёта в тайлах: база 1.5, +60% по требованию.
-    private static final float MIN_SCATTER_TILES = 0.6f;
-    private static final float MAX_SCATTER_TILES = 1.5f * 1.6f;
+    static final float MIN_SCATTER_TILES = 0.6f;
+    static final float MAX_SCATTER_TILES = 1.5f * 1.6f;
 
     private DropManager() {}
 
-    private static final int MAX_ITEMS_PER_DROP = 4;
+    static final int MAX_ITEMS_PER_DROP = 4;
+    static final float GOLD_DROP_CHANCE = 0.9f;
+    static final int GOLD_BASE_MIN = 3, GOLD_BASE_SPAN = 5;
+    private static final float ITEM_BASE_CHANCE = 0.35f, ITEM_MF_GAIN = 200f, ITEM_CHANCE_CAP = 0.9f, ITEM_CHANCE_FALLOFF = 0.5f;
 
     /**
      * Главная точка входа: роллит и спавнит лут в точке (tileX, tileY) — индексы store.objectedMap,
@@ -72,39 +75,32 @@ public class DropManager {
     }
 
     // ── Факел ────────────────────────────────────────────────────────────────
-    // Не часть обычного ролла снаряжения (см. equipmentTypeKeys — торч туда не входит):
-    // выпадает по счётчику убийств, а не по общей вероятности "предмет выпал/не выпал". Три
-    // редкости считаются НЕЗАВИСИМО, каждая — свой счётчик и свой случайный порог в своём
-    // диапазоне (обычный 5-10, редкий 50-100, уник 150-300, см. задачу пользователя).
-    private static int killsSinceCommonTorch = 0, killsSinceRareTorch = 0, killsSinceUniqueTorch = 0;
-    private static int nextCommonTorchAt = rollTorchThreshold(5, 10);
-    private static int nextRareTorchAt   = rollTorchThreshold(50, 100);
-    private static int nextUniqueTorchAt = rollTorchThreshold(150, 300);
+    // Независимый вероятностный ролл на каждое убийство — НЕ счётчик и НЕ гарантированный порог.
+    // Ориентиры пользователя ("падает раз на 5-10 врагов" и т.д.) переведены в шанс на одно
+    // убийство = 1 / среднее(диапазона): это даёт нужную частоту "в среднем", но каждый килл —
+    // независимое событие (дроп может не выпасть очень долго или выпасть подряд — это осознанно,
+    // именно так и должна работать вероятность, а не жёсткая привязка к количеству смертей).
+    static final int[] COMMON_TORCH_RANGE = {5, 10}, RARE_TORCH_RANGE = {50, 100}, UNIQUE_TORCH_RANGE = {150, 300};
 
-    private static int rollTorchThreshold(int min, int max) {
-        return min + RANDOM.nextInt(max - min + 1);
+    // Базовый шанс (при 0 Magic Find) = 1 / среднее(диапазона). Раньше это была static final
+    // константа — MF на факелы вообще не влиял, в отличие от ВСЕГО остального лута с редкостью
+    // (обычное снаряжение — через rollRarityKey, зелье восстановления/свиток — через
+    // mfScaledChance). Факел — тоже предмет с редкостью (common/rare/unique), поэтому по той же
+    // логике должен точно так же реагировать на Magic Find — используем тот же идиома
+    // "* (1 + MF/100)", капнутый на MF_SCALED_CHANCE_CAP (см. mfScaledChance).
+    static final float COMMON_TORCH_BASE_CHANCE = torchChanceFromRange(COMMON_TORCH_RANGE);
+    static final float RARE_TORCH_BASE_CHANCE   = torchChanceFromRange(RARE_TORCH_RANGE);
+    static final float UNIQUE_TORCH_BASE_CHANCE = torchChanceFromRange(UNIQUE_TORCH_RANGE);
+
+    private static float torchChanceFromRange(int[] range) {
+        return 1f / ((range[0] + range[1]) / 2f);
     }
 
     private static void rollTorchDrop(int tileX, int tileY) {
-        killsSinceCommonTorch++;
-        killsSinceRareTorch++;
-        killsSinceUniqueTorch++;
-
-        if (killsSinceCommonTorch >= nextCommonTorchAt) {
-            spawnTorchOfRarity("common", tileX, tileY);
-            killsSinceCommonTorch = 0;
-            nextCommonTorchAt = rollTorchThreshold(5, 10);
-        }
-        if (killsSinceRareTorch >= nextRareTorchAt) {
-            spawnTorchOfRarity("rare", tileX, tileY);
-            killsSinceRareTorch = 0;
-            nextRareTorchAt = rollTorchThreshold(50, 100);
-        }
-        if (killsSinceUniqueTorch >= nextUniqueTorchAt) {
-            spawnTorchOfRarity("unique", tileX, tileY);
-            killsSinceUniqueTorch = 0;
-            nextUniqueTorchAt = rollTorchThreshold(150, 300);
-        }
+        float magicFind = store.player != null ? store.player.magicFind : 0f;
+        if (RANDOM.nextFloat() < mfScaledChance(COMMON_TORCH_BASE_CHANCE, magicFind)) spawnTorchOfRarity("common", tileX, tileY);
+        if (RANDOM.nextFloat() < mfScaledChance(RARE_TORCH_BASE_CHANCE, magicFind))   spawnTorchOfRarity("rare", tileX, tileY);
+        if (RANDOM.nextFloat() < mfScaledChance(UNIQUE_TORCH_BASE_CHANCE, magicFind)) spawnTorchOfRarity("unique", tileX, tileY);
     }
 
     /** Спавнит факел заданной редкости — используется и авто-дропом выше, и отладочным дропом (см. UserInterface). */
@@ -154,9 +150,9 @@ public class DropManager {
     private static void rollGold(int enemyLevel, int tileX, int tileY) {
         float goldFind = store.player != null ? store.player.goldFind : 0f;
 
-        if (RANDOM.nextFloat() >= 0.9f) return; // золото выпадает не всегда
+        if (RANDOM.nextFloat() >= GOLD_DROP_CHANCE) return; // золото выпадает не всегда
 
-        int base = enemyLevel * (3 + RANDOM.nextInt(5));
+        int base = enemyLevel * (GOLD_BASE_MIN + RANDOM.nextInt(GOLD_BASE_SPAN));
         int amount = Math.round(base * (1f + goldFind / 100f));
         if (amount > 0) spawnGoldDrop(amount, tileX, tileY);
     }
@@ -167,15 +163,30 @@ public class DropManager {
      */
     private static int rollItemCount(int enemyLevel) {
         float magicFind = store.player != null ? store.player.magicFind : 0f;
-        float chance = Math.min(0.9f, 0.35f + magicFind / 200f);
+        float chance = itemChance(magicFind);
 
         int count = 0;
         for (int i = 0; i < MAX_ITEMS_PER_DROP; i++) {
             if (RANDOM.nextFloat() >= chance) break;
             count++;
-            chance *= 0.5f; // каждый следующий предмет — вдвое менее вероятен
+            chance *= ITEM_CHANCE_FALLOFF; // каждый следующий предмет — вдвое менее вероятен
         }
         return count;
+    }
+
+    /** Шанс ролла N-го предмета (chances[0] — первый предмет, ...) — для отображения в UI (см. SystemUI). */
+    static float[] itemCountChances(float magicFind) {
+        float chance = itemChance(magicFind);
+        float[] chances = new float[MAX_ITEMS_PER_DROP];
+        for (int i = 0; i < MAX_ITEMS_PER_DROP; i++) {
+            chances[i] = chance;
+            chance *= ITEM_CHANCE_FALLOFF;
+        }
+        return chances;
+    }
+
+    private static float itemChance(float magicFind) {
+        return Math.min(ITEM_CHANCE_CAP, ITEM_BASE_CHANCE + magicFind / ITEM_MF_GAIN);
     }
 
     /** Роллит шаблон предмета целиком через ItemGenerator: тип, класс, уровень, основной показатель, моды, требования. */
@@ -185,7 +196,7 @@ public class DropManager {
 
         // Расходники (зелья/свитки) — отдельная категория лута со своим роллом (см.
         // rollPotionsAndScroll), сюда, в обычный ролл снаряжения, не попадают.
-        String typeKey = equipmentTypeKeys()[RANDOM.nextInt(equipmentTypeKeys().length)];
+        String typeKey = rollEquipmentTypeKey();
 
         int playerLevel = store.player != null ? store.player.level : enemyLevel;
         float magicFind = store.player != null ? store.player.magicFind : 0f;
@@ -194,8 +205,49 @@ public class DropManager {
         return template;
     }
 
+    // Веса типов предмета при ролле — раньше все типы были строго равновероятны (см. историю).
+    // По требованию пользователя чарм и артефакт понижены относительно остальных (вес 100 —
+    // "базовая" полная вероятность обычного типа снаряжения): чарм = 20% от базовой, артефакт =
+    // 40% от базовой — они реже выпадают как случайный ролл типа, чем weapon/shield/helmet/etc.
+    private static final int DEFAULT_TYPE_WEIGHT = 100;
+    private static final java.util.Map<String, Integer> TYPE_WEIGHT_OVERRIDES = new java.util.LinkedHashMap<>();
+    static {
+        TYPE_WEIGHT_OVERRIDES.put("charm", 20);
+        TYPE_WEIGHT_OVERRIDES.put("artifact", 40);
+    }
+
+    private static int typeWeight(String key) {
+        return TYPE_WEIGHT_OVERRIDES.getOrDefault(key, DEFAULT_TYPE_WEIGHT);
+    }
+
+    private static String rollEquipmentTypeKey() {
+        String[] keys = equipmentTypeKeys();
+        int totalWeight = 0;
+        for (String key : keys) totalWeight += typeWeight(key);
+
+        int roll = RANDOM.nextInt(totalWeight);
+        int cumulative = 0;
+        for (String key : keys) {
+            cumulative += typeWeight(key);
+            if (roll < cumulative) return key;
+        }
+        return keys[keys.length - 1]; // не должно достигаться
+    }
+
+    /** Текущие вероятности каждого типа (в том же порядке, что equipmentTypeKeys()) — для
+     *  отображения в UI (см. SystemUI — вкладка "Дроп"), без ролла. */
+    static float[] typeChances() {
+        String[] keys = equipmentTypeKeys();
+        int totalWeight = 0;
+        for (String key : keys) totalWeight += typeWeight(key);
+
+        float[] chances = new float[keys.length];
+        for (int i = 0; i < keys.length; i++) chances[i] = (float) typeWeight(keys[i]) / totalWeight;
+        return chances;
+    }
+
     private static String[] equipmentTypeKeysCache;
-    private static String[] equipmentTypeKeys() {
+    static String[] equipmentTypeKeys() {
         if (equipmentTypeKeysCache == null) {
             List<String> keys = new ArrayList<>();
             for (String key : ItemModifierCatalog.TYPES.keySet()) {
@@ -215,12 +267,12 @@ public class DropManager {
     // Восстановление и свиток — редкие (~раз в 50), шанс растёт от Magic Find (та же идиома
     // "* (1 + stat/100)", что и rollGold ниже). Не более MAX_POTIONS_PER_DROP зелий за раз
     // (любая комбинация типов); свиток роллится отдельно и в этот лимит не входит.
-    private static final float HEALTH_POTION_CHANCE = 0.2f;
-    private static final float MANA_POTION_CHANCE = 0.2f;
-    private static final float RECOVERY_POTION_BASE_CHANCE = 0.02f;
-    private static final float SCROLL_BASE_CHANCE = 0.02f;
-    private static final float MF_SCALED_CHANCE_CAP = 0.5f;
-    private static final int MAX_POTIONS_PER_DROP = 2;
+    static final float HEALTH_POTION_CHANCE = 0.2f;
+    static final float MANA_POTION_CHANCE = 0.2f;
+    static final float RECOVERY_POTION_BASE_CHANCE = 0.02f;
+    static final float SCROLL_BASE_CHANCE = 0.02f;
+    static final float MF_SCALED_CHANCE_CAP = 0.5f;
+    static final int MAX_POTIONS_PER_DROP = 2;
 
     private static void rollPotionsAndScroll(int tileX, int tileY) {
         int playerLevel = store.player != null ? store.player.level : 1;
@@ -229,7 +281,7 @@ public class DropManager {
         List<String> potionHits = new ArrayList<>();
         if (RANDOM.nextFloat() < HEALTH_POTION_CHANCE) potionHits.add("potion_health");
         if (RANDOM.nextFloat() < MANA_POTION_CHANCE) potionHits.add("potion_mana");
-        float recoveryChance = Math.min(MF_SCALED_CHANCE_CAP, RECOVERY_POTION_BASE_CHANCE * (1f + magicFind / 100f));
+        float recoveryChance = mfScaledChance(RECOVERY_POTION_BASE_CHANCE, magicFind);
         if (RANDOM.nextFloat() < recoveryChance) potionHits.add("potion_recovery");
 
         if (potionHits.size() > MAX_POTIONS_PER_DROP) {
@@ -240,10 +292,15 @@ public class DropManager {
             spawnItemDrop(rollConsumableTemplate(typeKey, playerLevel), tileX, tileY);
         }
 
-        float scrollChance = Math.min(MF_SCALED_CHANCE_CAP, SCROLL_BASE_CHANCE * (1f + magicFind / 100f));
+        float scrollChance = mfScaledChance(SCROLL_BASE_CHANCE, magicFind);
         if (RANDOM.nextFloat() < scrollChance) {
             spawnItemDrop(rollConsumableTemplate("scroll_teleport", playerLevel), tileX, tileY);
         }
+    }
+
+    /** Тот же идиома "* (1 + MF/100)", капнутая на MF_SCALED_CHANCE_CAP — для recovery-потиона и свитка (см. rollPotionsAndScroll и SystemUI). */
+    static float mfScaledChance(float baseChance, float magicFind) {
+        return Math.min(MF_SCALED_CHANCE_CAP, baseChance * (1f + magicFind / 100f));
     }
 
     /** Роллит шаблон расходника: тир — по гладкой кривой от уровня игрока (см. ItemGenerator). */

@@ -40,7 +40,9 @@ public class Player extends BaseObject {
     public float flatManaBonus    = 0f;
 
     public float speed     = 1.0f;
-    public int level       = 99;
+    // Стартовый уровень персонажа — 0 (по требованию пользователя): прокачка начинается с нуля,
+    // очки статов/умений выдаются только за левел-апы (см. addExperience).
+    public int level       = 0;
     public int gold        = 0;
 
     // true у каждого нового Player: при первом пересчёте статов (см. SystemUI.recomputePlayerStats)
@@ -67,7 +69,10 @@ public class Player extends BaseObject {
 
     /** Опыт, необходимый для перехода с текущего уровня на следующий. */
     public int experienceToNextLevel() {
-        return (int) Math.round(LEVEL_XP_A * Math.pow(level, LEVEL_XP_B));
+        // На уровне 0 формула дала бы 0 (A*0^B) — используем 1 как нижнюю границу, чтобы
+        // требование для перехода 0→1 совпадало с 1→2 (иначе игрок "проходил" бы нулевой
+        // уровень без опыта вообще).
+        return (int) Math.round(LEVEL_XP_A * Math.pow(Math.max(level, 1), LEVEL_XP_B));
     }
 
     /**
@@ -79,6 +84,49 @@ public class Player extends BaseObject {
         return Math.max(1, (int) Math.round(reward));
     }
 
+    // Награда за левел-ап: очки на распределение игроком (см. SystemUI — кнопки "+" на
+    // вкладке Статы). Не расходуются автоматически — только по клику игрока.
+    private static final int STAT_POINTS_PER_LEVEL  = 5;
+    private static final int SKILL_POINTS_PER_LEVEL = 1;
+
+    public int unspentStatPoints  = 0;
+    public int unspentSkillPoints = 0;
+
+    // ── Навыки (см. utils.SkillCatalog — данные/формулы отдельно от этого состояния) ──────────
+    // Инвестированный игроком уровень каждого умения (0 = не изучено, 1-20). Ключ — SkillDef.id.
+    public java.util.Map<String, Integer> skillLevels = new java.util.HashMap<>();
+    // Бонусные уровни от предметов (модификатор "+N к умению X", ПЛЮМБИНГ на будущее — генерация
+    // таких модификаторов в дроп/редактор пока не заведена, см. ItemModifierCatalog).
+    public java.util.Map<String, Integer> skillItemBonusLevels = new java.util.HashMap<>();
+
+    /** Итоговый уровень умения (вложено + предметы), капается на SkillCatalog.SkillDef.MAX_LEVEL. */
+    public int effectiveSkillLevel(String skillId) {
+        int base  = skillLevels.getOrDefault(skillId, 0);
+        int bonus = skillItemBonusLevels.getOrDefault(skillId, 0);
+        return Math.min(com.nicweiss.editor.utils.SkillCatalog.SkillDef.MAX_LEVEL, base + bonus);
+    }
+
+    // ── Слоты панели умений (HUD) — 6 основных + 6 комбо (Shift/LT), см. SystemUI/PlayerHud ────
+    public com.nicweiss.editor.utils.SkillSlot[] mainSkillSlots  = newEmptySkillSlots(6);
+    public com.nicweiss.editor.utils.SkillSlot[] comboSkillSlots = newEmptySkillSlots(6);
+
+    private static com.nicweiss.editor.utils.SkillSlot[] newEmptySkillSlots(int n) {
+        com.nicweiss.editor.utils.SkillSlot[] arr = new com.nicweiss.editor.utils.SkillSlot[n];
+        for (int i = 0; i < n; i++) arr[i] = new com.nicweiss.editor.utils.SkillSlot();
+        return arr;
+    }
+
+    // Активные ауры (Вестник) — тумблер вкл/выкл, ПЛЮМБИНГ под будущий резерв маны/применение
+    // эффекта (см. SkillCaster — сам каст пока заглушка).
+    public java.util.Set<String> activeAuras = new java.util.HashSet<>();
+
+    // ── Пассивные боевые статы от умений — пересчитываются в SystemUI.recomputePlayerStats(),
+    // показываются на вкладке Статы (см. renderStats). Пока только Воитель: Смертоносность/Тяжелая рука.
+    public float critChance   = 0f; // % (Смертоносность)
+    public float critDamage   = 0f; // % (Смертоносность)
+    public float stunChance   = 0f; // % (Тяжелая рука)
+    public float stunDuration = 0f; // сек (Тяжелая рука)
+
     /** Начисляет опыт, обрабатывая один или несколько левел-апов подряд (остаток переносится). */
     public void addExperience(int amount) {
         if (amount <= 0) return;
@@ -86,6 +134,8 @@ public class Player extends BaseObject {
         while (experience >= experienceToNextLevel()) {
             experience -= experienceToNextLevel();
             level++;
+            unspentStatPoints  += STAT_POINTS_PER_LEVEL;
+            unspentSkillPoints += SKILL_POINTS_PER_LEVEL;
         }
     }
 
@@ -165,6 +215,20 @@ public class Player extends BaseObject {
 
     public Player() {
         buildTexture();
+        initDefaultSkills();
+    }
+
+    /** Базовое умение атаки ("Удар") — единственное, что даётся не с нуля: уже вложено на 1
+     *  уровень и привязано в 1-ю основную ячейку сразу на ЛКМ (клавиатура/мышь) И на B (геймпад) —
+     *  обе привязки живут независимо на одном SkillSlot (см. SkillSlot.keyboardInputCode/
+     *  gamepadInputCode), поэтому не конфликтуют между собой. */
+    private void initDefaultSkills() {
+        String id = "warrior_strike";
+        skillLevels.put(id, 1);
+        com.nicweiss.editor.utils.SkillSlot slot = mainSkillSlots[0];
+        slot.skillId = id;
+        slot.keyboardInputCode = "MOUSE_LEFT";
+        slot.gamepadInputCode = "PAD_B";
     }
 
     // ── Внешний интерфейс для PhysicThread ─────────────────────────────────────
