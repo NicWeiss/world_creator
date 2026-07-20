@@ -10,8 +10,6 @@ import com.nicweiss.editor.Generic.Store;
 public class PhysicThread implements Runnable {
     public static Store store;
 
-    private static final int BLOCK_HEIGHT = 10;
-
     @Override
     public void run() {
         while (!Thread.currentThread().isInterrupted()) {
@@ -43,7 +41,7 @@ public class PhysicThread implements Runnable {
         float dCartY = (2f * dy - dx) / 2f;
 
         float beforeX = store.player.worldX, beforeY = store.player.worldY;
-        store.player.moveBy(dCartX, dCartY, BLOCK_HEIGHT);
+        store.player.moveBy(dCartX, dCartY, Player.MOVEMENT_BLOCK_HEIGHT);
 
         // Клик-муав: если движение было к цели клика (см. SimulationInputThread) и moveBy не сдвинул
         // игрока вообще (полностью заблокирован препятствием) — прерываем погоню за целью, как и

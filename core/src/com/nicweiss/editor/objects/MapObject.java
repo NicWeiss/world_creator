@@ -91,6 +91,15 @@ public class MapObject  extends BaseObject {
     // (calcLitColor вызывается на каждый тайл, см. использование ниже).
     private static final int[] PLAYER_LIGHT_SRC_BUF = new int[2];
 
+    // Свечение эффектов умений (снаряды/наземный огонь, см. SkillEffectRenderer/Store.skillLightPoints)
+    // — тёплый огненный цвет, радиус/яркость приходят с самим источником (не завязаны на "силу
+    // света" предмета, в отличие от торч-констант выше).
+    public static final float SKILL_LIGHT_R = 1.00f;
+    public static final float SKILL_LIGHT_G = 0.55f;
+    public static final float SKILL_LIGHT_B = 0.20f;
+    private static final float[] SKILL_LIGHT_ANCHOR_BUF = new float[2];
+    private static final int[] SKILL_LIGHT_SRC_BUF = new int[2];
+
     public MapObject(){
         isEnableRenderLimits = true;
     }
@@ -589,6 +598,30 @@ public class MapObject  extends BaseObject {
                     lg = Math.max(lg, store.player.torchGlowG * t);
                     lb = Math.max(lb, store.player.torchGlowB * t);
                 }
+            }
+        }
+
+        // Динамический свет эффектов умений (снаряды/наземный огонь, см. SkillEffectRenderer) — та
+        // же схема, что у факела на земле/игрока выше, но радиус/яркость приходят готовыми из
+        // Store.skillLightPoints (см. её описание), а высота источника — как у костра (по
+        // требованию пользователя, см. Player.LIGHT_SOURCE_HEIGHT).
+        if (store.isSimulationMode && store.skillLightPoints != null) {
+            for (float[] sp : store.skillLightPoints) {
+                if (sp[0] == 0f) continue;
+                float radius = sp[3];
+                float[] la = com.nicweiss.editor.utils.Lighting.worldLightAnchor(sp[1], sp[2], SKILL_LIGHT_ANCHOR_BUF);
+                float odx = (x - store.shiftX + (float) width / 2f) - la[0];
+                float ody = ((y - store.shiftY - height * 0.1f) - la[1]) * 1.45f;
+                if (Math.abs(odx) > radius || Math.abs(ody) > radius) continue;
+                float odist = (float) Math.sqrt(odx * odx + ody * ody);
+                if (odist >= radius) continue;
+                int[] srcIdx = com.nicweiss.editor.utils.Lighting.worldToArrayIndex(sp[1], sp[2], SKILL_LIGHT_SRC_BUF);
+                if (com.nicweiss.editor.utils.Lighting.isLineOfSightBlocked(
+                        com.nicweiss.editor.simulation.Player.LIGHT_SOURCE_HEIGHT, srcIdx[0], srcIdx[1], toAi, toAj)) continue;
+                float t = (1f - odist / radius) * sp[4];
+                lr = Math.max(lr, SKILL_LIGHT_R * t);
+                lg = Math.max(lg, SKILL_LIGHT_G * t);
+                lb = Math.max(lb, SKILL_LIGHT_B * t);
             }
         }
 

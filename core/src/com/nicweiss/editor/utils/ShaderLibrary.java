@@ -21,6 +21,9 @@ public class ShaderLibrary {
     private static Texture waterPattern;
     private static boolean waterPatternLoadAttempted = false;
 
+    private static ShaderProgram aura;
+    private static boolean auraLoadAttempted = false;
+
     private ShaderLibrary() {}
 
     /** Шейдер искажения поверхности воды — грузится/компилируется один раз, лениво. */
@@ -65,6 +68,27 @@ public class ShaderLibrary {
             }
         }
         return shore;
+    }
+
+    /** Шейдер пульсации умений (размер + яркость, см. aura.vert/frag) — используется для спрайтов
+     *  аур/эффектов умений (см. SkillEffectRenderer.drawAuraSprite), НЕ для тайлов карты. */
+    public static ShaderProgram aura() {
+        if (!auraLoadAttempted) {
+            auraLoadAttempted = true;
+            ShaderProgram.pedantic = false;
+            ShaderProgram program = new ShaderProgram(
+                Gdx.files.internal("shaders/aura.vert"),
+                Gdx.files.internal("shaders/aura.frag")
+            );
+            if (program.isCompiled()) {
+                aura = program;
+            } else {
+                Gdx.app.error("ShaderLibrary", "Не удалось скомпилировать aura-шейдер: " + program.getLog());
+                program.dispose();
+                aura = null; // рендер ауры просто откатится на обычный шейдер (см. SkillEffectRenderer)
+            }
+        }
+        return aura;
     }
 
     /**

@@ -9,6 +9,7 @@ import com.nicweiss.editor.simulation.PlayerHud;
 import com.nicweiss.editor.simulation.PlayerUI;
 import com.nicweiss.editor.simulation.SimCreature;
 import com.nicweiss.editor.simulation.SimulationInputThread;
+import com.nicweiss.editor.simulation.SkillEffectRenderer;
 import com.nicweiss.editor.simulation.SystemUI;
 import com.nicweiss.editor.simulation.WeatherRenderer;
 
@@ -64,6 +65,14 @@ public class Store {
     // запуска редактора. null = ещё не было ни одной сессии.
     public static PlayerProgress savedProgress = null;
 
+    // Динамические источники света от эффектов умений (летящие снаряды/наземный огонь — см.
+    // SkillEffectRenderer.updateLightSnapshot(), MapObject.calcLitColor, Lighting.computeLitColor).
+    // Формат строки: [0]=active(0/1), [1]=worldX, [2]=worldY, [3]=радиус в px, [4]=яркость (0..1).
+    // Цвет фиксированный — тёплый огненный (см. MapObject.SKILL_LIGHT_R/G/B) — умений с другими
+    // цветами света пока нет.
+    public static final int SKILL_LIGHT_CAPACITY = 32;
+    public static float[][] skillLightPoints = new float[SKILL_LIGHT_CAPACITY][5];
+
     public static class PlayerProgress {
         public int level, experience, baseStrength, baseMagic, baseDexterity;
         public int unspentStatPoints, unspentSkillPoints;
@@ -77,6 +86,9 @@ public class Store {
 
     // Рендер погоды — создаётся на GL-потоке при запуске симуляции
     public static WeatherRenderer weatherRenderer = null;
+    // Визуальный слой применения умений (см. SkillCaster/SkillEffectRenderer) — создаётся вместе с
+    // остальными GL-объектами симуляции.
+    public static SkillEffectRenderer skillEffectRenderer = null;
 
     // ── Погода ────────────────────────────────────────────────────────────────
     // Интенсивность дождя [0..1] — плавно меняется WeatherThread

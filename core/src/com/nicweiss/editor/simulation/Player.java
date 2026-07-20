@@ -339,6 +339,19 @@ public class Player extends BaseObject {
         else if (left)          direction = Direction.LEFT;
     }
 
+    // Порог высоты блокирующего тайла для обычного передвижения (см. moveBy/PhysicThread) —
+    // публичная копия, чтобы им же могли пользоваться снаряды/эффекты умений (см. isBlockedAt),
+    // которым нужно останавливаться там же, где остановился бы сам игрок.
+    public static final int MOVEMENT_BLOCK_HEIGHT = 10;
+
+    /** Точечная проверка проходимости мировой позиции — те же правила, что у движения игрока (высота
+     *  тайла + вода/мостик, см. isCollidingAt/moveBy), но без радиуса игрока (r=1px, "точка"). Нужна
+     *  снарядам/наземным эффектам умений (см. SkillEffectRenderer): "могут двигаться только там, где
+     *  может двигаться персонаж". */
+    public boolean isBlockedAt(float worldX, float worldY) {
+        return isCollidingAt(worldX, worldY, 1f, MOVEMENT_BLOCK_HEIGHT);
+    }
+
     /**
      * Тест круг vs AABB тайла.
      * Тайл [mi][mj] в декартовом пространстве:

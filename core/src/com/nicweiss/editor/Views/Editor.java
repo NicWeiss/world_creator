@@ -1207,6 +1207,13 @@ public class Editor extends View{
             store.simulationInput.pollFrame();
         }
 
+//        Снимок источников света от эффектов умений — ДО отрисовки тайлов (MapObject.calcLitColor
+//        читает Store.skillLightPoints на каждый тайл), иначе освещение отставало бы на кадр
+//        (см. SkillEffectRenderer.updateLightSnapshot).
+        if (store.isSimulationMode && store.skillEffectRenderer != null) {
+            store.skillEffectRenderer.updateLightSnapshot();
+        }
+
 //        Смена времени суток (только в dev-режиме — в симуляции управляют треды)
         if (!store.isSimulationMode) {
             if (!store.isDay) {
@@ -1345,6 +1352,11 @@ public class Editor extends View{
                     int pi = (int)(store.player.worldX / tileSizeX);
                     int pj = (int)(store.player.worldY / tileSizeY);
                     if (i == pi && j == pj) {
+                        // Земляной слой умений (ауры под ногами, см. SkillEffectRenderer.renderGround) —
+                        // строго ДО игрока, иначе спрайт ауры перекрывал бы персонажа сверху.
+                        if (store.skillEffectRenderer != null) {
+                            store.skillEffectRenderer.renderGround(batch);
+                        }
                         store.player.draw(batch);
                     }
                 }
@@ -1369,6 +1381,11 @@ public class Editor extends View{
         // ── Дождь и молния ────────────────────────────────────────────────────
         if (store.isSimulationMode && store.weatherRenderer != null) {
             store.weatherRenderer.render(batch);
+        }
+
+        // ── Визуальные эффекты применения умений (см. SkillCaster/SkillEffectRenderer) ─────────
+        if (store.isSimulationMode && store.skillEffectRenderer != null) {
+            store.skillEffectRenderer.render(batch);
         }
     }
 

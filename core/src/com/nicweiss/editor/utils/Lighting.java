@@ -33,20 +33,25 @@ public class Lighting {
     }
 
     /**
-     * То же самое, что tileLightAnchor, но для НЕПРЕРЫВНОЙ мировой позиции игрока (worldX/worldY —
-     * не привязана к дискретной ячейке, в отличие от mapCellX/Y у Drop/Creation). Игрок с факелом
-     * (см. Player.lightPower) — источник света, и должен сравниваться со всеми остальными источниками
-     * в ТОЙ ЖЕ системе координат — те же смещения (TILE_INDEX_BASE, TILE_X/Y_ANCHOR_EXTRA_OFFSET,
-     * см. Store), применённые напрямую к непрерывной позиции (без округления до ячейки), чтобы свет
-     * двигался плавно вместе с игроком, а не "прыгал" по тайлам.
+     * То же самое, что tileLightAnchor, но для ЛЮБОЙ НЕПРЕРЫВНОЙ мировой позиции (worldX/worldY —
+     * не привязана к дискретной ячейке, в отличие от mapCellX/Y у Drop/Creation) — источник света,
+     * который должен сравниваться со всеми остальными источниками в ТОЙ ЖЕ системе координат — те же
+     * смещения (TILE_INDEX_BASE, TILE_X/Y_ANCHOR_EXTRA_OFFSET, см. Store), применённые напрямую к
+     * непрерывной позиции (без округления до ячейки), чтобы свет двигался плавно вместе с
+     * источником, а не "прыгал" по тайлам. Используется для игрока с факелом (см. playerLightAnchor)
+     * И для летящих/движущихся эффектов умений (снаряды/наземный огонь — см. SkillEffectRenderer).
      */
-    private static float[] playerLightAnchor(float[] out) {
-        float cartX = store.player.worldX - (store.TILE_INDEX_BASE + store.TILE_X_ANCHOR_EXTRA_OFFSET) * store.tileSizeWidth;
-        float cartY = store.player.worldY - (store.TILE_INDEX_BASE + store.TILE_Y_ANCHOR_EXTRA_OFFSET) * store.tileSizeHeight;
+    public static float[] worldLightAnchor(float worldX, float worldY, float[] out) {
+        float cartX = worldX - (store.TILE_INDEX_BASE + store.TILE_X_ANCHOR_EXTRA_OFFSET) * store.tileSizeWidth;
+        float cartY = worldY - (store.TILE_INDEX_BASE + store.TILE_Y_ANCHOR_EXTRA_OFFSET) * store.tileSizeHeight;
         float[] iso = Transform.cartesianToIsometric(cartX, cartY);
         out[0] = iso[0] + store.tileSizeWidth;
         out[1] = iso[1] + store.tileSizeHeight;
         return out;
+    }
+
+    private static float[] playerLightAnchor(float[] out) {
+        return worldLightAnchor(store.player.worldX, store.player.worldY, out);
     }
 
     // Кэш позиции игрока-как-источника-света — calcLitColor вызывается на КАЖДЫЙ тайл КАЖДЫЙ кадр
@@ -121,6 +126,8 @@ public class Lighting {
 
     // Переиспользуемые буферы индексов — без аллокаций на кадр (см. computeLitColor ниже).
     private static final int[] srcIdxBuf = new int[2];
+    private static final float[] skillLightAnchorBuf = new float[2];
+    private static final int[] skillLightSrcBuf = new int[2];
 
     /**
      * Освещённость точки (selfIsoX/Y — в формате tileLightAnchor; selfMapCellX/Y — её же индекс
@@ -220,6 +227,30 @@ public class Lighting {
                     lg = Math.max(lg, store.player.torchGlowG * t);
                     lb = Math.max(lb, store.player.torchGlowB * t);
                 }
+            }
+        }
+
+        // Динамический свет эффектов умений (снаряды/наземный огонь, см. SkillEffectRenderer) —
+        // та же схема, что у факела на земле выше, но радиус/яркость приходят готовыми из самого
+        // источника (store.skillLightPoints), а не выводятся из "силы света" предмета. Высота
+        // источника — как у костра (см. Player.LIGHT_SOURCE_HEIGHT, требование пользователя).
+        if (store.skillLightPoints != null) {
+            for (float[] sp : store.skillLightPoints) {
+                if (sp[0] == 0f) continue;
+                float radius = sp[3];
+                worldLightAnchor(sp[1], sp[2], skillLightAnchorBuf);
+                float odx = selfIsoX - skillLightAnchorBuf[0];
+                float ody = (selfIsoY - skillLightAnchorBuf[1]) * 1.45f;
+                if (Math.abs(odx) > radius || Math.abs(ody) > radius) continue;
+                float odist = (float) Math.sqrt(odx * odx + ody * ody);
+                if (odist >= radius) continue;
+                worldToArrayIndex(sp[1], sp[2], skillLightSrcBuf);
+                if (isLineOfSightBlocked(com.nicweiss.editor.simulation.Player.LIGHT_SOURCE_HEIGHT,
+                        skillLightSrcBuf[0], skillLightSrcBuf[1], toAi, toAj)) continue;
+                float t = (1f - odist / radius) * sp[4];
+                lr = Math.max(lr, MapObject.SKILL_LIGHT_R * t);
+                lg = Math.max(lg, MapObject.SKILL_LIGHT_G * t);
+                lb = Math.max(lb, MapObject.SKILL_LIGHT_B * t);
             }
         }
 

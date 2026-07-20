@@ -601,6 +601,7 @@ public class UserInterface {
             store.playerHud       = new com.nicweiss.editor.simulation.PlayerHud();
             store.systemUI        = new com.nicweiss.editor.simulation.SystemUI();
             store.weatherRenderer = new com.nicweiss.editor.simulation.WeatherRenderer(lightClass);
+            store.skillEffectRenderer = new com.nicweiss.editor.simulation.SkillEffectRenderer();
         });
 
         creationThread = newDaemon(new CreationThread(), "CreationThread");
