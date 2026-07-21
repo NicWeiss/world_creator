@@ -14,7 +14,7 @@ public final class MeleeStrikeEffects {
         if (!SlashSwingEffect.trigger(center, target, sink)) {
             sink.spawn(new StreakEffect(center, target, 1f, 1f, 1f, 0.18f)); // ассетов нет — старый росчерк
         }
-        addSplashIfInvested(target, sink);
+        addSplashIfInvested(center, target, sink);
     }
 
     public static void triggerBladeDash(EffectSink sink) {
@@ -22,7 +22,7 @@ public final class MeleeStrikeEffects {
         float[] target = FxContext.aimScreenPos();
         sink.spawn(new StreakEffect(center, target, 1f, 1f, 1f, 0.22f));
         sink.spawn(new RingEffect(target, 26f, 0.9f, 0.9f, 1f, 0.30f));
-        addSplashIfInvested(target, sink);
+        addSplashIfInvested(center, target, sink);
     }
 
     public static void triggerShadowBlade(EffectSink sink) {
@@ -30,14 +30,17 @@ public final class MeleeStrikeEffects {
         float[] target = FxContext.aimScreenPos();
         sink.spawn(new StreakEffect(center, target, 0.55f, 0.35f, 0.75f, 0.22f));
         sink.spawn(new StreakEffect(FxContext.offset(center, 6, -4), FxContext.offset(target, 6, -4), 0.55f, 0.35f, 0.75f, 0.20f));
-        addSplashIfInvested(target, sink);
+        addSplashIfInvested(center, target, sink);
     }
 
     /** Широкий взмах (Сплеш) — пассивка, не кастуется напрямую, но "если сплеш есть - то работает
-     *  всегда": добавляем кольцо-всплеск к КАЖДОЙ атаке Воителя, если хотя бы 1 очко вложено. */
-    private static void addSplashIfInvested(float[] target, EffectSink sink) {
+     *  всегда": добавляем веерный росчерк от игрока к цели к КАЖДОЙ атаке Воителя, если хотя бы 1
+     *  очко вложено (откат на прежнее кольцо, если ассетов почему-то нет). */
+    private static void addSplashIfInvested(float[] center, float[] target, EffectSink sink) {
         if (FxContext.store.player != null && FxContext.store.player.skillLevels.getOrDefault("warrior_splash", 0) > 0) {
-            sink.spawn(new RingEffect(target, 34f, 0.85f, 0.85f, 0.5f, 0.35f));
+            if (!WideSplashEffect.trigger(center, target, sink)) {
+                sink.spawn(new RingEffect(target, 34f, 0.85f, 0.85f, 0.5f, 0.35f));
+            }
         }
     }
 }

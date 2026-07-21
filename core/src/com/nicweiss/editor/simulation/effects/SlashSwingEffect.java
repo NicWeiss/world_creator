@@ -39,6 +39,10 @@ public class SlashSwingEffect extends SkillEffect {
     // итоговую текстуру по часовой, см. формулу rotationDeg ниже).
     private static final float TEXTURE_RING_MID_DEG = 205f + 90f + 30f;
 
+    /** Длительность анимации атаки (сек) — используется WideSplashEffect, чтобы стартовать ровно
+     *  на её середине. */
+    public static final float LIFE_SECONDS = FRAME_COUNT / FRAME_RATE;
+
     private static Texture[] frames;
 
     private static Texture[] loadFrames() {
