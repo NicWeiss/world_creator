@@ -120,6 +120,60 @@ public class Player extends BaseObject {
     // эффекта (см. SkillCaster — сам каст пока заглушка).
     public java.util.Set<String> activeAuras = new java.util.HashSet<>();
 
+    // Оставшееся время до АВТОМАТИЧЕСКОГО отключения тумблера (см. SkillCatalog stat "duration_sec" —
+    // пока только у elem_lightning_shield) — заполняется в SkillCaster.cast() при включении,
+    // тикается тут (см. tickToggleDurations, вызывается из PhysicThread рядом с tickRegen).
+    // Тумблеры без "duration_sec" в SkillCatalog сюда вообще не попадают — держатся включёнными,
+    // пока игрок не выключит их повторным нажатием.
+    public java.util.Map<String, Float> toggleRemainingTime = new java.util.HashMap<>();
+
+    /** Автоотключение тумблеров с ограниченной длительностью (см. toggleRemainingTime) — вызывать
+     *  каждый кадр (см. PhysicThread). */
+    public void tickToggleDurations(float dt) {
+        if (toggleRemainingTime.isEmpty()) return;
+        java.util.Iterator<java.util.Map.Entry<String, Float>> it = toggleRemainingTime.entrySet().iterator();
+        while (it.hasNext()) {
+            java.util.Map.Entry<String, Float> e = it.next();
+            float remaining = e.getValue() - dt;
+            if (remaining <= 0f) {
+                activeAuras.remove(e.getKey());
+                it.remove();
+            } else {
+                e.setValue(remaining);
+            }
+        }
+    }
+
+    // Перезарядка умений (см. SkillCatalog.cooldownSeconds) — skillId → оставшееся время в секундах.
+    // Заполняется в SkillCaster.cast() сразу после успешного применения умения (и разового
+    // эффекта, и переключения тумблера), тикается тут (см. tickSkillCooldowns, из PhysicThread).
+    // Умений вообще без ключа "cooldown" в SkillCatalog (напр. базовый warrior_strike) тут просто
+    // никогда не будет — каст всегда проходит мгновенно.
+    public java.util.Map<String, Float> skillCooldowns = new java.util.HashMap<>();
+
+    /** true — умение сейчас на перезарядке, повторный каст должен игнорироваться (см. SkillCaster). */
+    public boolean isSkillOnCooldown(String skillId) {
+        Float remaining = skillCooldowns.get(skillId);
+        return remaining != null && remaining > 0f;
+    }
+
+    /** Оставшееся время перезарядки в секундах, 0 — если умение готово (для HUD-анимации, см.
+     *  PlayerHud.renderSkillSlot). */
+    public float skillCooldownRemaining(String skillId) {
+        Float remaining = skillCooldowns.get(skillId);
+        return remaining != null ? remaining : 0f;
+    }
+
+    public void tickSkillCooldowns(float dt) {
+        if (skillCooldowns.isEmpty()) return;
+        java.util.Iterator<java.util.Map.Entry<String, Float>> it = skillCooldowns.entrySet().iterator();
+        while (it.hasNext()) {
+            java.util.Map.Entry<String, Float> e = it.next();
+            float remaining = e.getValue() - dt;
+            if (remaining <= 0f) it.remove(); else e.setValue(remaining);
+        }
+    }
+
     // ── Пассивные боевые статы от умений — пересчитываются в SystemUI.recomputePlayerStats(),
     // показываются на вкладке Статы (см. renderStats). Пока только Воитель: Смертоносность/Тяжелая
     // рука/Широкий взмах.

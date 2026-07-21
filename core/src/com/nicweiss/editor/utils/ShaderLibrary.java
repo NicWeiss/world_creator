@@ -27,6 +27,9 @@ public class ShaderLibrary {
     private static ShaderProgram mist;
     private static boolean mistLoadAttempted = false;
 
+    private static ShaderProgram cooldown;
+    private static boolean cooldownLoadAttempted = false;
+
     private ShaderLibrary() {}
 
     /** Шейдер искажения поверхности воды — грузится/компилируется один раз, лениво. */
@@ -114,6 +117,28 @@ public class ShaderLibrary {
             }
         }
         return mist;
+    }
+
+    /** Шейдер радиальной "пелены" перезарядки умений (см. PlayerHud.renderSkillSlot) — серый клин
+     *  убирается из центра по часовой стрелке по мере остывания КД (см. assets/shaders/cooldown.frag).
+     *  Вертексник — тот же passthrough, что у воды/берега/тумана. */
+    public static ShaderProgram cooldown() {
+        if (!cooldownLoadAttempted) {
+            cooldownLoadAttempted = true;
+            ShaderProgram.pedantic = false;
+            ShaderProgram program = new ShaderProgram(
+                Gdx.files.internal("shaders/water.vert"),
+                Gdx.files.internal("shaders/cooldown.frag")
+            );
+            if (program.isCompiled()) {
+                cooldown = program;
+            } else {
+                Gdx.app.error("ShaderLibrary", "Не удалось скомпилировать cooldown-шейдер: " + program.getLog());
+                program.dispose();
+                cooldown = null; // без шейдера просто не рисуем пелену — иконка остаётся видна как есть
+            }
+        }
+        return cooldown;
     }
 
     /**

@@ -117,6 +117,20 @@ public class SkillCatalog {
         return out;
     }
 
+    /** Перезарядка умения на уровне level, в секундах — "cooldown" встречается двумя способами:
+     *  как масштабируемый по уровню стат (см. warrior_blade_dash — "чем выше уровень, тем короче
+     *  КД") или как фиксированное значение в def.fixed (не растёт с уровнем). 0 — умение вообще без
+     *  перезарядки (напр. базовый warrior_strike). Используется SkillCaster для гейтинга повторного
+     *  каста, см. Player.skillCooldowns. */
+    public static double cooldownSeconds(SkillDef def, int level) {
+        if (def == null) return 0.0;
+        for (SkillStat s : def.stats) {
+            if ("cooldown".equals(s.key)) return s.at(level);
+        }
+        Double fixed = def.fixed.get("cooldown");
+        return fixed != null ? fixed : 0.0;
+    }
+
     /** Доступно ли умение для прокачки: уровень игрока не ниже unlockLevel, И на всех умениях-
      *  предпосылках (prerequisites) вложено хотя бы 1 очко. Чистая функция от переданных данных —
      *  не зависит от Player, чтобы её мог использовать и будущий NPC-подбор умений. */
@@ -319,11 +333,17 @@ public class SkillCatalog {
                 stat("strike_damage", "Урон 1 молнии", "", L -> 45 + 8 * (L - 1))
             ), fixedOf("mana", 70, "cooldown", 10.0)).withImage("mage_8.png").withUnlock(5, "elem_lightning_chain"));
 
-        l.add(new SkillDef("elem_lightning_shield", "Электро-Щит", Branch.ELEMENTALIST, SkillKind.TACTIC, "lightning",
+        // SkillKind.STANCE — активируемый тумблер (см. SkillCaster.cast: AURA/SUSTAINED/STANCE
+        // переключаются через Player.activeAuras), а не разовый эффект, как обычный TACTIC.
+        // duration_sec — в исходном ТЗ не было длительности щита вообще; по требованию пользователя
+        // добавлена: 60 сек на 1 уровне, 600 сек на 20-м, линейная прогрессия между ними (см.
+        // Player.toggleRemainingTime/tickToggleDurations — автоматическое отключение по истечении).
+        l.add(new SkillDef("elem_lightning_shield", "Электро-Щит", Branch.ELEMENTALIST, SkillKind.STANCE, "lightning",
             "Активируемый бафф-щит. Поглощает процент входящего урона, расходуя на рассеивание ману вместо здоровья.",
             Arrays.asList(
                 stat("absorb_pct", "Поглощение урона", "%", L -> 20 + 3 * (L - 1)),
-                stat("mana_cost_per_10_dmg", "Расход маны за 10 урона", "", L -> 5.0 - 0.2 * (L - 1))
+                stat("mana_cost_per_10_dmg", "Расход маны за 10 урона", "", L -> 5.0 - 0.2 * (L - 1)),
+                stat("duration_sec", "Длительность", "сек", L -> 60.0 + (600.0 - 60.0) / 19.0 * (L - 1))
             ), fixedOf("activation_mana", 20, "cooldown", 1.0)).withImage("mage_9.png").withUnlock(10, "elem_lightning_storm"));
 
         return l;

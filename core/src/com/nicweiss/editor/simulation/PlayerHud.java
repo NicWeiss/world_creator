@@ -239,10 +239,16 @@ public class PlayerHud {
             // квадратом ровно по диаметру круга без риска "квадратных" углов.
             com.nicweiss.editor.utils.SkillCatalog.SkillDef def = com.nicweiss.editor.utils.SkillCatalog.SKILLS.get(slot.skillId);
             Texture icon = def != null ? circularSkillIcon(def.imageFile) : null;
+            float iconSize = SLOT_SIZE - inset * 2;
             if (icon != null) {
-                float iconSize = SLOT_SIZE - inset * 2;
                 batch.setColor(1f, 1f, 1f, 1f);
                 batch.draw(icon, x + inset, y + inset, iconSize, iconSize);
+            }
+
+            // Перезарядка — серый радиальный "клин" поверх иконки, убирается из центра по часовой
+            // стрелке по мере остывания (см. cooldown.frag), обратный отсчёт целых секунд в центре.
+            if (def != null && store.player.isSkillOnCooldown(slot.skillId)) {
+                renderCooldownOverlay(batch, def, slot.skillId, x + inset, y + inset, iconSize);
             }
 
             // Клавиатура/мышь и геймпад — РАЗДЕЛЬНЫЕ привязки (см. SkillSlot) — показываем ту,
@@ -265,6 +271,33 @@ public class PlayerHud {
         }
 
         batch.setColor(1, 1, 1, 1);
+    }
+
+    /** Серая радиальная "пелена" перезарядки поверх иконки умения (см. assets/shaders/cooldown.frag,
+     *  ShaderLibrary.cooldown()) — клин убирается ИЗ ЦЕНТРА ПО ЧАСОВОЙ СТРЕЛКЕ по мере остывания КД,
+     *  плюс обратный отсчёт целых секунд по центру. Без шейдера (не скомпилировался) — просто не
+     *  рисуем пелену, отсчёт всё равно показываем (лучше, чем совсем ничего). */
+    private void renderCooldownOverlay(SpriteBatch batch, com.nicweiss.editor.utils.SkillCatalog.SkillDef def,
+                                        String skillId, float x, float y, float size) {
+        Player p = store.player;
+        float remaining = p.skillCooldownRemaining(skillId);
+        double total = com.nicweiss.editor.utils.SkillCatalog.cooldownSeconds(def, p.effectiveSkillLevel(skillId));
+        float remainFrac = total > 0 ? (float) Math.min(1.0, remaining / total) : 0f;
+
+        com.badlogic.gdx.graphics.glutils.ShaderProgram shader = com.nicweiss.editor.utils.ShaderLibrary.cooldown();
+        if (shader != null) {
+            batch.setShader(shader);
+            shader.setUniformf("u_remainFrac", remainFrac);
+            batch.setColor(1f, 1f, 1f, 1f);
+            batch.draw(pixel, x, y, size, size);
+            batch.setShader(null);
+        }
+
+        String countdown = String.valueOf((int) Math.ceil(remaining));
+        layout.setText(fontSmall, countdown);
+        fontSmall.setColor(Color.WHITE);
+        fontSmall.draw(batch, countdown, x + (size - layout.width) / 2f, y + (size + layout.height) / 2f);
+        batch.setColor(1f, 1f, 1f, 1f);
     }
 
     /** Стабильный inputCode ("KEY_Q", "MOUSE_LEFT", "PAD_X" и т.п., см. SkillSlot) → короткая

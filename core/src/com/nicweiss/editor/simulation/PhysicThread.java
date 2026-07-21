@@ -20,6 +20,8 @@ public class PhysicThread implements Runnable {
                     }
                     applyInput();
                     store.player.tickRegen(0.016f);
+                    store.player.tickToggleDurations(0.016f);
+                    store.player.tickSkillCooldowns(0.016f);
                 }
                 Thread.sleep(16);
             } catch (InterruptedException e) {
