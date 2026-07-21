@@ -71,7 +71,7 @@ public class AuraRenderer {
      *  напрямую (тот же приём, что GroundFireEffect). Нужна там, где сама текстура УЖЕ анимация
      *  (см. Электро-Щит — 20 кадров роста/схлопывания сферы), а не статичная картинка. */
     private static final class FrameAuraAnim {
-        final String pathTemplate; // напр. "warriors/lightshield/shield_%02d.png"
+        final String pathTemplate; // напр. "mage/lightshield/shield_%02d.png"
         final int frameCount;
         final float frameRate;
         final float size; // свой размер, НЕ общий SPRITE_SIZE — у покадровых анимаций пропорции другие
@@ -102,7 +102,7 @@ public class AuraRenderer {
         // "дыхание" сферы вокруг игрока, без отдельной логики "активация/деактивация". Размер и
         // скорость подобраны по требованию пользователя: размер ×2/3 (было 160, "уменьшить на
         // треть"), скорость ×2 (было 14 fps, "ускорить примерно в 2 раза").
-        FRAME_AURA.put("elem_lightning_shield", new FrameAuraAnim("warriors/lightshield/shield_%02d.png", 20, 28f, 106f));
+        FRAME_AURA.put("elem_lightning_shield", new FrameAuraAnim("mage/lightshield/shield_%02d.png", 20, 28f, 106f));
     }
 
     private static final float SPRITE_SIZE = 160f;

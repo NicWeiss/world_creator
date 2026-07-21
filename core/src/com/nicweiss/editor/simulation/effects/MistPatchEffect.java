@@ -33,7 +33,7 @@ public class MistPatchEffect extends SkillEffect {
 
     private static Texture loadFogTexture() {
         if (fogTexture != null) return fogTexture;
-        fogTexture = FxContext.loadSkillTexture("warriors/icefog/fog.png");
+        fogTexture = FxContext.loadSkillTexture("mage/icefog/fog.png");
         return fogTexture;
     }
 

@@ -4,8 +4,8 @@ import com.badlogic.gdx.graphics.Texture;
 
 /**
  * Ледяной Шип — тот же подход, что Огненный Шар: летящий снаряд (10 кадров, см. assets/skills/
- * warriors/iceball/) от игрока к курсору, по прибытии/на препятствии — разовая анимация раскола (5
- * кадров, см. assets/skills/warriors/ice/) в точке остановки (см. ImpactAnimEffect), БЕЗ
+ * mage/iceball/) от игрока к курсору, по прибытии/на препятствии — разовая анимация раскола (5
+ * кадров, см. assets/skills/mage/ice/) в точке остановки (см. ImpactAnimEffect), БЕЗ
  * зацикленного наземного огня (лёд не горит долго).
  */
 public final class IceSpikeEffect {
@@ -25,7 +25,7 @@ public final class IceSpikeEffect {
         if (flightFrames != null) return flightFrames;
         Texture[] loaded = new Texture[FLIGHT_FRAME_COUNT];
         for (int i = 0; i < FLIGHT_FRAME_COUNT; i++) {
-            Texture tex = FxContext.loadSkillTexture(String.format("warriors/iceball/water_ice_%02d.png", i + 1));
+            Texture tex = FxContext.loadSkillTexture(String.format("mage/iceball/water_ice_%02d.png", i + 1));
             if (tex == null) return null;
             loaded[i] = tex;
         }
@@ -37,7 +37,7 @@ public final class IceSpikeEffect {
         if (shatterFrames != null) return shatterFrames;
         Texture[] loaded = new Texture[SHATTER_FRAME_COUNT];
         for (int i = 0; i < SHATTER_FRAME_COUNT; i++) {
-            Texture tex = FxContext.loadSkillTexture(String.format("warriors/ice/ice_shatter_%02d.png", i + 1));
+            Texture tex = FxContext.loadSkillTexture(String.format("mage/ice/ice_shatter_%02d.png", i + 1));
             if (tex == null) return null;
             loaded[i] = tex;
         }

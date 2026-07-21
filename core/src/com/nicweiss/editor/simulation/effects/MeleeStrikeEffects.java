@@ -11,7 +11,9 @@ public final class MeleeStrikeEffects {
     public static void triggerStrike(EffectSink sink) {
         float[] center = FxContext.playerScreenPos();
         float[] target = FxContext.aimScreenPos();
-        sink.spawn(new StreakEffect(center, target, 1f, 1f, 1f, 0.18f));
+        if (!SlashSwingEffect.trigger(center, target, sink)) {
+            sink.spawn(new StreakEffect(center, target, 1f, 1f, 1f, 0.18f)); // ассетов нет — старый росчерк
+        }
         addSplashIfInvested(target, sink);
     }
 

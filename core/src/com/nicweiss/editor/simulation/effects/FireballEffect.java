@@ -4,7 +4,7 @@ import com.badlogic.gdx.graphics.Texture;
 
 /**
  * Огненный Шар — летящий снаряд с покадровой анимацией пламени (28 кадров, см. assets/skills/
- * warriors/fireball/), реально летит от игрока к курсору, поворачиваясь по направлению полёта
+ * mage/fireball/), реально летит от игрока к курсору, поворачиваясь по направлению полёта
  * (см. ProjectileEffect), и по прибытии/на препятствии поджигает землю (см. GroundFireEffect).
  * Кадры уже смотрят "вправо" (яркое ядро справа, хвост пламени слева) — поворот считается
  * напрямую через atan2 направления полёта (см. ProjectileEffect), без доп. смещения.
@@ -25,7 +25,7 @@ public final class FireballEffect {
         if (frames != null) return frames;
         Texture[] loaded = new Texture[FRAME_COUNT];
         for (int i = 0; i < FRAME_COUNT; i++) {
-            Texture tex = FxContext.loadSkillTexture(String.format("warriors/fireball/Effects_Fire_0_%02d.png", i + 1));
+            Texture tex = FxContext.loadSkillTexture(String.format("mage/fireball/Effects_Fire_0_%02d.png", i + 1));
             if (tex == null) return null; // не все кадры на месте — не рискуем показать рваную анимацию
             loaded[i] = tex;
         }

@@ -12,7 +12,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
  * непроходимом препятствии — вода его тоже останавливает (в отличие от летящих снарядов, см.
  * ProjectileEffect/Player.isFlightBlockedAt) — это наземный эффект, не летит по воздуху.
  *
- * Кадры (assets/skills/warriors/fire/fireB0001..25.png) экспортированы БЕЗ альфа-канала (чёрный
+ * Кадры (assets/skills/mage/fire/fireB0001..25.png) экспортированы БЕЗ альфа-канала (чёрный
  * фон) — рисуются аддитивным смешиванием (чёрное ничего не добавляет, яркое пламя складывается
  * поверх сцены), иначе был бы виден чёрный квадрат вокруг каждого языка пламени. Кэш кадров общий
  * на все три умения-потребителя (Огненный Шар/Волна Огня/ДУМ), поэтому живёт статически здесь.
@@ -29,7 +29,7 @@ public class GroundFireEffect extends SkillEffect {
         if (frames != null) return frames;
         Texture[] loaded = new Texture[FRAME_COUNT];
         for (int i = 0; i < FRAME_COUNT; i++) {
-            String name = String.format("warriors/fire/fireB%04d.png", i + 1);
+            String name = String.format("mage/fire/fireB%04d.png", i + 1);
             Texture tex = FxContext.loadSkillTexture(name);
             if (tex == null) return null;
             loaded[i] = tex;

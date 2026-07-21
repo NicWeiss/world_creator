@@ -9,7 +9,7 @@ import com.nicweiss.editor.utils.SkillCatalog;
  * triggerGroup), которая ждёт delay сек (случайная задержка появления — "появляться с
  * произвольной задержкой"), затем за LIFE (1) сек проигрывает "шар поднимается и лопается":
  * быстрое проявление из невидимости, лёгкий подъём вверх, на середине пути запускается сама
- * анимация лопания (см. assets/skills/warriors/icefragile/fragile_01..40.png). Подсветка — тот же
+ * анимация лопания (см. assets/skills/mage/icefragile/fragile_01..40.png). Подсветка — тот же
  * холодный свет, что у Ледяного Шипа, но ТОЛЬКО пока шар ещё не лопнул (первая половина LIFE).
  */
 public class FragilityParticleEffect extends SkillEffect {
@@ -28,7 +28,7 @@ public class FragilityParticleEffect extends SkillEffect {
         if (frames != null) return frames;
         Texture[] loaded = new Texture[FRAME_COUNT];
         for (int i = 0; i < FRAME_COUNT; i++) {
-            Texture tex = FxContext.loadSkillTexture(String.format("warriors/icefragile/fragile_%02d.png", i + 1));
+            Texture tex = FxContext.loadSkillTexture(String.format("mage/icefragile/fragile_%02d.png", i + 1));
             if (tex == null) return null;
             loaded[i] = tex;
         }
