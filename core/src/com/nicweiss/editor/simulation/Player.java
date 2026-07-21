@@ -346,10 +346,17 @@ public class Player extends BaseObject {
 
     /** Точечная проверка проходимости мировой позиции — те же правила, что у движения игрока (высота
      *  тайла + вода/мостик, см. isCollidingAt/moveBy), но без радиуса игрока (r=1px, "точка"). Нужна
-     *  снарядам/наземным эффектам умений (см. SkillEffectRenderer): "могут двигаться только там, где
-     *  может двигаться персонаж". */
+     *  НАЗЕМНЫМ эффектам умений (см. SkillEffectRenderer — ДУМ/Волна Огня): "могут двигаться только
+     *  там, где может двигаться персонаж", вода их так же останавливает, как и игрока. */
     public boolean isBlockedAt(float worldX, float worldY) {
-        return isCollidingAt(worldX, worldY, 1f, MOVEMENT_BLOCK_HEIGHT);
+        return isCollidingAt(worldX, worldY, 1f, MOVEMENT_BLOCK_HEIGHT, true);
+    }
+
+    /** То же самое, но БЕЗ учёта воды — для ЛЕТЯЩИХ эффектов умений (снаряды Огненного Шара/
+     *  Ледяного Шипа, см. SkillEffectRenderer), которым вода не мешает (летят по воздуху), но
+     *  непреодолимые препятствия по высоте (лес/камни/здания) всё равно останавливают. */
+    public boolean isFlightBlockedAt(float worldX, float worldY) {
+        return isCollidingAt(worldX, worldY, 1f, MOVEMENT_BLOCK_HEIGHT, false);
     }
 
     /**
@@ -358,6 +365,10 @@ public class Player extends BaseObject {
      *   x: [(mi+1)*tileW, (mi+2)*tileW],  y: [(mj+1)*tileH, (mj+2)*tileH]
      */
     private boolean isCollidingAt(float px, float py, float r, int blockHeight) {
+        return isCollidingAt(px, py, r, blockHeight, true);
+    }
+
+    private boolean isCollidingAt(float px, float py, float r, int blockHeight, boolean checkWater) {
         if (store.objectedMap == null) return false;
         float tileW = store.tileSizeWidth;
         float tileH = store.tileSizeHeight;
@@ -377,7 +388,8 @@ public class Player extends BaseObject {
                 if (aj < 0 || aj >= store.mapWidth) continue;
                 com.nicweiss.editor.objects.MapObject tile = store.objectedMap[ai][aj];
                 boolean blockedByHeight = tile.objectHeight >= blockHeight;
-                boolean blockedByWater  = tile.getSurfaceId() == WATER_TEXTURE_ID && tile.getTextureId() != BRIDGE_TEXTURE_ID;
+                boolean blockedByWater  = checkWater
+                    && tile.getSurfaceId() == WATER_TEXTURE_ID && tile.getTextureId() != BRIDGE_TEXTURE_ID;
                 if (!blockedByHeight && !blockedByWater) continue;
 
                 float tx1 = (mi + 1) * tileW;

@@ -248,9 +248,9 @@ public class Lighting {
                 if (isLineOfSightBlocked(com.nicweiss.editor.simulation.Player.LIGHT_SOURCE_HEIGHT,
                         skillLightSrcBuf[0], skillLightSrcBuf[1], toAi, toAj)) continue;
                 float t = (1f - odist / radius) * sp[4];
-                lr = Math.max(lr, MapObject.SKILL_LIGHT_R * t);
-                lg = Math.max(lg, MapObject.SKILL_LIGHT_G * t);
-                lb = Math.max(lb, MapObject.SKILL_LIGHT_B * t);
+                lr = Math.max(lr, sp[5] * t);
+                lg = Math.max(lg, sp[6] * t);
+                lb = Math.max(lb, sp[7] * t);
             }
         }
 

@@ -24,6 +24,9 @@ public class ShaderLibrary {
     private static ShaderProgram aura;
     private static boolean auraLoadAttempted = false;
 
+    private static ShaderProgram mist;
+    private static boolean mistLoadAttempted = false;
+
     private ShaderLibrary() {}
 
     /** Шейдер искажения поверхности воды — грузится/компилируется один раз, лениво. */
@@ -89,6 +92,28 @@ public class ShaderLibrary {
             }
         }
         return aura;
+    }
+
+    /** Шейдер тумана (лёгкое покачивание UV + альфа-огибающая, см. mist.frag) — используется для
+     *  клочков Ледяного Тумана (см. SkillEffectRenderer.updateAndDrawMist). Вертексник — тот же
+     *  passthrough, что у воды/берега (см. water() выше), своей вершинной логики тут не нужно. */
+    public static ShaderProgram mist() {
+        if (!mistLoadAttempted) {
+            mistLoadAttempted = true;
+            ShaderProgram.pedantic = false;
+            ShaderProgram program = new ShaderProgram(
+                Gdx.files.internal("shaders/water.vert"),
+                Gdx.files.internal("shaders/mist.frag")
+            );
+            if (program.isCompiled()) {
+                mist = program;
+            } else {
+                Gdx.app.error("ShaderLibrary", "Не удалось скомпилировать mist-шейдер: " + program.getLog());
+                program.dispose();
+                mist = null; // рендер тумана просто откатится на обычный шейдер (см. SkillEffectRenderer)
+            }
+        }
+        return mist;
     }
 
     /**

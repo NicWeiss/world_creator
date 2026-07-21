@@ -67,11 +67,11 @@ public class Store {
 
     // Динамические источники света от эффектов умений (летящие снаряды/наземный огонь — см.
     // SkillEffectRenderer.updateLightSnapshot(), MapObject.calcLitColor, Lighting.computeLitColor).
-    // Формат строки: [0]=active(0/1), [1]=worldX, [2]=worldY, [3]=радиус в px, [4]=яркость (0..1).
-    // Цвет фиксированный — тёплый огненный (см. MapObject.SKILL_LIGHT_R/G/B) — умений с другими
-    // цветами света пока нет.
-    public static final int SKILL_LIGHT_CAPACITY = 32;
-    public static float[][] skillLightPoints = new float[SKILL_LIGHT_CAPACITY][5];
+    // Формат строки: [0]=active(0/1), [1]=worldX, [2]=worldY, [3]=радиус в px, [4]=яркость (0..1),
+    // [5]=r, [6]=g, [7]=b — цвет свой у каждого источника (огонь тёплый оранжевый, лёд холодный
+    // синий, см. SkillEffectRenderer.SKILL_LIGHT_COLOR_FIRE/ICE), а не общий на все эффекты.
+    public static final int SKILL_LIGHT_CAPACITY = 48; // с запасом — Хрупкость может держать до ~десятка одновременных "предпоп" огоньков
+    public static float[][] skillLightPoints = new float[SKILL_LIGHT_CAPACITY][8];
 
     public static class PlayerProgress {
         public int level, experience, baseStrength, baseMagic, baseDexterity;

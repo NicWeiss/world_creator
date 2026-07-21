@@ -91,12 +91,8 @@ public class MapObject  extends BaseObject {
     // (calcLitColor вызывается на каждый тайл, см. использование ниже).
     private static final int[] PLAYER_LIGHT_SRC_BUF = new int[2];
 
-    // Свечение эффектов умений (снаряды/наземный огонь, см. SkillEffectRenderer/Store.skillLightPoints)
-    // — тёплый огненный цвет, радиус/яркость приходят с самим источником (не завязаны на "силу
-    // света" предмета, в отличие от торч-констант выше).
-    public static final float SKILL_LIGHT_R = 1.00f;
-    public static final float SKILL_LIGHT_G = 0.55f;
-    public static final float SKILL_LIGHT_B = 0.20f;
+    // Буферы для свечения эффектов умений (снаряды/наземный огонь/туман, см. SkillEffectRenderer/
+    // Store.skillLightPoints) — цвет свой у каждого источника (см. sp[5..7]), не общая константа.
     private static final float[] SKILL_LIGHT_ANCHOR_BUF = new float[2];
     private static final int[] SKILL_LIGHT_SRC_BUF = new int[2];
 
@@ -619,9 +615,9 @@ public class MapObject  extends BaseObject {
                 if (com.nicweiss.editor.utils.Lighting.isLineOfSightBlocked(
                         com.nicweiss.editor.simulation.Player.LIGHT_SOURCE_HEIGHT, srcIdx[0], srcIdx[1], toAi, toAj)) continue;
                 float t = (1f - odist / radius) * sp[4];
-                lr = Math.max(lr, SKILL_LIGHT_R * t);
-                lg = Math.max(lg, SKILL_LIGHT_G * t);
-                lb = Math.max(lb, SKILL_LIGHT_B * t);
+                lr = Math.max(lr, sp[5] * t);
+                lg = Math.max(lg, sp[6] * t);
+                lb = Math.max(lb, sp[7] * t);
             }
         }
 
