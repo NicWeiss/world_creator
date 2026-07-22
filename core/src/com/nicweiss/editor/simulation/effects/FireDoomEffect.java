@@ -17,7 +17,9 @@ public final class FireDoomEffect {
         Texture[] fireFrames = GroundFireEffect.loadFrames();
         if (fireFrames == null) return;
         SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get("elem_fire_doom");
-        double radiusM = def != null ? def.compute(level).getOrDefault("radius_m", 3.0) : 3.0;
-        sink.spawn(new DoomSpawner((float) radiusM, fireFrames, sink));
+        java.util.LinkedHashMap<String, Double> stats = def != null ? def.compute(level) : new java.util.LinkedHashMap<>();
+        double radiusM = stats.getOrDefault("radius_m", 3.0);
+        double dps = stats.getOrDefault("dps", 0.0);
+        sink.spawn(new DoomSpawner((float) radiusM, dps, fireFrames, sink));
     }
 }

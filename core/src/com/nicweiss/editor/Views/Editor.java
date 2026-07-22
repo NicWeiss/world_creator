@@ -1536,6 +1536,7 @@ public class Editor extends View{
                     if (el.getHeight() != 0) { continue; }
                 }
                 creature.draw(batch);
+                com.nicweiss.editor.simulation.CombatSystem.renderHealthBar(batch, creature);
             }
         }
     }

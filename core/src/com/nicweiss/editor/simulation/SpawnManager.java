@@ -25,8 +25,8 @@ import java.util.Random;
  * тир/резисты — тоже NpcGenerator. Роль (воин/маг) для enemy/ally спавнеров — 50/50
  * (см. NpcCatalog.randomCombatType), монстр-спавнер всегда даёт monster_beast.
  *
- * ВАЖНО: сейчас в игре нет боевой системы (никто не наносит урон Store.simCreatures) — health
- * не уменьшается сам по себе, respawn фактически сработает только когда появится урон извне.
+ * Тем же тиком поддерживается стартовый отряд врагов (см. spawnStartingSquad/tickStartingSquad) —
+ * своя "виртуальная" группа без здания-спавнера, привязанная к STARTING_SQUAD_SPAWNER_UUID.
  */
 public class SpawnManager {
     public static Store store;
@@ -59,23 +59,27 @@ public class SpawnManager {
     }
 
     public static void update(float dt) {
-        if (store.objectedMap == null || store.buildingSettings == null) return;
+        if (store.objectedMap == null) return;
         tickTimer += dt;
         if (tickTimer < TICK_SECONDS) return;
         tickTimer -= TICK_SECONDS;
 
-        for (int i = 0; i <= store.buildingCount; i++) {
-            Creation b = store.buildings[i];
-            if (b == null) continue;
-            String uuid = b.getUUID();
-            LinkedHashMap settings = store.buildingSettings.get(uuid);
-            if (settings == null) continue;
+        if (store.buildingSettings != null) {
+            for (int i = 0; i <= store.buildingCount; i++) {
+                Creation b = store.buildings[i];
+                if (b == null) continue;
+                String uuid = b.getUUID();
+                LinkedHashMap settings = store.buildingSettings.get(uuid);
+                if (settings == null) continue;
 
-            String objType = (String) settings.get("__objectType__");
-            if (!ObjectCatalog.isSpawner(objType)) continue;
+                String objType = (String) settings.get("__objectType__");
+                if (!ObjectCatalog.isSpawner(objType)) continue;
 
-            tickSpawner(uuid, b, objType, settings);
+                tickSpawner(uuid, b, objType, settings);
+            }
         }
+
+        tickStartingSquad();
     }
 
     private static void tickSpawner(String spawnerUuid, Creation spawner, String objType, LinkedHashMap settings) {
@@ -87,22 +91,26 @@ public class SpawnManager {
         level    = Math.max(1, level);
         maxCount = Math.max(0, maxCount);
 
-        int alive = 0;
-        for (int i = 0; i <= store.simCreatureCount; i++) {
-            SimCreature c = store.simCreatures[i];
-            if (c != null && spawnerUuid.equals(c.spawnerUuid) && c.isAlive()) alive++;
-        }
-
+        int alive = countAlive(spawnerUuid, null);
         int deficit = maxCount - alive;
         for (int n = 0; n < deficit; n++) {
             spawnOne(spawnerUuid, spawner, faction, level);
         }
     }
 
-    // Создание Texture требует GL-контекста — как и DropManager.spawnItemDrop, откладываем на GL-поток.
-    private static void spawnOne(String spawnerUuid, Creation spawner, NpcCatalog.Faction faction, int spawnerLevel) {
-        if (store.simCreatureCount + 1 >= store.simCreatures.length) return; // массив полон
+    private static int countAlive(String spawnerUuid, NpcCatalog.Faction faction) {
+        int alive = 0;
+        for (int i = 0; i <= store.simCreatureCount; i++) {
+            SimCreature c = store.simCreatures[i];
+            if (c == null || !c.isAlive()) continue;
+            if (spawnerUuid != null && !spawnerUuid.equals(c.spawnerUuid)) continue;
+            if (faction != null && c.faction != faction) continue;
+            alive++;
+        }
+        return alive;
+    }
 
+    private static void spawnOne(String spawnerUuid, Creation spawner, NpcCatalog.Faction faction, int spawnerLevel) {
         String typeKey = NpcCatalog.randomCombatType(faction, RANDOM);
         NpcCatalog.TypeDef type = NpcCatalog.get(typeKey);
         if (type == null) return;
@@ -115,6 +123,63 @@ public class SpawnManager {
 
         int originX = spawner.mapCellX - store.TILE_INDEX_BASE;
         int originY = spawner.mapCellY - store.TILE_INDEX_BASE;
+        spawnCreatureNear(originX, originY, typeKey, faction, level, tier, health, damage, resistances, spawnerUuid);
+    }
+
+    // ── Стартовый отряд (см. UserInterface.startSimulation) ─────────────────────────────────────
+
+    private static final String STARTING_SQUAD_SPAWNER_UUID = "__starting_squad_enemies__";
+    private static final int STARTING_SQUAD_ENEMY_COUNT = 10; // "сделай 10 врагов"
+    private static final int STARTING_SQUAD_HEALTH = 100000;  // по требованию пользователя
+
+    /** Спавнит стартовый отряд (10 врагов, 1 союзник, 1 зверь) рядом с игроком на проходимой
+     *  поверхности при старте симуляции — см. UserInterface.startSimulation(). Враги привязаны к
+     *  STARTING_SQUAD_SPAWNER_UUID — тем же тиком, что и обычные спавнеры зданий, их число
+     *  поддерживается на STARTING_SQUAD_ENEMY_COUNT (см. tickStartingSquad — "пусть после входа
+     *  они обновляются"); союзник/зверь — разовые, не привязаны ни к какому спавнеру. */
+    public static void spawnStartingSquad(Store store) {
+        if (store.player == null) return;
+        int originX = (int) (store.player.worldX / store.tileSizeWidth) - 1;
+        int originY = (int) (store.player.worldY / store.tileSizeHeight) - 1;
+
+        for (int i = 0; i < STARTING_SQUAD_ENEMY_COUNT; i++) {
+            String typeKey = i % 2 == 0 ? "enemy_warrior" : "enemy_mage";
+            spawnCreatureNear(originX, originY, typeKey, NpcCatalog.Faction.ENEMY, 1,
+                NpcCatalog.Tier.NORMAL, STARTING_SQUAD_HEALTH, -1, null, STARTING_SQUAD_SPAWNER_UUID);
+        }
+        spawnCreatureNear(originX, originY, "ally_warrior", NpcCatalog.Faction.ALLY, 1,
+            NpcCatalog.Tier.NORMAL, STARTING_SQUAD_HEALTH, -1, null, null);
+        spawnCreatureNear(originX, originY, "monster_beast", NpcCatalog.Faction.MONSTER, 1,
+            NpcCatalog.Tier.NORMAL, STARTING_SQUAD_HEALTH, -1, null, null);
+    }
+
+    /** "Обновление" стартового отряда — та же логика, что у обычных зданий-спавнеров (см.
+     *  tickSpawner), но origin — ТЕКУЩАЯ позиция игрока (не точка первого спавна), и без здания. */
+    private static void tickStartingSquad() {
+        if (store.player == null) return;
+        int alive = countAlive(STARTING_SQUAD_SPAWNER_UUID, NpcCatalog.Faction.ENEMY);
+        int deficit = STARTING_SQUAD_ENEMY_COUNT - alive;
+        if (deficit <= 0) return;
+
+        int originX = (int) (store.player.worldX / store.tileSizeWidth) - 1;
+        int originY = (int) (store.player.worldY / store.tileSizeHeight) - 1;
+        for (int n = 0; n < deficit; n++) {
+            String typeKey = RANDOM.nextBoolean() ? "enemy_warrior" : "enemy_mage";
+            spawnCreatureNear(originX, originY, typeKey, NpcCatalog.Faction.ENEMY, 1,
+                NpcCatalog.Tier.NORMAL, STARTING_SQUAD_HEALTH, -1, null, STARTING_SQUAD_SPAWNER_UUID);
+        }
+    }
+
+    // ── Общий спавн одного существа (GL-поток — нужна Texture) ──────────────────────────────────
+
+    /** damage=-1 → берётся из NpcCatalog.TypeDef.damageAtLevel(level) (обычный спавн); иначе —
+     *  переопределяется явно (см. spawnStartingSquad, где damage/health фиксированы). */
+    private static void spawnCreatureNear(int originX, int originY, String typeKey, NpcCatalog.Faction faction,
+                                           int level, NpcCatalog.Tier tier, int health, int damage,
+                                           LinkedHashMap<String, Integer> resistances, String spawnerUuid) {
+        if (store.simCreatureCount + 1 >= store.simCreatures.length) return; // массив полон
+        NpcCatalog.TypeDef type = NpcCatalog.get(typeKey);
+        if (type == null) return;
         int[] tile = pickNearbyTile(originX, originY);
 
         Gdx.app.postRunnable(() -> {
@@ -129,9 +194,9 @@ public class SpawnManager {
             c.level = level;
             c.maxHealth = health;
             c.health = health;
-            c.damage = damage;
+            c.damage = damage >= 0 ? damage : type.damageAtLevel(level);
             c.speedMultiplier = type.speedMultiplier;
-            c.resistances = resistances;
+            if (resistances != null) c.resistances = resistances;
             c.spawnerUuid = spawnerUuid;
             c.setTexture(loadTypeTexture(type));
             // NPC не больше деревьев (лучше — меньше), см. Creation.targetMaxScreenSize.
@@ -147,7 +212,15 @@ public class SpawnManager {
                 (int) (cellY * store.tileSizeHeight)
             );
             c.setPosition(iso[0], iso[1]);
+            // Декартовы мировые координаты для CombatSystem — ДОЛЖНЫ быть тем же самым
+            // картезианским входом, что подаётся в cartesianToIsometric выше (см. iso), а НЕ
+            // "сырым" tile*tileSize — иначе FxContext.worldToScreen(worldX,worldY) не совпадёт с
+            // реальной экранной позицией спрайта (см. Creation.draw), и вся боевая логика
+            // (таргетинг/коллизия рывка) целилась бы не туда, где враг фактически нарисован.
+            c.worldX = (cellX + store.TILE_X_ANCHOR_EXTRA_OFFSET) * store.tileSizeWidth;
+            c.worldY = cellY * store.tileSizeHeight;
 
+            c.slotIndex = slot;
             store.simCreatures[slot] = c;
             if (slot > store.simCreatureCount) store.simCreatureCount = slot;
         });
@@ -161,10 +234,10 @@ public class SpawnManager {
     }
 
     /**
-     * Ищет проходимый тайл рядом со спавнером — "недалеко от спавнера" из ТЗ. Сначала несколько
+     * Ищет проходимый тайл рядом с точкой — "недалеко от спавнера/игрока" из ТЗ. Сначала несколько
      * случайных проб в полном радиусе (для разнообразия позиций), затем — если не повезло —
      * расширяющееся кольцевое сканирование (как DropManager.findLandingTile), чтобы НЕ скатываться
-     * в одну и ту же точку спавнера при плотной застройке/препятствиях вокруг.
+     * в одну и ту же точку при плотной застройке/препятствиях вокруг.
      */
     private static int[] pickNearbyTile(int originX, int originY) {
         for (int attempt = 0; attempt < 15; attempt++) {

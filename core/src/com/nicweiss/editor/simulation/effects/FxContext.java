@@ -46,6 +46,19 @@ public final class FxContext {
         return new float[]{iso[0] + store.shiftX, iso[1] + store.shiftY};
     }
 
+    /** Экранная позиция мировой точки СЧИТАННАЯ ОТНОСИТЕЛЬНО ИГРОКА, напрямую через
+     *  playerScreenPos() (тот всегда строго в центре экрана) + разницу изометрических координат —
+     *  не зависит от store.shiftX/shiftY. Нужна там, где мировая позиция игрока меняется В ТОМ ЖЕ
+     *  кадре (см. DashEffect), а shiftX/shiftY, которые считает камера, могут ещё не успеть
+     *  обновиться под новую позицию — obычный worldToScreen в этом случае на кадр "отстаёт" и
+     *  даёт эффект смещения в неверную сторону. */
+    public static float[] worldToScreenRelativeToPlayer(float wx, float wy) {
+        float[] iso = Transform.cartesianToIsometric(wx, wy);
+        float[] isoPlayer = Transform.cartesianToIsometric(store.player.worldX, store.player.worldY);
+        float[] center = playerScreenPos();
+        return new float[]{center[0] + (iso[0] - isoPlayer[0]), center[1] + (iso[1] - isoPlayer[1])};
+    }
+
     public static float[] offset(float[] p, float dx, float dy) {
         return new float[]{p[0] + dx, p[1] + dy};
     }

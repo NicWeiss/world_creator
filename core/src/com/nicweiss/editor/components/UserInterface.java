@@ -602,6 +602,9 @@ public class UserInterface {
             store.systemUI        = new com.nicweiss.editor.simulation.SystemUI();
             store.weatherRenderer = new com.nicweiss.editor.simulation.WeatherRenderer(lightClass);
             store.skillEffectRenderer = new com.nicweiss.editor.simulation.SkillEffectRenderer();
+
+            // Тестовый отряд (2 противника, 1 союзник, 1 зверь) рядом с игроком — см. CombatSystem.
+            com.nicweiss.editor.simulation.SpawnManager.spawnStartingSquad(store);
         });
 
         creationThread = newDaemon(new CreationThread(), "CreationThread");

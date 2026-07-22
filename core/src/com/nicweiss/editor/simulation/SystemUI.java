@@ -139,6 +139,11 @@ public class SystemUI {
     // сразу доступно 2 контейнера — сделать базовым значением у игрока").
     private static final int BASE_CONTAINERS = 2;
 
+    // Урон "голой рукой" без оружия — без него безоружный Удар (physDamage*damage_pct/100, см.
+    // MeleeStrikeEffects) наносил бы 0 урона. Оружие (*_damage/*_ed) добавляется поверх этой базы
+    // в applyMod, а не заменяет её.
+    private static final int BASE_UNARMED_PHYS_DAMAGE = 2;
+
     // ── Цвета ─────────────────────────────────────────────────────────────────
     private static final Color C_SLOT_BG   = new Color(0.04f, 0.05f, 0.07f, 1f);
     private static final Color C_SLOT_LINE = new Color(0.22f, 0.27f, 0.35f, 1f);
@@ -2351,7 +2356,10 @@ public class SystemUI {
         p.flatHealthBonus = 0f; p.flatManaBonus = 0f;
         p.fireRes = 0; p.coldRes = 0; p.lightningRes = 0;
         p.attackSpeed = 0; p.castSpeed = 0; p.runSpeed = 0;
-        p.attackRating = 0; p.physDamage = 0; p.magicDamage = 0;
+        // Базовый урон "рукой" (без оружия) — Удар считается как physDamage*damage_pct/100 (см.
+        // MeleeStrikeEffects), без этой базы безоружный игрок наносил бы 0 урона. Оружие
+        // добавляет сверху (см. applyMod: *_damage/*_ed прибавляются к physDamage), не заменяет.
+        p.attackRating = 0; p.physDamage = BASE_UNARMED_PHYS_DAMAGE; p.magicDamage = 0;
         p.defence = 0; p.defenceRating = 0;
         p.physDamageReduce = 0; p.magicDamageReduce = 0;
         // По умолчанию доступны BASE_CONTAINERS контейнера-артефакта даже без пояса (см. ТЗ) —

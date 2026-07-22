@@ -100,23 +100,23 @@ public class SkillEffectRenderer implements EffectSink {
         switch (skillId) {
             // ── Воитель: ближний бой ────────────────────────────────────────────────────────────
             case "warrior_strike":
-                MeleeStrikeEffects.triggerStrike(this);
+                MeleeStrikeEffects.triggerStrike(this, level);
                 break;
             case "warrior_blade_dash":
-                MeleeStrikeEffects.triggerBladeDash(this);
+                MeleeStrikeEffects.triggerBladeDash(this, level);
                 break;
             case "warrior_shadow_blade":
-                MeleeStrikeEffects.triggerShadowBlade(this);
+                MeleeStrikeEffects.triggerShadowBlade(this, level);
                 break;
 
             // ── Стихийник: Огонь — снаряд/конус/горящая земля ──────────────────────────────────
             case "elem_fire_ball":
                 if (store.player != null) {
-                    FireballEffect.trigger(store.player.worldX, store.player.worldY, store.cursorWorldX, store.cursorWorldY, this);
+                    FireballEffect.trigger(store.player.worldX, store.player.worldY, store.cursorWorldX, store.cursorWorldY, level, this);
                 }
                 break;
             case "elem_fire_wave":
-                FireWaveEffect.trigger(this);
+                FireWaveEffect.trigger(level, this);
                 break;
             case "elem_fire_doom":
                 FireDoomEffect.trigger(level, this);
@@ -125,7 +125,7 @@ public class SkillEffectRenderer implements EffectSink {
             // ── Стихийник: Холод — снаряд/область/накопительный дебафф ─────────────────────────
             case "elem_cold_spike":
                 if (store.player != null) {
-                    IceSpikeEffect.trigger(store.player.worldX, store.player.worldY, store.cursorWorldX, store.cursorWorldY, this);
+                    IceSpikeEffect.trigger(store.player.worldX, store.player.worldY, store.cursorWorldX, store.cursorWorldY, level, this);
                 }
                 break;
             case "elem_cold_mist":
@@ -140,11 +140,11 @@ public class SkillEffectRenderer implements EffectSink {
             // падает с неба в точку — верно для Грозы, но не для удара молнией ИЗ ИГРОКА В ЦЕЛЬ).
             case "elem_lightning_chain":
                 if (store.player != null) {
-                    ChainBoltEffect.trigger(store.player.worldX, store.player.worldY, store.cursorWorldX, store.cursorWorldY, this);
+                    ChainBoltEffect.trigger(store.player.worldX, store.player.worldY, store.cursorWorldX, store.cursorWorldY, level, this);
                 }
                 break;
             case "elem_lightning_storm": // "Гроза" — несколько ударов подряд по области цели
-                stormScheduler.trigger();
+                stormScheduler.trigger(level);
                 break;
 
             default:

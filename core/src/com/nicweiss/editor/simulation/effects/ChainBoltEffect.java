@@ -1,9 +1,15 @@
 package com.nicweiss.editor.simulation.effects;
 
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.nicweiss.editor.simulation.CombatSystem;
+import com.nicweiss.editor.simulation.SimCreature;
+import com.nicweiss.editor.utils.SkillCatalog;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Цепной Разряд — СВОЙ зигзаг-разряд ИЗ ИГРОКА В ЦЕЛЬ (не из WeatherRenderer — тот бьёт с неба в
@@ -14,11 +20,20 @@ import java.util.List;
  * Мировые концы хранятся отдельно — только для подсветки вдоль всего пути (см. collectLight),
  * т.к. свет считается в мировых координатах.
  *
- * По требованию пользователя: (1) бьёт 3 разряда подряд (см. trigger — три независимо
- * сгенерированных зигзага, каждый со своей случайной формой), (2) от основного пути иногда
- * отходят короткие ветви-тупики, которые никуда не ведут и просто затухают (см. buildBranches) —
- * тот же приём, что ветвление в WeatherRenderer.generateBolt, только здесь ветви декоративные и не
- * влияют на подсветку (см. collectLight — свет идёт только вдоль ОСНОВНОГО пути игрок→цель).
+ * Урон (см. CombatSystem) — цепочка ПОСЛЕДОВАТЕЛЬНЫХ перескоков, строго по одному за раз (не
+ * ветвится): первая цель — ближайшая к курсору, каждый следующий хоп — ближайшее ЕЩЁ НЕ задетое
+ * существо от позиции предыдущей цели, НЕ ДАЛЬШЕ JUMP_RANGE_TILES (2 клетки — "может перепрыгнуть
+ * только если между врагами не более 2х клеток"), до max_targets хопов или пока не кончатся цели в
+ * радиусе перескока. Вся цепочка целей просчитывается СРАЗУ (существа неподвижны), но каждый хоп
+ * визуально/по урону применяется с задержкой JUMP_DELAY_SEC относительно предыдущего (см.
+ * DelayedCallbackEffect) — "перед прыжком нужна небольшая задержка", а не мгновенно вся цепь разом.
+ * Урон каждого хопа растёт на jump_damage_bonus_pct за хоп (см. SkillCatalog). Каждый хоп рисуется
+ * своим сегментом разряда (см. spawnBolts) — 3 независимо изломанных нити подряд (BOLT_COUNT,
+ * "пусть их будет 3" — визуальное разнообразие одного сегмента, по требованию пользователя), от
+ * предыдущей точки к следующей цели, а не всегда в одну и ту же точку курсора.
+ *
+ * Ответвления-тупики (см. buildBranches) — чисто декоративные, никуда не ведут и не участвуют ни
+ * в подсветке, ни в уроне.
  */
 public class ChainBoltEffect extends SkillEffect {
     private static final float LIFE = 0.22f;
@@ -27,13 +42,60 @@ public class ChainBoltEffect extends SkillEffect {
     private static final int LIGHT_SAMPLES = 4;        // точек подсветки вдоль пути
     private static final int BOLT_COUNT = 3;           // "пусть их будет 3"
 
+    private static final float AIM_SNAP_RANGE_TILES = 3f;  // радиус поиска первой цели у курсора
+    private static final float JUMP_RANGE_TILES = 2f;      // "не более 2х клеток" между врагами для перескока
+    private static final float JUMP_DELAY_SEC = 0.15f;     // небольшая задержка перед каждым следующим прыжком
+
     // ── Ответвления-тупики ───────────────────────────────────────────────────────────────────
     private static final float BRANCH_CHANCE = 0.03f;     // вероятность ответвления в каждой промежуточной точке (было 0.3, ×10 меньше)
     private static final int BRANCH_ITERATIONS = 2;       // ветви короче и грубее основного разряда
     private static final float BRANCH_LEN_MIN = 0.015f, BRANCH_LEN_MAX = 0.035f; // доля от общей длины основного разряда (было 0.15-0.35, ×10 меньше)
     private static final float BRANCH_SPREAD_DEG = 100f;  // разброс угла ветви вокруг перпендикуляра к основному пути
 
-    public static void trigger(float fromWX, float fromWY, float toWX, float toWY, EffectSink sink) {
+    public static void trigger(float fromWX, float fromWY, float toWX, float toWY, int level, EffectSink sink) {
+        SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get("elem_lightning_chain");
+        LinkedHashMap<String, Double> stats = def != null ? def.compute(level) : new LinkedHashMap<>();
+        double baseDamage = stats.getOrDefault("base_damage", 0.0);
+        double jumpBonusPct = stats.getOrDefault("jump_damage_bonus_pct", 0.0);
+        int maxTargets = (int) Math.round(stats.getOrDefault("max_targets", 1.0));
+
+        float aimRange = FxContext.store.tileSizeWidth * AIM_SNAP_RANGE_TILES;
+        float jumpRange = FxContext.store.tileSizeWidth * JUMP_RANGE_TILES;
+
+        SimCreature first = CombatSystem.findNearestToCursor(aimRange);
+        if (first == null || maxTargets <= 0) {
+            // нет цели — чисто визуальный разряд в сторону курсора, без урона (не теряем эффект целиком)
+            spawnBolts(fromWX, fromWY, toWX, toWY, sink);
+            return;
+        }
+
+        // Вся цепочка целей известна заранее (существа неподвижны) — так проще расставить задержки
+        // между хопами, чем искать следующую цель "по факту" в момент срабатывания таймера.
+        List<SimCreature> chain = new ArrayList<>();
+        Set<SimCreature> hit = new LinkedHashSet<>();
+        SimCreature current = first;
+        while (current != null && chain.size() < maxTargets) {
+            chain.add(current);
+            hit.add(current);
+            current = CombatSystem.findNearestUnhit(current.worldX, current.worldY, hit, jumpRange);
+        }
+
+        float prevX = fromWX, prevY = fromWY;
+        for (int hop = 0; hop < chain.size(); hop++) {
+            SimCreature victim = chain.get(hop);
+            float segFromX = prevX, segFromY = prevY;
+            double damage = baseDamage * (1.0 + jumpBonusPct / 100.0 * hop);
+            float delay = hop * JUMP_DELAY_SEC;
+            sink.spawn(new DelayedCallbackEffect(delay, () -> {
+                spawnBolts(segFromX, segFromY, victim.worldX, victim.worldY, sink);
+                CombatSystem.applyDamage(victim, damage);
+            }));
+            prevX = victim.worldX;
+            prevY = victim.worldY;
+        }
+    }
+
+    private static void spawnBolts(float fromWX, float fromWY, float toWX, float toWY, EffectSink sink) {
         for (int i = 0; i < BOLT_COUNT; i++) {
             sink.spawn(new ChainBoltEffect(fromWX, fromWY, toWX, toWY));
         }

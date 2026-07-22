@@ -269,7 +269,9 @@ public class Player extends BaseObject {
     public enum Direction { UP, DOWN, LEFT, RIGHT, UP_LEFT, UP_RIGHT, DOWN_LEFT, DOWN_RIGHT }
 
     // ── Размер спрайта (доля тайла) ────────────────────────────────────────────
-    private static final float SIZE_FACTOR = 0.30f * 2.4f; // radius * 2.4
+    // Публично — переиспользуется эффектами умений (см. DashGhostEffect), которым нужно рисовать
+    // "теневые" копии спрайта игрока того же размера, что и сам игрок.
+    public static final float SIZE_FACTOR = 0.30f * 2.4f; // radius * 2.4
 
     public Player() {
         buildTexture();

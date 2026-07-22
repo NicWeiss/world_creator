@@ -3,8 +3,12 @@ package com.nicweiss.editor.simulation.effects;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
+import com.nicweiss.editor.simulation.CombatSystem;
+import com.nicweiss.editor.simulation.SimCreature;
 import com.nicweiss.editor.utils.ShaderLibrary;
 import com.nicweiss.editor.utils.SkillCatalog;
+
+import java.util.List;
 
 /**
  * Ледяной Туман — MIST_PUFF_COUNT неподвижных клочков ОДНОЙ И ТОЙ ЖЕ текстуры (fog.png, см.
@@ -40,23 +44,33 @@ public class MistPatchEffect extends SkillEffect {
     /** "В точке каста должен подниматься туман": в отличие от ДУМа область НЕ следует за игроком,
      *  она встаёт неподвижно на месте курсора (это область на местности, см. SkillCatalog
      *  "elem_cold_mist" — "создаёт на местности область тумана"). */
+    private static final float TICK_INTERVAL = 0.5f; // см. SkillCatalog "elem_cold_mist" — "каждые 0.5 сек"
+
     public static void trigger(int level, EffectSink sink) {
         Texture tex = loadFogTexture();
         if (tex == null) return;
         SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get("elem_cold_mist");
-        double radiusM = def != null ? def.compute(level).getOrDefault("radius_m", 4.0) : 4.0;
-        sink.spawn(new MistPatchEffect(tex, (float) radiusM));
+        java.util.LinkedHashMap<String, Double> stats = def != null ? def.compute(level) : new java.util.LinkedHashMap<>();
+        double radiusM = stats.getOrDefault("radius_m", 4.0);
+        double tickDamage = stats.getOrDefault("tick_damage", 0.0);
+        double slowPct = stats.getOrDefault("slow_pct", 0.0);
+        sink.spawn(new MistPatchEffect(tex, (float) radiusM, tickDamage, slowPct));
     }
 
     private final Texture tex;
     private final float[] offX, offY, rotDeg, sizeMul;
     private final float wx, wy;
+    private final float radiusPx;
+    private final double tickDamage, slowPct;
+    private float damageTimer;
 
-    private MistPatchEffect(Texture tex, float radiusM) {
+    private MistPatchEffect(Texture tex, float radiusM, double tickDamage, double slowPct) {
         this.tex = tex;
         this.wx = FxContext.store.cursorWorldX;
         this.wy = FxContext.store.cursorWorldY;
-        float radiusPx = radiusM * FxContext.store.tileSizeWidth;
+        this.tickDamage = tickDamage;
+        this.slowPct = slowPct;
+        radiusPx = radiusM * FxContext.store.tileSizeWidth;
 
         offX = new float[PUFF_COUNT]; offY = new float[PUFF_COUNT];
         rotDeg = new float[PUFF_COUNT]; sizeMul = new float[PUFF_COUNT];
@@ -74,6 +88,15 @@ public class MistPatchEffect extends SkillEffect {
     @Override
     public boolean update(float dt) {
         age += dt;
+        damageTimer += dt;
+        if (damageTimer >= TICK_INTERVAL) {
+            damageTimer -= TICK_INTERVAL;
+            List<SimCreature> hits = CombatSystem.findAllInRadius(wx, wy, radiusPx);
+            for (SimCreature victim : hits) {
+                CombatSystem.applyDamage(victim, tickDamage);
+                CombatSystem.applySlow(victim, (float) slowPct, TICK_INTERVAL * 1.5f);
+            }
+        }
         return age < LIFE;
     }
 

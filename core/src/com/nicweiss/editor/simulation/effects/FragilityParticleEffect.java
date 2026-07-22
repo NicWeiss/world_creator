@@ -2,7 +2,11 @@ package com.nicweiss.editor.simulation.effects;
 
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.nicweiss.editor.simulation.CombatSystem;
+import com.nicweiss.editor.simulation.SimCreature;
 import com.nicweiss.editor.utils.SkillCatalog;
+
+import java.util.List;
 
 /**
  * Хрупкость — одна "частица": неподвижная точка в области (той же, что у Ледяного Тумана — см.
@@ -48,6 +52,17 @@ public class FragilityParticleEffect extends SkillEffect {
         // не путать с самим радиусом умения elem_cold_mist — тот не трогаем.
         float radiusPx = (float) radiusM * FxContext.store.tileSizeWidth * 0.5f;
         float cx = FxContext.store.cursorWorldX, cy = FxContext.store.cursorWorldY;
+
+        SkillCatalog.SkillDef def = SkillCatalog.SKILLS.get("elem_cold_fragility");
+        if (def != null) {
+            double shredPct = def.compute(level).getOrDefault("shred_per_stack_pct", 0.0);
+            int maxStacks = def.fixed.getOrDefault("max_stacks", 5.0).intValue();
+            double durationSec = def.fixed.getOrDefault("stack_duration_sec", 6.0);
+            List<SimCreature> hits = CombatSystem.findAllInRadius(cx, cy, radiusPx);
+            for (SimCreature victim : hits) {
+                CombatSystem.applyFragilityStack(victim, (float) shredPct, maxStacks, (float) durationSec);
+            }
+        }
 
         for (int i = 0; i < PARTICLE_COUNT; i++) {
             float ang = (float) (Math.random() * Math.PI * 2);

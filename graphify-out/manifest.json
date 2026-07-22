@@ -1,0 +1,507 @@
+{
+  ".claude/settings.local.json": {
+    "mtime": 1784747029.6297784,
+    "ast_hash": "09f93ea8cb8b12766546fa6a4e232d33",
+    "semantic_hash": "09f93ea8cb8b12766546fa6a4e232d33"
+  },
+  "assets/data/uiskin.json": {
+    "mtime": 1755818997.4274938,
+    "ast_hash": "6576005663093606e0f01b14bb8384fa",
+    "semantic_hash": "6576005663093606e0f01b14bb8384fa"
+  },
+  "build.gradle": {
+    "mtime": 1782644608.878845,
+    "ast_hash": "1cbfeeebf14d895a98863c7d0b38725e",
+    "semantic_hash": "1cbfeeebf14d895a98863c7d0b38725e"
+  },
+  "core/build.gradle": {
+    "mtime": 1705428630.476306,
+    "ast_hash": "3bd2b24094c3514515691544f094e49a",
+    "semantic_hash": "3bd2b24094c3514515691544f094e49a"
+  },
+  "core/src/com/nicweiss/editor/Generic/BaseObject.java": {
+    "mtime": 1783944174.267088,
+    "ast_hash": "0e5e968d542bc31d3f6db4ace553dc29",
+    "semantic_hash": "0e5e968d542bc31d3f6db4ace553dc29"
+  },
+  "core/src/com/nicweiss/editor/Generic/ContextMenuWindow.java": {
+    "mtime": 1782599536.057518,
+    "ast_hash": "a98a8d8ba28dcfafa35614f3ca315755",
+    "semantic_hash": "a98a8d8ba28dcfafa35614f3ca315755"
+  },
+  "core/src/com/nicweiss/editor/Generic/Store.java": {
+    "mtime": 1784657354.2946553,
+    "ast_hash": "c5fcb5f4624fd94a7f4939747ff92032",
+    "semantic_hash": "c5fcb5f4624fd94a7f4939747ff92032"
+  },
+  "core/src/com/nicweiss/editor/Generic/View.java": {
+    "mtime": 1756930349.724057,
+    "ast_hash": "3b8b2f95441ac86e8a6d7fa9df2fa7b9",
+    "semantic_hash": "3b8b2f95441ac86e8a6d7fa9df2fa7b9"
+  },
+  "core/src/com/nicweiss/editor/Generic/Window.java": {
+    "mtime": 1782828512.1198227,
+    "ast_hash": "8a5b68d1781201554093566417ec4271",
+    "semantic_hash": "8a5b68d1781201554093566417ec4271"
+  },
+  "core/src/com/nicweiss/editor/Generic/WindowSection.java": {
+    "mtime": 1758185327.628917,
+    "ast_hash": "da2690b66e5f4f237d7c16ae1ba1c990",
+    "semantic_hash": "da2690b66e5f4f237d7c16ae1ba1c990"
+  },
+  "core/src/com/nicweiss/editor/Interfaces/BaseCallBack.java": {
+    "mtime": 1782600172.3746655,
+    "ast_hash": "27af3efd3d9895a37f18bc2234a86c28",
+    "semantic_hash": "27af3efd3d9895a37f18bc2234a86c28"
+  },
+  "core/src/com/nicweiss/editor/Main.java": {
+    "mtime": 1755818241.7006238,
+    "ast_hash": "ff3510e97463124fffb97d2df7840e54",
+    "semantic_hash": "ff3510e97463124fffb97d2df7840e54"
+  },
+  "core/src/com/nicweiss/editor/Views/Editor.java": {
+    "mtime": 1784583675.5279841,
+    "ast_hash": "2771d77cb60993a6daff5beff5f675e4",
+    "semantic_hash": "2771d77cb60993a6daff5beff5f675e4"
+  },
+  "core/src/com/nicweiss/editor/Views/Logo.java": {
+    "mtime": 1782634784.2912858,
+    "ast_hash": "90951b7e0a266f2d0da5feaf62102786",
+    "semantic_hash": "90951b7e0a266f2d0da5feaf62102786"
+  },
+  "core/src/com/nicweiss/editor/components/ButtonCommon.java": {
+    "mtime": 1782600498.6418142,
+    "ast_hash": "cfa070e6874f976c5c48950c93c19fbb",
+    "semantic_hash": "cfa070e6874f976c5c48950c93c19fbb"
+  },
+  "core/src/com/nicweiss/editor/components/TilePickerButton.java": {
+    "mtime": 1707674847.9263167,
+    "ast_hash": "c5ce4f6650eb02b0f1db4b41b43e61d5",
+    "semantic_hash": "c5ce4f6650eb02b0f1db4b41b43e61d5"
+  },
+  "core/src/com/nicweiss/editor/components/UserInterface.java": {
+    "mtime": 1784575545.6239483,
+    "ast_hash": "ac6dbc229231c9f36edd6199b5d4fddc",
+    "semantic_hash": "ac6dbc229231c9f36edd6199b5d4fddc"
+  },
+  "core/src/com/nicweiss/editor/components/windows/ActionConfirnWindow.java": {
+    "mtime": 1782822451.4532068,
+    "ast_hash": "3d39e541491e8d3eced11e269f5b2f13",
+    "semantic_hash": "3d39e541491e8d3eced11e269f5b2f13"
+  },
+  "core/src/com/nicweiss/editor/components/windows/AssetPickerWindow.java": {
+    "mtime": 1782827950.4026418,
+    "ast_hash": "aedf774ba23f49bf2a0abbcdbdae10dd",
+    "semantic_hash": "aedf774ba23f49bf2a0abbcdbdae10dd"
+  },
+  "core/src/com/nicweiss/editor/components/windows/DialogEditorWindow.java": {
+    "mtime": 1782823166.1934607,
+    "ast_hash": "028176d3991ba7b12eec68c11c979532",
+    "semantic_hash": "028176d3991ba7b12eec68c11c979532"
+  },
+  "core/src/com/nicweiss/editor/components/windows/ItemCardWindow.java": {
+    "mtime": 1782823211.06264,
+    "ast_hash": "d9e032dce294d05d183d333720318433",
+    "semantic_hash": "d9e032dce294d05d183d333720318433"
+  },
+  "core/src/com/nicweiss/editor/components/windows/ItemsEditorWindow.java": {
+    "mtime": 1783017193.462464,
+    "ast_hash": "5804434887fcb86fae48a6d355610bc8",
+    "semantic_hash": "5804434887fcb86fae48a6d355610bc8"
+  },
+  "core/src/com/nicweiss/editor/components/windows/LoadingWindow.java": {
+    "mtime": 1782633008.772443,
+    "ast_hash": "1f9ed039a5c9fd893ed7170c53285656",
+    "semantic_hash": "1f9ed039a5c9fd893ed7170c53285656"
+  },
+  "core/src/com/nicweiss/editor/components/windows/MapContextMenuWindow.java": {
+    "mtime": 1783144647.7668712,
+    "ast_hash": "474bc16ef39c343b9935ecb1ff3b83b1",
+    "semantic_hash": "474bc16ef39c343b9935ecb1ff3b83b1"
+  },
+  "core/src/com/nicweiss/editor/components/windows/MapRedirectWindow.java": {
+    "mtime": 1782823180.7398615,
+    "ast_hash": "9abccdeba502bf622fa53dfa4514a928",
+    "semantic_hash": "9abccdeba502bf622fa53dfa4514a928"
+  },
+  "core/src/com/nicweiss/editor/components/windows/NpcEditorWindow.java": {
+    "mtime": 1783146937.6152759,
+    "ast_hash": "1ac18522871c5812763d7f30df274565",
+    "semantic_hash": "1ac18522871c5812763d7f30df274565"
+  },
+  "core/src/com/nicweiss/editor/components/windows/ObjectEditorWindow.java": {
+    "mtime": 1783146966.4945428,
+    "ast_hash": "8eebc3e81eca41a8b26c1360bc02d1c7",
+    "semantic_hash": "8eebc3e81eca41a8b26c1360bc02d1c7"
+  },
+  "core/src/com/nicweiss/editor/components/windows/QuestsEditorWindow.java": {
+    "mtime": 1782823154.8436685,
+    "ast_hash": "90fa8d04caa444edddcf5695cfd2c01b",
+    "semantic_hash": "90fa8d04caa444edddcf5695cfd2c01b"
+  },
+  "core/src/com/nicweiss/editor/components/windows/TextInputWindow.java": {
+    "mtime": 1782822445.7099786,
+    "ast_hash": "bd895c5816d1fcc517e6a2ddf33a56d9",
+    "semantic_hash": "bd895c5816d1fcc517e6a2ddf33a56d9"
+  },
+  "core/src/com/nicweiss/editor/components/windows/TileSelectorWindow.java": {
+    "mtime": 1783947100.0370564,
+    "ast_hash": "dd5be1e3962a324b09bafa6870b1fe7c",
+    "semantic_hash": "dd5be1e3962a324b09bafa6870b1fe7c"
+  },
+  "core/src/com/nicweiss/editor/creations/Creation.java": {
+    "mtime": 1783969016.9750109,
+    "ast_hash": "1f26d397a3f1dc90203239b08013a198",
+    "semantic_hash": "1f26d397a3f1dc90203239b08013a198"
+  },
+  "core/src/com/nicweiss/editor/objects/MapObject.java": {
+    "mtime": 1784654276.1412513,
+    "ast_hash": "4b8bfca7a3524328ff13a4790e4edc8c",
+    "semantic_hash": "4b8bfca7a3524328ff13a4790e4edc8c"
+  },
+  "core/src/com/nicweiss/editor/objects/TextObject.java": {
+    "mtime": 1713910401.4178636,
+    "ast_hash": "354711d09bcaedc861711ba7172ee917",
+    "semantic_hash": "354711d09bcaedc861711ba7172ee917"
+  },
+  "core/src/com/nicweiss/editor/objects/TextureObject.java": {
+    "mtime": 1782680094.4828665,
+    "ast_hash": "27e1eb884a4462507ae4aad07f44272d",
+    "semantic_hash": "27e1eb884a4462507ae4aad07f44272d"
+  },
+  "core/src/com/nicweiss/editor/simulation/CreationThread.java": {
+    "mtime": 1783117914.3951185,
+    "ast_hash": "2c330e4141ff824b3a5a2d53f9c9faa4",
+    "semantic_hash": "2c330e4141ff824b3a5a2d53f9c9faa4"
+  },
+  "core/src/com/nicweiss/editor/simulation/Drop.java": {
+    "mtime": 1783969010.3184762,
+    "ast_hash": "26bbebaa82dfb209bfb930f62926ce6e",
+    "semantic_hash": "26bbebaa82dfb209bfb930f62926ce6e"
+  },
+  "core/src/com/nicweiss/editor/simulation/DropManager.java": {
+    "mtime": 1784497966.2273614,
+    "ast_hash": "414291083d6d1e34422f4050f905b3d6",
+    "semantic_hash": "414291083d6d1e34422f4050f905b3d6"
+  },
+  "core/src/com/nicweiss/editor/simulation/ItemStack.java": {
+    "mtime": 1783017627.9274366,
+    "ast_hash": "83664f8de6489b05142e25c37d54c223",
+    "semantic_hash": "83664f8de6489b05142e25c37d54c223"
+  },
+  "core/src/com/nicweiss/editor/simulation/MagickThread.java": {
+    "mtime": 1782636267.9763455,
+    "ast_hash": "b6408be956a15f7de72abdc67649b112",
+    "semantic_hash": "b6408be956a15f7de72abdc67649b112"
+  },
+  "core/src/com/nicweiss/editor/simulation/PhysicThread.java": {
+    "mtime": 1784662614.3084471,
+    "ast_hash": "97bffc739cfa143a04b9c35b154c4a8f",
+    "semantic_hash": "97bffc739cfa143a04b9c35b154c4a8f"
+  },
+  "core/src/com/nicweiss/editor/simulation/Player.java": {
+    "mtime": 1784743331.3876216,
+    "ast_hash": "1fda00c9a46e84e5a262cc245a3d4143",
+    "semantic_hash": "1fda00c9a46e84e5a262cc245a3d4143"
+  },
+  "core/src/com/nicweiss/editor/simulation/PlayerHud.java": {
+    "mtime": 1784662743.2228475,
+    "ast_hash": "c957c90827ba25abbfcafbea098b062e",
+    "semantic_hash": "c957c90827ba25abbfcafbea098b062e"
+  },
+  "core/src/com/nicweiss/editor/simulation/PlayerUI.java": {
+    "mtime": 1783970388.218203,
+    "ast_hash": "3eaa863efb1a664741721be8220cfc7b",
+    "semantic_hash": "3eaa863efb1a664741721be8220cfc7b"
+  },
+  "core/src/com/nicweiss/editor/simulation/SimCreature.java": {
+    "mtime": 1783117800.3218071,
+    "ast_hash": "5a0f0058748fc0af31e72e8372552055",
+    "semantic_hash": "5a0f0058748fc0af31e72e8372552055"
+  },
+  "core/src/com/nicweiss/editor/simulation/SimulationInputThread.java": {
+    "mtime": 1784559364.6080122,
+    "ast_hash": "bbbb98d81257e7bf580328f69cc7cbf2",
+    "semantic_hash": "bbbb98d81257e7bf580328f69cc7cbf2"
+  },
+  "core/src/com/nicweiss/editor/simulation/SkillCaster.java": {
+    "mtime": 1784662645.841226,
+    "ast_hash": "0533f746606980de842859af462b03f9",
+    "semantic_hash": "0533f746606980de842859af462b03f9"
+  },
+  "core/src/com/nicweiss/editor/simulation/SkillEffectRenderer.java": {
+    "mtime": 1784659924.1390111,
+    "ast_hash": "ee516c8862adcd651bc0b6360aa21adb",
+    "semantic_hash": "ee516c8862adcd651bc0b6360aa21adb"
+  },
+  "core/src/com/nicweiss/editor/simulation/SpawnManager.java": {
+    "mtime": 1783943319.6172335,
+    "ast_hash": "ddbd84ffe2069f68ed63b16dcdb7d87d",
+    "semantic_hash": "ddbd84ffe2069f68ed63b16dcdb7d87d"
+  },
+  "core/src/com/nicweiss/editor/simulation/StackManager.java": {
+    "mtime": 1783018723.6202075,
+    "ast_hash": "e134f45849fc755b6575d352a96404ba",
+    "semantic_hash": "e134f45849fc755b6575d352a96404ba"
+  },
+  "core/src/com/nicweiss/editor/simulation/SystemUI.java": {
+    "mtime": 1784572215.091951,
+    "ast_hash": "dd0ed73a5f249c3f83b145f6d047b6c3",
+    "semantic_hash": "dd0ed73a5f249c3f83b145f6d047b6c3"
+  },
+  "core/src/com/nicweiss/editor/simulation/WeatherRenderer.java": {
+    "mtime": 1782749539.9550931,
+    "ast_hash": "27d788fff8ff60557ee422abebd28b06",
+    "semantic_hash": "27d788fff8ff60557ee422abebd28b06"
+  },
+  "core/src/com/nicweiss/editor/simulation/WeatherThread.java": {
+    "mtime": 1782764821.485537,
+    "ast_hash": "51fbe590ae2c9755a08881d87f310e66",
+    "semantic_hash": "51fbe590ae2c9755a08881d87f310e66"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/AuraRenderer.java": {
+    "mtime": 1784663837.4608,
+    "ast_hash": "4be2841ded17f2d12fc86c2a686c65e7",
+    "semantic_hash": "4be2841ded17f2d12fc86c2a686c65e7"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/ChainBoltEffect.java": {
+    "mtime": 1784660367.0245953,
+    "ast_hash": "3c3458534df7ce2db008832aab3aa047",
+    "semantic_hash": "3c3458534df7ce2db008832aab3aa047"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/DashEffect.java": {
+    "mtime": 1784744976.6061463,
+    "ast_hash": "c412c76ccfb436ea959e3f9210614ecc",
+    "semantic_hash": "c412c76ccfb436ea959e3f9210614ecc"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/DashGhostEffect.java": {
+    "mtime": 1784744728.7002003,
+    "ast_hash": "c4ecca967f50024a14e8e6a7f3a06469",
+    "semantic_hash": "c4ecca967f50024a14e8e6a7f3a06469"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/DoomSpawner.java": {
+    "mtime": 1784659443.8940215,
+    "ast_hash": "b11a5d4fd8335ec9d4b3cbc065ba9d21",
+    "semantic_hash": "b11a5d4fd8335ec9d4b3cbc065ba9d21"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/EffectSink.java": {
+    "mtime": 1784659291.1999826,
+    "ast_hash": "a1ca0bcacc12fbf45e0f3e6876aab60f",
+    "semantic_hash": "a1ca0bcacc12fbf45e0f3e6876aab60f"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/FireDoomEffect.java": {
+    "mtime": 1784659646.4238477,
+    "ast_hash": "08af35155fae39c0e06171b2c409a80a",
+    "semantic_hash": "08af35155fae39c0e06171b2c409a80a"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/FireWaveEffect.java": {
+    "mtime": 1784659636.0973601,
+    "ast_hash": "7a01ed6d5c97f3c5411acfff81ee2f99",
+    "semantic_hash": "7a01ed6d5c97f3c5411acfff81ee2f99"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/FireballEffect.java": {
+    "mtime": 1784663850.7903821,
+    "ast_hash": "ae49914f34ebf0b840391242c53cc990",
+    "semantic_hash": "ae49914f34ebf0b840391242c53cc990"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/FragilityParticleEffect.java": {
+    "mtime": 1784663850.7903821,
+    "ast_hash": "7419b7d996e5449e4dfd88756ba88c8e",
+    "semantic_hash": "7419b7d996e5449e4dfd88756ba88c8e"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/FxContext.java": {
+    "mtime": 1784744092.4918888,
+    "ast_hash": "d5d0238f9f5901dcb38dc516f91132a0",
+    "semantic_hash": "d5d0238f9f5901dcb38dc516f91132a0"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/GroundFireEffect.java": {
+    "mtime": 1784663850.7903821,
+    "ast_hash": "40e59512daf060dd56cd4bb32ba265a9",
+    "semantic_hash": "40e59512daf060dd56cd4bb32ba265a9"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/IceSpikeEffect.java": {
+    "mtime": 1784663850.7903821,
+    "ast_hash": "2fc4357db5bc634a3bd44183a906a8a3",
+    "semantic_hash": "2fc4357db5bc634a3bd44183a906a8a3"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/ImpactAnimEffect.java": {
+    "mtime": 1784659387.048335,
+    "ast_hash": "372baa8b22f9ddddaecbf8280ccda8c8",
+    "semantic_hash": "372baa8b22f9ddddaecbf8280ccda8c8"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/MeleeStrikeEffects.java": {
+    "mtime": 1784744774.0554886,
+    "ast_hash": "9e2e545ef9dbda8d162ceb636b020b31",
+    "semantic_hash": "9e2e545ef9dbda8d162ceb636b020b31"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/MistPatchEffect.java": {
+    "mtime": 1784663837.4641333,
+    "ast_hash": "c08dc380d7383284a96043df531faf88",
+    "semantic_hash": "c08dc380d7383284a96043df531faf88"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/ProjectileEffect.java": {
+    "mtime": 1784659375.0818746,
+    "ast_hash": "ec85c5b6c172ed464fdcc1e9791b29f4",
+    "semantic_hash": "ec85c5b6c172ed464fdcc1e9791b29f4"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/RingEffect.java": {
+    "mtime": 1784659352.355599,
+    "ast_hash": "7fa78813b38cd232986025a12646b544",
+    "semantic_hash": "7fa78813b38cd232986025a12646b544"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/SkillEffect.java": {
+    "mtime": 1784659282.706795,
+    "ast_hash": "ac58064fef8ad8ca4d601943d2c79ce5",
+    "semantic_hash": "ac58064fef8ad8ca4d601943d2c79ce5"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/SlashSwingEffect.java": {
+    "mtime": 1784670749.782705,
+    "ast_hash": "5239d21aa5099b53bfe0dc9d1fe04c62",
+    "semantic_hash": "5239d21aa5099b53bfe0dc9d1fe04c62"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/SpeedLineEffect.java": {
+    "mtime": 1784744926.5442784,
+    "ast_hash": "8bddb70f544628418cd6db2024a32969",
+    "semantic_hash": "8bddb70f544628418cd6db2024a32969"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/StormBoltScheduler.java": {
+    "mtime": 1784659587.044878,
+    "ast_hash": "1c765049b0402f66e35da652b733e57b",
+    "semantic_hash": "1c765049b0402f66e35da652b733e57b"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/StreakEffect.java": {
+    "mtime": 1784659331.8559513,
+    "ast_hash": "df13225b767e59dbd86b42380dd0f5aa",
+    "semantic_hash": "df13225b767e59dbd86b42380dd0f5aa"
+  },
+  "core/src/com/nicweiss/editor/simulation/effects/WideSplashEffect.java": {
+    "mtime": 1784670989.2011013,
+    "ast_hash": "012a7a77f124078031ea1abcd32abf01",
+    "semantic_hash": "012a7a77f124078031ea1abcd32abf01"
+  },
+  "core/src/com/nicweiss/editor/utils/ArrayUtils.java": {
+    "mtime": 1708300767.7006598,
+    "ast_hash": "b20ed3e34163b1fc356bb0484bbd7cea",
+    "semantic_hash": "b20ed3e34163b1fc356bb0484bbd7cea"
+  },
+  "core/src/com/nicweiss/editor/utils/BOHelper.java": {
+    "mtime": 1758176786.7288377,
+    "ast_hash": "ec681c9c7bf8f61e9f7ec2242357a175",
+    "semantic_hash": "ec681c9c7bf8f61e9f7ec2242357a175"
+  },
+  "core/src/com/nicweiss/editor/utils/CameraSettings.java": {
+    "mtime": 1756919138.6835625,
+    "ast_hash": "ee7a67c268f5dae50753c5a029c6aa07",
+    "semantic_hash": "ee7a67c268f5dae50753c5a029c6aa07"
+  },
+  "core/src/com/nicweiss/editor/utils/FileManager.java": {
+    "mtime": 1783940376.107464,
+    "ast_hash": "ec52699f0d18ae0178f38207b162788d",
+    "semantic_hash": "ec52699f0d18ae0178f38207b162788d"
+  },
+  "core/src/com/nicweiss/editor/utils/Font.java": {
+    "mtime": 1783028612.5328774,
+    "ast_hash": "bfbed27268fdc77e959a5d0c932b70c4",
+    "semantic_hash": "bfbed27268fdc77e959a5d0c932b70c4"
+  },
+  "core/src/com/nicweiss/editor/utils/ItemGenerator.java": {
+    "mtime": 1784490633.9539146,
+    "ast_hash": "dbc932e6283a7c68ebeaa957957ae7c4",
+    "semantic_hash": "dbc932e6283a7c68ebeaa957957ae7c4"
+  },
+  "core/src/com/nicweiss/editor/utils/ItemModifierCatalog.java": {
+    "mtime": 1783968343.0150747,
+    "ast_hash": "5d33b4bd48f70b7215496d91424e7600",
+    "semantic_hash": "5d33b4bd48f70b7215496d91424e7600"
+  },
+  "core/src/com/nicweiss/editor/utils/Light.java": {
+    "mtime": 1782737100.1824725,
+    "ast_hash": "dab2fd0914305bcc1ca7fb6d46f08a8f",
+    "semantic_hash": "dab2fd0914305bcc1ca7fb6d46f08a8f"
+  },
+  "core/src/com/nicweiss/editor/utils/Lighting.java": {
+    "mtime": 1784654262.0048523,
+    "ast_hash": "97cb29859ea6ed612c605851309cfb4f",
+    "semantic_hash": "97cb29859ea6ed612c605851309cfb4f"
+  },
+  "core/src/com/nicweiss/editor/utils/NpcCatalog.java": {
+    "mtime": 1783148449.6306334,
+    "ast_hash": "bc4df43c48a8d4bc9cd8947d49698efc",
+    "semantic_hash": "bc4df43c48a8d4bc9cd8947d49698efc"
+  },
+  "core/src/com/nicweiss/editor/utils/NpcGenerator.java": {
+    "mtime": 1783117788.1554992,
+    "ast_hash": "edc387671313f12680d4d16da1436b8f",
+    "semantic_hash": "edc387671313f12680d4d16da1436b8f"
+  },
+  "core/src/com/nicweiss/editor/utils/ObjectCatalog.java": {
+    "mtime": 1783148469.310141,
+    "ast_hash": "95335ca86e02ce106b2bce09a1d1c68b",
+    "semantic_hash": "95335ca86e02ce106b2bce09a1d1c68b"
+  },
+  "core/src/com/nicweiss/editor/utils/Perlin.java": {
+    "mtime": 1760551754.2545853,
+    "ast_hash": "38ddfa5b3ea81939456eff3a36ed11db",
+    "semantic_hash": "38ddfa5b3ea81939456eff3a36ed11db"
+  },
+  "core/src/com/nicweiss/editor/utils/ShaderLibrary.java": {
+    "mtime": 1784662697.1436577,
+    "ast_hash": "c53f6c609ea90293beffa42dc8c86ebd",
+    "semantic_hash": "c53f6c609ea90293beffa42dc8c86ebd"
+  },
+  "core/src/com/nicweiss/editor/utils/SkillCatalog.java": {
+    "mtime": 1784662578.469077,
+    "ast_hash": "6d84b6a5b3dad1825ad7797bd16a765f",
+    "semantic_hash": "6d84b6a5b3dad1825ad7797bd16a765f"
+  },
+  "core/src/com/nicweiss/editor/utils/SkillSlot.java": {
+    "mtime": 1784559262.413089,
+    "ast_hash": "a75f04857415c7c7aa3b2f85a565ec4c",
+    "semantic_hash": "a75f04857415c7c7aa3b2f85a565ec4c"
+  },
+  "core/src/com/nicweiss/editor/utils/Text.java": {
+    "mtime": 1721332269.5437932,
+    "ast_hash": "5c203274d3015fe267daddd20160ee63",
+    "semantic_hash": "5c203274d3015fe267daddd20160ee63"
+  },
+  "core/src/com/nicweiss/editor/utils/Transform.java": {
+    "mtime": 1782733325.4964187,
+    "ast_hash": "95baa9de01d6f51be69bc18e1cdf2c7e",
+    "semantic_hash": "95baa9de01d6f51be69bc18e1cdf2c7e"
+  },
+  "core/src/com/nicweiss/editor/utils/Uuid.java": {
+    "mtime": 1714386281.5212877,
+    "ast_hash": "0d42e4b1c6e1783232c2d741cf12ec00",
+    "semantic_hash": "0d42e4b1c6e1783232c2d741cf12ec00"
+  },
+  "desktop/build.gradle": {
+    "mtime": 1721248063.5735617,
+    "ast_hash": "4e2e1d4e269babec24c6ef503f85cc51",
+    "semantic_hash": "4e2e1d4e269babec24c6ef503f85cc51"
+  },
+  "desktop/src/com/nicweiss/editor/DesktopLauncher.java": {
+    "mtime": 1707606522.6795554,
+    "ast_hash": "e9789864aaa4b340896749670f07d9ce",
+    "semantic_hash": "e9789864aaa4b340896749670f07d9ce"
+  },
+  "gradlew": {
+    "mtime": 1722338904.7277486,
+    "ast_hash": "48fe0bd77a66bbb62c1150926ab1332c",
+    "semantic_hash": "48fe0bd77a66bbb62c1150926ab1332c"
+  },
+  "settings.gradle": {
+    "mtime": 1705428630.4729726,
+    "ast_hash": "5178d8e6b22f675ac12b8123f219e264",
+    "semantic_hash": "5178d8e6b22f675ac12b8123f219e264"
+  },
+  "CHANGES.MD": {
+    "mtime": 1758739663.7727067,
+    "ast_hash": "d37d5d25c38f11c0dc0cee9729306087",
+    "semantic_hash": "d37d5d25c38f11c0dc0cee9729306087"
+  },
+  "Readme.md": {
+    "mtime": 1726601927.0030932,
+    "ast_hash": "cef0ed4a03deb231512b44b62b1ed6af",
+    "semantic_hash": "cef0ed4a03deb231512b44b62b1ed6af"
+  }
+}
